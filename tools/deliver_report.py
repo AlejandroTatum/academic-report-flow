@@ -164,7 +164,7 @@ def deliver(folder: Path, documents_root: Path | None = None) -> int:
 
     action = "ENTREGADO" if publication.created else "REUTILIZADO"
     granted = _granted_gates(receipt)
-    if final_review_state(folder, pdf).state == "current":
+    if final_review_state(folder, pdf).ok:
         granted = [gate for gate in KNOWN_GATES if gate == "HUMAN_REVIEW" or gate in granted]
     else:
         granted = [gate for gate in granted if gate != "HUMAN_REVIEW"]

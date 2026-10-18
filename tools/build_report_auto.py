@@ -94,16 +94,17 @@ def build_backend(
 def build_with_records(config: "ReportConfig", args: argparse.Namespace) -> None:
     """Run the build and the record lifecycle around it.
 
-    Two records tell ``doc_status`` what a build rendered: a draft build
-    (``--no-approval-check``) records the ``body.md`` bytes, so a fresh draft
-    PDF is told apart from one that predates the latest edit; every build with
+    Two records tell ``doc_status`` and the publisher what a build rendered:
+    every PDF build (draft or final) records the ``body.md`` bytes, so a fresh
+    PDF is told apart from one that predates the latest edit -- the publisher
+    relies on it to refuse an unrebuilt PDF after a carried gate; every build with
     a ``report.yml`` records its render settings, so a delivery-only edit is
     told apart from one that needs a rebuild. Old records go first and new ones
     are written only after the build succeeded, so a failed build never looks
     fresh; ``--tex-only`` compiles no PDF and writes neither.
     """
     draft_body = config.folder / "body.md"
-    record_draft = args.no_approval_check and not args.tex_only and draft_body.is_file()
+    record_draft = not args.tex_only and draft_body.is_file()
     # Through the module, so tests that fake the PDF hash leave this one real.
     rendered = approval_marker.sha256_file(draft_body) if record_draft else ""
     report_yml = config.folder / "report.yml"
@@ -133,7 +134,7 @@ def main() -> None:
 
     if not (args.validate_only or args.no_approval_check):
         approval = approval_state(args.folder)
-        if approval.state != "current":
+        if not approval.ok:
             raise SystemExit(
                 f"APPROVAL REQUIRED: no se construye sin approval.yml vigente para body.md "
                 f"({approval.detail}). Pedí la aprobación explícita del usuario; "
