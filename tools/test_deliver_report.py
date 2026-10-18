@@ -33,6 +33,7 @@ from conftest import (  # noqa: E402
 from deliver_report import main  # noqa: E402
 
 import doc_status  # noqa: E402
+import approval_marker  # noqa: E402
 from report_config import ReportConfig, read_yaml  # noqa: E402
 
 CATEGORY = "Academicos"
@@ -256,6 +257,46 @@ def test_delivery_refuses_an_approval_stale_after_an_unbounded_edit(tmp_path: Pa
     _validation(folder, pdf=pdf)
     _final_review(folder, pdf=pdf)
     body.write_text("# Informe\n\n" + " ".join(["nuevo"] * 41) + "\n", encoding="utf-8")
+    documents_root = tmp_path / "docs"
+
+    assert _run(folder, documents_root) == 1
+    assert not (documents_root / CATEGORY).exists()
+
+
+def test_delivery_accepts_a_final_review_carried_across_a_bounded_edit(tmp_path: Path) -> None:
+    """A name fix after the final review: rebuild and validate again, then publish without re-asking."""
+    import final_review_marker
+
+    folder = tmp_path / "wf"
+    _report(folder)
+    body = folder / "body.md"
+    body.write_text("# Informe\n\nPreparado por Juan Perez.\n", encoding="utf-8")
+    approval_marker.record_approval(folder, "Alejandro")
+    pdf = _pdf(folder)
+    final_review_marker.record_final_review(folder, "Alejandro", pdf)
+    body.write_text("# Informe\n\nPreparado por Ana Perez.\n", encoding="utf-8")
+    pdf.write_bytes(pdf.read_bytes() + b"rebuilt\n")
+    _validation(folder, pdf=pdf)
+    documents_root = tmp_path / "docs"
+
+    assert _run(folder, documents_root) == 0
+    assert (documents_root / CATEGORY).exists()
+
+
+def test_delivery_refuses_a_final_review_stale_after_an_unbounded_edit(tmp_path: Path) -> None:
+    import final_review_marker
+
+    folder = tmp_path / "wf"
+    _report(folder)
+    body = folder / "body.md"
+    body.write_text("# Informe\n\nPreparado por Juan Perez.\n", encoding="utf-8")
+    approval_marker.record_approval(folder, "Alejandro")
+    pdf = _pdf(folder)
+    final_review_marker.record_final_review(folder, "Alejandro", pdf)
+    pdf.write_bytes(pdf.read_bytes() + b"rebuilt\n")
+    body.write_text("# Informe\n\nPreparado por Juan Perez.\n" + " ".join(["nuevo"] * 41) + "\n", encoding="utf-8")
+    approval_marker.record_approval(folder, "Alejandro")
+    _validation(folder, pdf=pdf)
     documents_root = tmp_path / "docs"
 
     assert _run(folder, documents_root) == 1

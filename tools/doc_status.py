@@ -598,8 +598,9 @@ def _phase_validate(folder: Path, config: ReportConfig, _documents_root: Path | 
 def _phase_review(folder: Path, config: ReportConfig, _documents_root: Path | None) -> PhaseState:
     """Map the final-review predicate onto one phase state (new-report-flow T1/T5).
 
-    Only ``current`` is ``done``: an absent marker stays ``pending`` so the
-    route waits at review, and a stale one -- the PDF changed since the human
+    ``current`` and ``carried`` (a bounded edit since the review, with a passing
+    validation of the current PDF) are ``done``: an absent marker stays
+    ``pending`` so the route waits at review, and a stale one -- the PDF changed since the human
     looked at it -- also returns to ``pending``, because reviewing the current
     build is the normal loop. Only a malformed marker is ``blocked``, with the
     predicate's own bounded reason. The marker is never written here. When the
@@ -613,6 +614,8 @@ def _phase_review(folder: Path, config: ReportConfig, _documents_root: Path | No
     state = final_review_marker.final_review_state(folder, config.pdf_path, bibliography=bibliography)
     if state.state == "current":
         return PhaseState("review", DONE, f"final-review.yml matches {config.pdf_path.name}")
+    if state.state == "carried":
+        return PhaseState("review", DONE, state.detail)
     if state.state in ("absent", "stale"):
         return PhaseState("review", PENDING, state.detail)
     return PhaseState("review", BLOCKED, state.detail, state.reason)

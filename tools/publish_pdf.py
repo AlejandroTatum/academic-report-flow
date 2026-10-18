@@ -215,7 +215,7 @@ def publish_validated_pdf(
         raise PublicationError(_approval_refusal(state, work_folder))
 
     review = final_review_state(work_folder, source, bibliography=bibliography)
-    if review.state != "current":
+    if not review.ok:
         message = _final_review_refusal(review, work_folder, source)
         if bibliography is not None and review.detail:
             message = f"{message} Detalle: {review.detail}."

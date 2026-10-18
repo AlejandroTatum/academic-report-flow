@@ -278,3 +278,197 @@ def test_marker_stale_when_declared_bibliography_disappears(tmp_path: Path) -> N
 
     assert state.state == "stale"
     assert "bibliography_sha256" in state.detail
+
+
+# -- Bounded-edit carry (bounded-edit-approval T2) -----------------------------
+
+import pytest  # noqa: E402
+import yaml  # noqa: E402
+
+REVIEW_BODY = "# Informe\n\nPreparado por Juan Perez para la catedra de simulacion.\n\n## Resultados\n\nTexto.\n"
+
+
+def _validation(folder: Path, pdf: Path, *, result: str = "pass", pdf_sha: str | None = None, **extra: str) -> Path:
+    data = {
+        "schema": "academic.doc-validation/v1",
+        "artifact_sha256": pdf_sha or hashlib.sha256(pdf.read_bytes()).hexdigest(),
+        "result": result,
+        **extra,
+    }
+    path = folder / "validation.yml"
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return path
+
+
+def _reviewed(folder: Path, text: str = REVIEW_BODY) -> tuple[Path, Path]:
+    """A folder with body.md, a PDF and a recorded final review."""
+    pdf = _write_pdf(folder)
+    body = folder / "body.md"
+    body.write_text(text, encoding="utf-8")
+    final_review_marker.record_final_review(folder, "Alejandro", pdf)
+    return body, pdf
+
+
+def _rebuild(pdf: Path) -> None:
+    pdf.write_bytes(OTHER_PDF_BYTES)
+
+
+def test_record_final_review_writes_marker_and_snapshot_together(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    body, pdf = _reviewed(folder)
+
+    data = yaml.safe_load((folder / "final-review.yml").read_text(encoding="utf-8"))
+    assert data["schema"] == final_review_marker.MARKER_SCHEMA
+    assert data["pdf_sha256"] == hashlib.sha256(pdf.read_bytes()).hexdigest()
+    assert data["body_sha256"] == hashlib.sha256(body.read_bytes()).hexdigest()
+    assert data["reviewed_by"] == "Alejandro" and data["reviewed_at"]
+    assert "bibliography_sha256" not in data
+    assert (folder / "reviewed-body.md").read_bytes() == body.read_bytes()
+    assert final_review_marker.final_review_state(folder, pdf).state == "current"
+    assert not [p for p in folder.iterdir() if p.name.endswith(".tmp")]
+
+
+def test_record_final_review_binds_the_declared_bibliography(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    pdf = _write_pdf(folder)
+    (folder / "body.md").write_text(REVIEW_BODY, encoding="utf-8")
+    bib = folder / "sources.bib"
+    bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
+
+    final_review_marker.record_final_review(folder, "Alejandro", pdf, bibliography=bib)
+
+    data = yaml.safe_load((folder / "final-review.yml").read_text(encoding="utf-8"))
+    assert data["bibliography_sha256"] == hashlib.sha256(bib.read_bytes()).hexdigest()
+    assert final_review_marker.final_review_state(folder, pdf, bibliography=bib).state == "current"
+
+
+@pytest.mark.parametrize("missing", ["name", "pdf", "body"])
+def test_record_final_review_refuses_incomplete_input_and_writes_nothing(tmp_path: Path, missing: str) -> None:
+    folder = tmp_path / "wf"
+    pdf = _write_pdf(folder)
+    (folder / "body.md").write_text(REVIEW_BODY, encoding="utf-8")
+    name = "Alejandro"
+    if missing == "name":
+        name = " "
+    elif missing == "pdf":
+        pdf.unlink()
+    else:
+        (folder / "body.md").unlink()
+    before = sorted(p.name for p in folder.iterdir())
+
+    with pytest.raises(ValueError):
+        final_review_marker.record_final_review(folder, name, pdf)
+
+    assert sorted(p.name for p in folder.iterdir()) == before
+
+
+def test_final_review_cli_records_the_gate(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    folder.mkdir()
+    (folder / "report.yml").write_text("title: T\npdf: final/report.pdf\n", encoding="utf-8")
+    pdf = _write_pdf(folder)
+    (folder / "body.md").write_text(REVIEW_BODY, encoding="utf-8")
+
+    assert final_review_marker.main(["record", str(folder), "--by", "Alejandro"]) == 0
+
+    assert final_review_marker.final_review_state(folder, pdf).state == "current"
+    assert (folder / "reviewed-body.md").is_file()
+
+
+def test_bounded_edit_with_a_passing_validation_of_the_current_pdf_is_carried(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    body, pdf = _reviewed(folder)
+    body.write_text(REVIEW_BODY.replace("Juan", "Ana"), encoding="utf-8")
+    _rebuild(pdf)
+    _validation(folder, pdf)
+
+    state = final_review_marker.final_review_state(folder, pdf)
+
+    assert state.state == "carried"
+    assert state.reason == ""
+    assert state.detail == "bounded edit since final review (2 words)"
+    assert state.ok
+
+
+def test_carry_is_stale_when_the_validation_is_for_another_pdf(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    body, pdf = _reviewed(folder)
+    body.write_text(REVIEW_BODY.replace("Juan", "Ana"), encoding="utf-8")
+    _rebuild(pdf)
+    _validation(folder, pdf, pdf_sha="0" * 64)
+    assert final_review_marker.final_review_state(folder, pdf).state == "stale"
+
+
+@pytest.mark.parametrize("shape", ["fail", "absent"])
+def test_carry_is_stale_without_a_passing_validation(tmp_path: Path, shape: str) -> None:
+    folder = tmp_path / "wf"
+    body, pdf = _reviewed(folder)
+    body.write_text(REVIEW_BODY.replace("Juan", "Ana"), encoding="utf-8")
+    _rebuild(pdf)
+    if shape == "fail":
+        _validation(folder, pdf, result="fail")
+    assert final_review_marker.final_review_state(folder, pdf).state == "stale"
+
+
+def test_carry_is_stale_with_a_large_diff(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    body, pdf = _reviewed(folder)
+    body.write_text(REVIEW_BODY + " ".join(["nuevo"] * 41) + "\n", encoding="utf-8")
+    _rebuild(pdf)
+    _validation(folder, pdf)
+    assert final_review_marker.final_review_state(folder, pdf).state == "stale"
+
+
+def test_carry_is_stale_after_a_heading_change(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    body, pdf = _reviewed(folder)
+    body.write_text(REVIEW_BODY.replace("## Resultados", "## Hallazgos"), encoding="utf-8")
+    _rebuild(pdf)
+    _validation(folder, pdf)
+    assert final_review_marker.final_review_state(folder, pdf).state == "stale"
+
+
+def test_carry_is_stale_when_the_snapshot_is_missing_or_tampered(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    body, pdf = _reviewed(folder)
+    body.write_text(REVIEW_BODY.replace("Juan", "Ana"), encoding="utf-8")
+    _rebuild(pdf)
+    _validation(folder, pdf)
+    snapshot = folder / "reviewed-body.md"
+    snapshot.write_text(REVIEW_BODY.replace("Juan", "Luis"), encoding="utf-8")
+    assert final_review_marker.final_review_state(folder, pdf).state == "stale"
+    snapshot.unlink()
+    assert final_review_marker.final_review_state(folder, pdf).state == "stale"
+
+
+def test_carry_with_a_declared_bibliography_needs_it_bound_in_the_validation(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    pdf = _write_pdf(folder)
+    body = folder / "body.md"
+    body.write_text(REVIEW_BODY, encoding="utf-8")
+    bib = folder / "sources.bib"
+    bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
+    final_review_marker.record_final_review(folder, "Alejandro", pdf, bibliography=bib)
+    body.write_text(REVIEW_BODY.replace("Juan", "Ana"), encoding="utf-8")
+    _rebuild(pdf)
+
+    _validation(folder, pdf)
+    assert final_review_marker.final_review_state(folder, pdf, bibliography=bib).state == "stale"
+
+    _validation(folder, pdf, bibliography_sha256=hashlib.sha256(bib.read_bytes()).hexdigest())
+    assert final_review_marker.final_review_state(folder, pdf, bibliography=bib).state == "carried"
+
+    bib.write_text("@book{a, title={B}}\n", encoding="utf-8")
+    assert final_review_marker.final_review_state(folder, pdf, bibliography=bib).state == "stale"
+
+
+def test_a_marker_without_a_body_hash_never_carries(tmp_path: Path) -> None:
+    """A hand-written marker has no body_sha256, so no snapshot can vouch for it."""
+    folder = tmp_path / "wf"
+    pdf = _write_pdf(folder)
+    (folder / "body.md").write_text(REVIEW_BODY, encoding="utf-8")
+    (folder / "reviewed-body.md").write_text(REVIEW_BODY, encoding="utf-8")
+    _write_marker(folder, _marker_body(pdf))
+    _rebuild(pdf)
+    _validation(folder, pdf)
+    assert final_review_marker.final_review_state(folder, pdf).state == "stale"
