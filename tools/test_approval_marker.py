@@ -219,3 +219,127 @@ def test_marker_constants_are_declared() -> None:
         "approved_by",
     )
     assert approval_marker.bound_file_names() == ("body.md",)
+
+
+# -- Bounded-edit carry (bounded-edit-approval T1) -----------------------------
+
+CARRY_BODY = "# Informe\n\nPreparado por Juan Perez para la catedra de simulacion.\n\n## Resultados\n\nTexto.\n"
+
+
+def _approved(folder: Path, text: str = CARRY_BODY) -> Path:
+    body = _write_body(folder, text)
+    approval_marker.record_approval(folder, "Alejandro")
+    return body
+
+
+def test_record_approval_writes_marker_and_snapshot_together(tmp_path: Path) -> None:
+    import yaml
+
+    folder = tmp_path / "wf"
+    body = _write_body(folder, CARRY_BODY)
+
+    approval_marker.record_approval(folder, "Alejandro")
+
+    data = yaml.safe_load((folder / "approval.yml").read_text(encoding="utf-8"))
+    assert data["schema"] == approval_marker.MARKER_SCHEMA
+    assert data["body_sha256"] == hashlib.sha256(body.read_bytes()).hexdigest()
+    assert data["approved_by"] == "Alejandro" and data["approved_at"]
+    assert (folder / "approved-body.md").read_bytes() == body.read_bytes()
+    assert sorted(p.name for p in folder.iterdir()) == ["approval.yml", "approved-body.md", "body.md"]
+    assert approval_marker.approval_state(folder).state == "current"
+
+
+@pytest.mark.parametrize("name", ["", "   "])
+def test_record_approval_refuses_a_blank_name_and_writes_nothing(tmp_path: Path, name: str) -> None:
+    folder = tmp_path / "wf"
+    _write_body(folder)
+    with pytest.raises(ValueError):
+        approval_marker.record_approval(folder, name)
+    assert sorted(p.name for p in folder.iterdir()) == ["body.md"]
+
+
+def test_record_approval_refuses_a_missing_body(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    folder.mkdir()
+    with pytest.raises(ValueError):
+        approval_marker.record_approval(folder, "Alejandro")
+    assert list(folder.iterdir()) == []
+
+
+def test_approve_cli_records_the_gate(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    _write_body(folder)
+    assert approval_marker.main(["approve", str(folder), "--by", "Alejandro"]) == 0
+    assert approval_marker.approval_state(folder).state == "current"
+    assert (folder / "approved-body.md").is_file()
+
+
+def test_unchanged_body_after_recording_is_current_not_carried(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    _approved(folder)
+    state = approval_marker.approval_state(folder)
+    assert (state.state, state.reason, state.detail) == ("current", "", "")
+    assert state.ok
+
+
+def test_a_name_change_after_approval_is_carried(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    body = _approved(folder)
+    body.write_text(CARRY_BODY.replace("Juan", "Ana"), encoding="utf-8")
+
+    state = approval_marker.approval_state(folder)
+
+    assert state.state == "carried"
+    assert state.reason == ""
+    assert state.detail == "bounded edit since approval (2 words)"
+    assert state.ok
+
+
+def test_carry_does_not_rewrite_the_marker_or_snapshot(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    body = _approved(folder)
+    body.write_text(CARRY_BODY.replace("Juan", "Ana"), encoding="utf-8")
+    before = {p.name: p.read_bytes() for p in folder.iterdir()}
+    approval_marker.approval_state(folder)
+    assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
+
+
+def test_a_forty_one_word_change_is_stale(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    body = _approved(folder)
+    body.write_text(CARRY_BODY + " ".join(["nuevo"] * 41) + "\n", encoding="utf-8")
+    state = approval_marker.approval_state(folder)
+    assert state.state == "stale" and state.reason == "approval_marker_stale"
+    assert not state.ok
+
+
+def test_a_heading_change_is_stale(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    body = _approved(folder)
+    body.write_text(CARRY_BODY.replace("## Resultados", "## Hallazgos"), encoding="utf-8")
+    assert approval_marker.approval_state(folder).state == "stale"
+
+
+def test_a_missing_snapshot_is_stale(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    body = _approved(folder)
+    (folder / "approved-body.md").unlink()
+    body.write_text(CARRY_BODY.replace("Juan", "Ana"), encoding="utf-8")
+    assert approval_marker.approval_state(folder).state == "stale"
+
+
+def test_a_tampered_snapshot_is_never_trusted(tmp_path: Path) -> None:
+    """A snapshot whose hash is not body_sha256 cannot vouch for a bounded diff."""
+    folder = tmp_path / "wf"
+    body = _approved(folder)
+    body.write_text(CARRY_BODY.replace("Juan", "Ana"), encoding="utf-8")
+    # Rewrite the snapshot to be one word away from the edited body.
+    (folder / "approved-body.md").write_text(CARRY_BODY.replace("Juan", "Luis"), encoding="utf-8")
+    assert approval_marker.approval_state(folder).state == "stale"
+
+
+def test_carry_still_fails_closed_without_a_marker_or_body(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    _write_body(folder)
+    (folder / "approved-body.md").write_text(CARRY_BODY, encoding="utf-8")
+    assert approval_marker.approval_state(folder).state == "absent"

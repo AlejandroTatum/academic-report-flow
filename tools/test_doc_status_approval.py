@@ -551,3 +551,60 @@ def test_approval_guidance_inspects_only_changed_preview_pages(tmp_path: Path) -
     assert "visual_pdf_auditor.py" in guidance
     assert "only the Changed pages" in guidance
     assert "inspect every page," not in guidance
+
+
+def test_a_bounded_edit_after_approval_reports_done_with_the_carried_detail(tmp_path: Path) -> None:
+    import approval_marker
+    import doc_status
+    from conftest import _body
+
+    folder = tmp_path / "wf"
+    body = _body(folder, "# Informe\n\nPreparado por Juan Perez.\n")
+    approval_marker.record_approval(folder, "Alejandro")
+    body.write_text("# Informe\n\nPreparado por Ana Perez.\n", encoding="utf-8")
+
+    phase = doc_status._phase_approval(folder, None, None)
+
+    assert phase.state == doc_status.DONE
+    assert phase.detail == "bounded edit since approval (2 words)"
+
+
+def test_an_unbounded_edit_after_approval_is_still_pending(tmp_path: Path) -> None:
+    import approval_marker
+    import doc_status
+    from conftest import _body
+
+    folder = tmp_path / "wf"
+    body = _body(folder, "# Informe\n\nPreparado por Juan Perez.\n")
+    approval_marker.record_approval(folder, "Alejandro")
+    body.write_text("# Otro titulo\n\nPreparado por Juan Perez.\n", encoding="utf-8")
+
+    phase = doc_status._phase_approval(folder, None, None)
+
+    assert phase.state == doc_status.PENDING
+    assert "re-approve" in phase.detail
+
+
+def test_generate_rebuilds_after_a_carried_edit_but_not_for_an_untouched_body(tmp_path: Path) -> None:
+    """A carried approval skips the question, never the rebuild: the PDF must postdate body.md."""
+    import approval_marker
+    import doc_status
+    from conftest import _body, _config, _mtime, _pdf, _report
+
+    t0 = 1_700_000_000.0
+    folder = tmp_path / "wf"
+    _report(folder)
+    body = _body(folder, "# Informe\n\nPreparado por Juan Perez.\n")
+    approval_marker.record_approval(folder, "Alejandro")
+    _mtime(folder / "report.yml", t0)
+    _mtime(folder / "approval.yml", t0 + 60)
+    _mtime(body, t0 + 30)
+    _pdf(folder, mtime=t0 + 120)
+    assert doc_status._phase_generate(folder, _config(folder), None).state == doc_status.DONE
+
+    body.write_text("# Informe\n\nPreparado por Ana Perez.\n", encoding="utf-8")
+    _mtime(body, t0 + 180)
+
+    phase = doc_status._phase_generate(folder, _config(folder), None)
+    assert phase.state == doc_status.PENDING
+    assert "body.md" in phase.detail

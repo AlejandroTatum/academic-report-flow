@@ -225,6 +225,43 @@ def test_delivery_refuses_stale_approval(tmp_path: Path) -> None:
     assert not (documents_root / CATEGORY).exists()
 
 
+def test_delivery_accepts_an_approval_carried_across_a_bounded_edit(tmp_path: Path) -> None:
+    """A name fix after approval keeps the approval: the publisher publishes."""
+    import approval_marker
+
+    folder = tmp_path / "wf"
+    _report(folder)
+    body = folder / "body.md"
+    body.write_text("# Informe\n\nPreparado por Juan Perez.\n", encoding="utf-8")
+    approval_marker.record_approval(folder, "Alejandro")
+    pdf = _pdf(folder)
+    _validation(folder, pdf=pdf)
+    _final_review(folder, pdf=pdf)
+    body.write_text("# Informe\n\nPreparado por Ana Perez.\n", encoding="utf-8")
+    documents_root = tmp_path / "docs"
+
+    assert _run(folder, documents_root) == 0
+    assert (documents_root / CATEGORY).exists()
+
+
+def test_delivery_refuses_an_approval_stale_after_an_unbounded_edit(tmp_path: Path) -> None:
+    import approval_marker
+
+    folder = tmp_path / "wf"
+    _report(folder)
+    body = folder / "body.md"
+    body.write_text("# Informe\n\nPreparado por Juan Perez.\n", encoding="utf-8")
+    approval_marker.record_approval(folder, "Alejandro")
+    pdf = _pdf(folder)
+    _validation(folder, pdf=pdf)
+    _final_review(folder, pdf=pdf)
+    body.write_text("# Informe\n\n" + " ".join(["nuevo"] * 41) + "\n", encoding="utf-8")
+    documents_root = tmp_path / "docs"
+
+    assert _run(folder, documents_root) == 1
+    assert not (documents_root / CATEGORY).exists()
+
+
 # -- Final review gate ---------------------------------------------------------
 
 

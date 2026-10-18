@@ -26,7 +26,7 @@ Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `vali
 - Require rubric TDD checks in the plan before drafting; the draft turns them green.
 - Use one independent verifier for semantic verification (requirement -> evidence matrix, unquotable evidence is `missing`); the drafter never verifies itself.
 - Require verified sources before research is finished.
-- Apply batched edit orders verbatim before seeking re-approval.
+- Apply batched edit orders verbatim before seeking re-approval; a bounded edit (at most 40 changed words, no heading touched) keeps the approval without asking, and verify, rebuild and validation still run.
 - Never build before approval is `done`; never present the approval gate before `draft` is `done`.
 - Stop at the earliest failed gate; never substitute an unsupported backend or executor.
 - Publish only through `deliver_report.py` with a current `APPROVAL_CURRENT` marker; publication is not approval.
@@ -42,7 +42,7 @@ Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `vali
 |---|---|
 | `next` names a phase | Load its reference and run its executor (this skill, `research-workflow`, or the verifier). |
 | Intake data missing or ambiguous | Stop and ask; recording the contract is never approval. |
-| `next: approval` / `next: review` | Present the gate; write `approval.yml` / `final-review.yml` only on an explicit answer. |
+| `next: approval` / `next: review` | Present the gate; write `approval.yml` / `final-review.yml` only on an explicit answer; record approval with `approval_marker.py approve`, never `printf`. |
 | Type ambiguous or non-academic | Recommend or resolve a route; never fall back to Route A. |
 | Script PASS contradicts visible evidence | Record `VISUAL_FAIL`, correct, rebuild, repeat all gates. |
 | Inspection incomplete | Return `REVIEW_REQUIRED`, without `VISUAL_PASS`. |

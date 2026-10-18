@@ -211,7 +211,7 @@ def publish_validated_pdf(
         )
 
     state = approval_state(work_folder)
-    if state.state != "current":
+    if not state.ok:
         raise PublicationError(_approval_refusal(state, work_folder))
 
     review = final_review_state(work_folder, source, bibliography=bibliography)

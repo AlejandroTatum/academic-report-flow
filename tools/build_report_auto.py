@@ -133,7 +133,7 @@ def main() -> None:
 
     if not (args.validate_only or args.no_approval_check):
         approval = approval_state(args.folder)
-        if approval.state != "current":
+        if not approval.ok:
             raise SystemExit(
                 f"APPROVAL REQUIRED: no se construye sin approval.yml vigente para body.md "
                 f"({approval.detail}). Pedí la aprobación explícita del usuario; "

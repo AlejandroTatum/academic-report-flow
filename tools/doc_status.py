@@ -247,7 +247,8 @@ def _phase_draft(folder: Path, _config: ReportConfig, _documents_root: Path | No
     # Tools enforce the quality rules before the human decision: while the same
     # body check `content_check.py --body-check` runs would fail, approval is
     # not offered. A current approval marker is never re-gated (the user already
-    # approved those exact bytes).
+    # approved those exact bytes). A carried approval is not exempt: its bytes
+    # changed, and the body check still runs after every edit.
     if approval_state(folder).state != "current":
         try:
             failed = [c for c in content_check.body_check_results(folder) if not c["ok"]]
@@ -266,8 +267,8 @@ def _phase_draft(folder: Path, _config: ReportConfig, _documents_root: Path | No
 def _phase_approval(folder: Path, _config: ReportConfig, _documents_root: Path | None) -> PhaseState:
     """Map the shared approval predicate onto one phase state.
 
-    Only ``current`` is ``done``: an absent marker stays ``pending`` so the route
-    waits at approval, and a stale marker -- the body changed since approval --
+    ``current`` and ``carried`` (a bounded edit since approval) are ``done``: an
+    absent marker stays ``pending`` so the route waits at approval, and a stale marker -- the body changed since approval --
     also returns to ``pending``, because editing after approval is the normal
     review loop, not a deadlock. Only a malformed marker is ``blocked``, with the
     predicate's own bounded reason. The marker is never written here.
@@ -276,6 +277,8 @@ def _phase_approval(folder: Path, _config: ReportConfig, _documents_root: Path |
     if state.state == "current":
         bound = " and ".join(bound_file_names())
         return PhaseState("approval", DONE, f"approval.yml matches {bound}")
+    if state.state == "carried":
+        return PhaseState("approval", DONE, state.detail)
     if state.state == "absent":
         return PhaseState("approval", PENDING, state.detail)
     if state.state == "stale":
@@ -521,6 +524,11 @@ def _phase_generate(folder: Path, config: ReportConfig, _documents_root: Path | 
         return PhaseState("generate", PENDING, "report.yml missing")
     if pdf.stat().st_mtime < report_yml.stat().st_mtime and not render_settings_unchanged(folder):
         return PhaseState("generate", PENDING, f"final PDF {pdf.name} older than report.yml")
+    # A carried approval keeps the gate but not the build: the marker predates
+    # the bounded edit, so the PDF must also postdate body.md.
+    body = folder / "body.md"
+    if approval_state(folder).state == "carried" and pdf.stat().st_mtime < body.stat().st_mtime:
+        return PhaseState("generate", PENDING, f"final PDF {pdf.name} older than body.md")
     if pdf.stat().st_mtime >= marker.stat().st_mtime:
         return PhaseState("generate", DONE, f"final PDF {pdf.name} is not older than approval.yml")
     return PhaseState("generate", PENDING, f"final PDF {pdf.name} older than approval.yml")
