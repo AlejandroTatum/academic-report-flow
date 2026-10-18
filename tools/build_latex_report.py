@@ -524,6 +524,14 @@ def aa_label(meta: dict) -> str:
     return numbered_label(meta, "AA")
 
 
+AA_DEFAULT_HEADING = "Aprendizaje autónomo"
+
+
+def aa_heading(meta: dict) -> str:
+    """Large page-1 title of the AA design; ``metadata.heading`` overrides the default."""
+    return " ".join(str(meta.get("heading") or "").split()) or AA_DEFAULT_HEADING
+
+
 def _flat(value: object) -> str:
     """One line of LaTeX-escaped text: multi-line YAML values would break a table cell."""
     return latex_escape(" ".join(str(value or "").split()))
@@ -1496,6 +1504,7 @@ def render_tex(config: ReportConfig) -> str:
         "{{ACD_FOOTER}}": acd_footer(meta),
         # AA-only machinery; harmless no-ops for every other template.
         "{{AA_LABEL}}": latex_escape(aa_label(meta)),
+        "{{AA_HEADING}}": latex_escape(aa_heading(meta)),
         "{{AA_FICHA}}": aa_ficha(meta),
         "{{BIBLATEX_OPTIONS}}": BIBLATEX_OPTIONS[config.citation_style],
         "{{BIBLATEX_SETUP}}": BIBLATEX_SETUP[config.citation_style],

@@ -64,6 +64,7 @@ UNL_TEMPLATE = ROOT / "templates" / "unl-report.tex"
 
 AA_PLACEHOLDERS = (
     "{{AA_LABEL}}",
+    "{{AA_HEADING}}",
     "{{AA_FICHA}}",
     "{{UNIVERSITY}}",
     "{{FACULTY}}",
@@ -217,7 +218,7 @@ def test_aa_template_carries_the_approved_design(aa_template: str) -> None:
     assert "Source Serif 4" in aa_template and "Source Sans 3" in aa_template
     assert "Source Code Pro" in aa_template
     assert "1F4E3D" in aa_template, "crest green accent"
-    assert "Aprendizaje autónomo" in aa_template, "the large serif title is fixed"
+    assert r"\selectfont {{AA_HEADING}}\par" in aa_template, "the large serif title (default: Aprendizaje autónomo)"
     assert "Datos de identificación" in aa_template, "the ficha heading"
     assert "ACTIVIDAD" in aa_template, "the kicker above the title"
     assert "fancyhdr" in aa_template, "discreet running header and footer"
@@ -264,6 +265,22 @@ def test_aa_render_prints_the_activity_label(tmp_path: Path) -> None:
     preamble, document = tex.split(r"\begin{document}")
     assert "AA-2" in preamble, "the running header carries AA-N"
     assert "ACTIVIDAD AA-2" in document, "the kicker carries AA-N"
+
+
+def test_aa_heading_defaults_to_aprendizaje_autonomo(tmp_path: Path) -> None:
+    preamble, document = render(tmp_path).split(r"\begin{document}")
+    assert "pdftitle={Aprendizaje autónomo}" in preamble
+    assert r"\MakeUppercase{Aprendizaje autónomo}" in preamble, "the running header keeps the default"
+    assert "Aprendizaje autónomo\\par" in document, "the large title keeps the default"
+
+
+def test_aa_heading_follows_the_metadata(tmp_path: Path) -> None:
+    tex = render(tmp_path, metadata={**full_aa_metadata(), "heading": "Avance Grupal"})
+    preamble, document = tex.split(r"\begin{document}")
+    assert "pdftitle={Avance Grupal}" in preamble
+    assert r"\MakeUppercase{Avance Grupal}" in preamble, "the running header uses the heading"
+    assert "Avance Grupal\\par" in document, "the large title uses the heading"
+    assert "Aprendizaje autónomo" not in tex and "APRENDIZAJE AUTÓNOMO" not in tex
 
 
 def test_aa_label_does_not_double_an_authored_prefix(tmp_path: Path) -> None:
