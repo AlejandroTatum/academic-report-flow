@@ -11,6 +11,7 @@ temporary directory, never the real ``~/Documents``.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -226,23 +227,104 @@ def test_delivery_refuses_stale_approval(tmp_path: Path) -> None:
     assert not (documents_root / CATEGORY).exists()
 
 
-def test_delivery_accepts_an_approval_carried_across_a_bounded_edit(tmp_path: Path) -> None:
-    """A name fix after approval keeps the approval: the publisher publishes."""
-    import approval_marker
+OLD_BODY = "# Informe\n\nPreparado por Juan Perez.\n"
+NEW_BODY = "# Informe\n\nPreparado por Ana Perez.\n"
+
+
+def _approved_and_reviewed(tmp_path: Path) -> tuple[Path, Path]:
+    """Approval and final review recorded by the writers over OLD_BODY, PDF built from it."""
+    import final_review_marker
 
     folder = tmp_path / "wf"
     _report(folder)
-    body = folder / "body.md"
-    body.write_text("# Informe\n\nPreparado por Juan Perez.\n", encoding="utf-8")
+    (folder / "body.md").write_text(OLD_BODY, encoding="utf-8")
     approval_marker.record_approval(folder, "Alejandro")
     pdf = _pdf(folder)
+    approval_marker.write_draft_record(pdf, folder / "body.md")
     _validation(folder, pdf=pdf)
-    _final_review(folder, pdf=pdf)
-    body.write_text("# Informe\n\nPreparado por Ana Perez.\n", encoding="utf-8")
+    final_review_marker.record_final_review(folder, "Alejandro", pdf)
+    return folder, pdf
+
+
+def _edit_body(folder: Path, text: str) -> None:
+    (folder / "body.md").write_text(text, encoding="utf-8")
+
+
+def _rebuild(folder: Path, pdf: Path) -> None:
+    """A final build over the current body: new PDF bytes, its body record, a fresh receipt."""
+    pdf.write_bytes(pdf.read_bytes() + b"rebuilt\n")
+    approval_marker.write_draft_record(pdf, folder / "body.md")
+    _validation(folder, pdf=pdf)
+
+
+def test_delivery_refuses_a_carried_approval_when_the_pdf_was_not_rebuilt(tmp_path: Path, capsys) -> None:
+    """The old PDF still matches the review, but it was not built from the edited body."""
+    folder, _pdf_path = _approved_and_reviewed(tmp_path)
+    _edit_body(folder, NEW_BODY)
+    documents_root = tmp_path / "docs"
+
+    assert _run(folder, documents_root) == 1
+
+    err = capsys.readouterr().err
+    assert "body.md" in err and "generar" in err
+    assert not (documents_root / CATEGORY).exists()
+
+
+def test_delivery_accepts_a_carried_approval_and_a_carried_review_after_a_rebuild(tmp_path: Path) -> None:
+    folder, pdf = _approved_and_reviewed(tmp_path)
+    _edit_body(folder, NEW_BODY)
+    _rebuild(folder, pdf)
     documents_root = tmp_path / "docs"
 
     assert _run(folder, documents_root) == 0
     assert (documents_root / CATEGORY).exists()
+
+
+def test_delivery_refuses_a_carried_review_when_the_pdf_predates_the_edit(tmp_path: Path, capsys) -> None:
+    """Rebuilt after the review but before the latest edit: no timestamp can fake the body binding."""
+    folder, pdf = _approved_and_reviewed(tmp_path)
+    _edit_body(folder, NEW_BODY)
+    _rebuild(folder, pdf)
+    _edit_body(folder, NEW_BODY.replace("Perez", "Gomez"))
+    os.utime(folder / "body.md", (1_000_000_000.0, 1_000_000_000.0))  # older than the PDF
+    documents_root = tmp_path / "docs"
+
+    assert _run(folder, documents_root) == 1
+
+    assert "body.md" in capsys.readouterr().err
+    assert not (documents_root / CATEGORY).exists()
+
+
+def test_delivery_refuses_a_carried_gate_when_no_build_record_exists(tmp_path: Path, capsys) -> None:
+    """A PDF built before body records existed cannot prove its input: rebuild."""
+    folder, pdf = _approved_and_reviewed(tmp_path)
+    approval_marker.draft_record_path(pdf).unlink()
+    _edit_body(folder, NEW_BODY)
+    _rebuild(folder, pdf)
+    approval_marker.draft_record_path(pdf).unlink()
+
+    assert _run(folder, tmp_path / "docs") == 1
+    assert "body.md" in capsys.readouterr().err
+
+
+def test_delivery_accepts_a_carried_approval_when_the_review_followed_the_edit(tmp_path: Path) -> None:
+    import final_review_marker
+
+    folder, pdf = _approved_and_reviewed(tmp_path)
+    _edit_body(folder, NEW_BODY)
+    _rebuild(folder, pdf)
+    final_review_marker.record_final_review(folder, "Alejandro", pdf)
+
+    assert approval_marker.approval_state(folder).state == "carried"
+    assert final_review_marker.final_review_state(folder, pdf).state == "current"
+    assert _run(folder, tmp_path / "docs") == 0
+
+
+def test_delivery_without_a_carry_does_not_ask_for_a_body_binding(tmp_path: Path) -> None:
+    """Hand-written current markers (no body_sha256) keep publishing exactly as before."""
+    folder, _pdf_path = _ready_folder(tmp_path)
+
+    assert _run(folder, tmp_path / "docs") == 0
 
 
 def test_delivery_refuses_an_approval_stale_after_an_unbounded_edit(tmp_path: Path) -> None:
@@ -275,8 +357,7 @@ def test_delivery_accepts_a_final_review_carried_across_a_bounded_edit(tmp_path:
     pdf = _pdf(folder)
     final_review_marker.record_final_review(folder, "Alejandro", pdf)
     body.write_text("# Informe\n\nPreparado por Ana Perez.\n", encoding="utf-8")
-    pdf.write_bytes(pdf.read_bytes() + b"rebuilt\n")
-    _validation(folder, pdf=pdf)
+    _rebuild(folder, pdf)
     documents_root = tmp_path / "docs"
 
     assert _run(folder, documents_root) == 0

@@ -673,13 +673,31 @@ class TestApprovalGuard:
         self._run(tmp_path, ["--no-approval-check", "--tex-only"])
         assert not draft_record_path(tmp_path / "outputs" / "report.pdf").exists()
 
-    def test_final_build_does_not_write_a_draft_record(self, tmp_path: Path) -> None:
-        from approval_marker import draft_record_path
+    def test_final_build_records_the_rendered_body_hash_too(self, tmp_path: Path) -> None:
+        """The publisher needs proof that a final PDF comes from the current body.md."""
+        from approval_marker import draft_is_fresh, draft_record_path, sha256_file
         from conftest import _approval
 
         _approval(tmp_path)
         self._run(tmp_path)
-        assert not draft_record_path(tmp_path / "outputs" / "report.pdf").exists()
+        pdf = tmp_path / "outputs" / "report.pdf"
+        assert draft_record_path(pdf).read_text(encoding="utf-8").strip() == sha256_file(tmp_path / "body.md")
+        pdf.write_bytes(b"%PDF built")  # the faked backend writes none
+        assert draft_is_fresh(pdf, tmp_path / "body.md")
+
+    def test_failed_final_build_leaves_no_fresh_record(self, tmp_path: Path) -> None:
+        from approval_marker import draft_is_fresh, draft_record_path, write_draft_record
+        from conftest import _approval
+
+        _approval(tmp_path)
+        pdf = tmp_path / "outputs" / "report.pdf"
+        pdf.parent.mkdir(parents=True)
+        pdf.write_bytes(b"%PDF old")
+        write_draft_record(pdf, tmp_path / "body.md")
+        with pytest.raises(SystemExit, match="latex failed"):
+            self._run(tmp_path, build_error=SystemExit("latex failed"))
+        assert not draft_record_path(pdf).exists()
+        assert not draft_is_fresh(pdf, tmp_path / "body.md")
 
     def test_build_records_the_report_render_settings(self, tmp_path: Path) -> None:
         from approval_marker import render_record_path, render_settings_unchanged

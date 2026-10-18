@@ -14,7 +14,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from approval_marker import ApprovalState, approval_state, sha256_file
+from approval_marker import ApprovalState, approval_state, draft_is_fresh, sha256_file
 from final_review_marker import FinalReviewState, final_review_state
 from report_config import resolve_documents_root, versioned_artifact_pattern
 
@@ -220,6 +220,16 @@ def publish_validated_pdf(
         if bibliography is not None and review.detail:
             message = f"{message} Detalle: {review.detail}."
         raise PublicationError(message)
+
+    # A carried gate skips the human question, never the rebuild: the build
+    # record next to the PDF must hold the sha256 of the body.md as it is now.
+    if (state.state == "carried" or review.state == "carried") and not draft_is_fresh(
+        source, work_folder / "body.md"
+    ):
+        raise PublicationError(
+            "Hubo una edición acotada de body.md y el PDF no se generó desde el body.md actual. "
+            "Volvé a generar y validar el PDF antes de publicar; no se publica nada."
+        )
 
     if destination is not None:
         folder = Path(destination)
