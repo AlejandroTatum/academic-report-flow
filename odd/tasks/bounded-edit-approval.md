@@ -16,7 +16,7 @@ Branch: feat/bounded-edit-approval. Risk: item 2 (an approval guard in doc_statu
 
 - T1 (S2, S3, S5, S6). Approval carry, snapshot writer, tests and docs. Route: worker. Commit: 72dd235.
 - T2 (S4, S5, S6). Final-review carry, snapshot writer, tests and docs. Route: worker. Commit: 2615d56. Follow-up fix (render-settings guard): 163044b.
-- T3 (S1-S6). Independent verification. Route: gentle-ai-verify.
+- T3 (S1-S6). Independent verification. Route: gentle-ai-verify. Fixes after verification: 6b87d8f (setext headings, single snapshot read), f3cbdfb (publisher requires the build body record when a gate is carried; delivery.md reworded).
 
 ## Log
 
