@@ -285,6 +285,7 @@ def test_marker_stale_when_declared_bibliography_disappears(tmp_path: Path) -> N
 import pytest  # noqa: E402
 import yaml  # noqa: E402
 
+REPORT_YML = "title: T\npdf: final/report.pdf\n"
 REVIEW_BODY = "# Informe\n\nPreparado por Juan Perez para la catedra de simulacion.\n\n## Resultados\n\nTexto.\n"
 
 
@@ -303,6 +304,7 @@ def _validation(folder: Path, pdf: Path, *, result: str = "pass", pdf_sha: str |
 def _reviewed(folder: Path, text: str = REVIEW_BODY) -> tuple[Path, Path]:
     """A folder with body.md, a PDF and a recorded final review."""
     pdf = _write_pdf(folder)
+    (folder / "report.yml").write_text(REPORT_YML, encoding="utf-8")
     body = folder / "body.md"
     body.write_text(text, encoding="utf-8")
     final_review_marker.record_final_review(folder, "Alejandro", pdf)
@@ -332,6 +334,7 @@ def test_record_final_review_binds_the_declared_bibliography(tmp_path: Path) -> 
     folder = tmp_path / "wf"
     pdf = _write_pdf(folder)
     (folder / "body.md").write_text(REVIEW_BODY, encoding="utf-8")
+    (folder / "report.yml").write_text(REPORT_YML, encoding="utf-8")
     bib = folder / "sources.bib"
     bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
 
@@ -342,16 +345,19 @@ def test_record_final_review_binds_the_declared_bibliography(tmp_path: Path) -> 
     assert final_review_marker.final_review_state(folder, pdf, bibliography=bib).state == "current"
 
 
-@pytest.mark.parametrize("missing", ["name", "pdf", "body"])
+@pytest.mark.parametrize("missing", ["name", "pdf", "body", "report"])
 def test_record_final_review_refuses_incomplete_input_and_writes_nothing(tmp_path: Path, missing: str) -> None:
     folder = tmp_path / "wf"
     pdf = _write_pdf(folder)
     (folder / "body.md").write_text(REVIEW_BODY, encoding="utf-8")
+    (folder / "report.yml").write_text(REPORT_YML, encoding="utf-8")
     name = "Alejandro"
     if missing == "name":
         name = " "
     elif missing == "pdf":
         pdf.unlink()
+    elif missing == "report":
+        (folder / "report.yml").unlink()
     else:
         (folder / "body.md").unlink()
     before = sorted(p.name for p in folder.iterdir())
@@ -446,6 +452,7 @@ def test_carry_with_a_declared_bibliography_needs_it_bound_in_the_validation(tmp
     pdf = _write_pdf(folder)
     body = folder / "body.md"
     body.write_text(REVIEW_BODY, encoding="utf-8")
+    (folder / "report.yml").write_text(REPORT_YML, encoding="utf-8")
     bib = folder / "sources.bib"
     bib.write_text("@book{a, title={A}}\n", encoding="utf-8")
     final_review_marker.record_final_review(folder, "Alejandro", pdf, bibliography=bib)
@@ -471,4 +478,67 @@ def test_a_marker_without_a_body_hash_never_carries(tmp_path: Path) -> None:
     _write_marker(folder, _marker_body(pdf))
     _rebuild(pdf)
     _validation(folder, pdf)
+    assert final_review_marker.final_review_state(folder, pdf).state == "stale"
+
+
+def _bounded_edit_with_validated_rebuild(folder: Path) -> tuple[Path, Path]:
+    body, pdf = _reviewed(folder)
+    body.write_text(REVIEW_BODY.replace("Juan", "Ana"), encoding="utf-8")
+    _rebuild(pdf)
+    _validation(folder, pdf)
+    return body, pdf
+
+
+def test_carry_is_stale_when_the_render_settings_changed(tmp_path: Path) -> None:
+    """The PDF may differ because report.yml changed, not body.md: that needs a fresh review."""
+    folder = tmp_path / "wf"
+    _, pdf = _bounded_edit_with_validated_rebuild(folder)
+    (folder / "report.yml").write_text(REPORT_YML + "figure_placement: strict\n", encoding="utf-8")
+
+    assert final_review_marker.final_review_state(folder, pdf).state == "stale"
+
+
+def test_carry_holds_when_the_render_settings_are_unchanged(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    _, pdf = _bounded_edit_with_validated_rebuild(folder)
+
+    assert final_review_marker.final_review_state(folder, pdf).state == "carried"
+
+
+def test_carry_ignores_delivery_only_settings(tmp_path: Path) -> None:
+    """delivery_dir / deliver_bibliography never change the rendered PDF, so they do not stale a carry."""
+    folder = tmp_path / "wf"
+    _, pdf = _bounded_edit_with_validated_rebuild(folder)
+    (folder / "report.yml").write_text(REPORT_YML + "delivery_dir: somewhere\n", encoding="utf-8")
+
+    assert final_review_marker.final_review_state(folder, pdf).state == "carried"
+
+
+def test_record_final_review_stores_the_render_digest(tmp_path: Path) -> None:
+    import approval_marker
+
+    folder = tmp_path / "wf"
+    _reviewed(folder)
+
+    data = yaml.safe_load((folder / "final-review.yml").read_text(encoding="utf-8"))
+    assert data["render_sha256"] == approval_marker.render_digest(folder / "report.yml")
+
+
+def test_a_marker_without_the_render_digest_never_carries(tmp_path: Path) -> None:
+    """Markers recorded before the digest existed cannot vouch that the settings are unchanged."""
+    folder = tmp_path / "wf"
+    _, pdf = _bounded_edit_with_validated_rebuild(folder)
+    marker = folder / "final-review.yml"
+    data = yaml.safe_load(marker.read_text(encoding="utf-8"))
+    del data["render_sha256"]
+    marker.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    assert final_review_marker.final_review_state(folder, pdf).state == "stale"
+
+
+def test_a_missing_report_yml_never_carries(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    _, pdf = _bounded_edit_with_validated_rebuild(folder)
+    (folder / "report.yml").unlink()
+
     assert final_review_marker.final_review_state(folder, pdf).state == "stale"

@@ -15,8 +15,10 @@ A bounded edit made after the review keeps it: ``record_final_review`` writes
 marker and binds them through ``body_sha256``. When the PDF was rebuilt, the
 review is ``carried`` -- still valid -- only if ``validation.yml`` passes for the
 CURRENT PDF (and declared bibliography), the snapshot hashes to ``body_sha256``,
-and the diff from the snapshot to the current ``body.md`` is bounded (see
-``bounded_edit``). Anything else is ``stale``, as before.
+the diff from the snapshot to the current ``body.md`` is bounded (see
+``bounded_edit``), and the ``report.yml`` render settings still equal the
+``render_sha256`` recorded at review time (a PDF that changed because of
+those settings was never reviewed). Anything else is ``stale``, as before.
 
 ``final_review_state`` is pure and read-only: it never writes, never
 creates a directory, and never raises for a bad marker (``record_final_review``
@@ -35,7 +37,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from approval_marker import sha256_file, utc_now, write_files_atomically
+from approval_marker import render_digest, sha256_file, utc_now, write_files_atomically
 from bounded_edit import bounded
 from report_config import read_yaml
 
@@ -105,9 +107,18 @@ def _carried(
 
     The snapshot is trusted only when its bytes hash to the marker's
     ``body_sha256``; a marker without that key (a hand-written one) never carries.
+    The same goes for ``render_sha256``: without it, or with a different digest
+    of the current ``report.yml``, the PDF may differ for reasons other than the
+    body, so the review is not carried.
     """
     recorded = str(marker.get("body_sha256") or "").strip().lower()
-    if not recorded:
+    recorded_render = str(marker.get("render_sha256") or "").strip().lower()
+    if not recorded or not recorded_render:
+        return None
+    try:
+        if render_digest(folder / "report.yml") != recorded_render:
+            return None
+    except Exception:
         return None
     snapshot = folder / SNAPSHOT_NAME
     try:
@@ -220,7 +231,8 @@ def record_final_review(
 
     Call it only for an explicit human OK of those exact bytes. Raises
     ``ValueError`` (writing nothing) for a blank name, a missing PDF, a missing
-    ``body.md`` or a declared bibliography that is not a file.
+    ``body.md`` or ``report.yml`` or a declared bibliography that is not a file.
+    ``render_sha256`` records the render settings the reviewed PDF was built from.
     """
     folder = Path(work_folder)
     pdf = Path(pdf_path)
@@ -234,6 +246,9 @@ def record_final_review(
         raise ValueError(f"{BODY_NAME} missing in {folder}")
     if bibliography is not None and not Path(bibliography).is_file():
         raise ValueError(f"declared bibliography {bibliography} missing")
+    report_yml = folder / "report.yml"
+    if not report_yml.is_file():
+        raise ValueError(f"report.yml missing in {folder}")
     body = body_path.read_bytes()
     lines = [
         f"schema: {MARKER_SCHEMA}",
@@ -243,6 +258,7 @@ def record_final_review(
         lines.append(f"bibliography_sha256: {sha256_file(Path(bibliography))}")
     lines += [
         f"body_sha256: {hashlib.sha256(body).hexdigest()}",
+        f"render_sha256: {render_digest(report_yml)}",
         f"reviewed_at: {utc_now()}",
         f"reviewed_by: {json.dumps(name, ensure_ascii=False)}",
     ]
