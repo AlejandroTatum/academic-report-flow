@@ -177,9 +177,15 @@ def _carried(folder: Path, recorded: str) -> ApprovalState | None:
     """
     snapshot = folder / SNAPSHOT_NAME
     try:
-        if not snapshot.is_file() or sha256_file(snapshot) != recorded:
+        if not snapshot.is_file():
             return None
-        old = snapshot.read_text(encoding="utf-8")
+        # One read feeds both the trust check and the diff, so the bytes that
+        # were hashed are exactly the bytes that are compared.
+        with snapshot.open("rb") as stream:
+            snapshot_bytes = stream.read()
+        if hashlib.sha256(snapshot_bytes).hexdigest() != recorded:
+            return None
+        old = snapshot_bytes.decode("utf-8")
         new = (folder / BODY_NAME).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None

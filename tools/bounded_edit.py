@@ -12,6 +12,7 @@ The module is pure: no I/O, no clock, same two texts -- same answer.
 """
 from __future__ import annotations
 
+import re
 from difflib import SequenceMatcher
 
 LIMIT = 40
@@ -28,12 +29,27 @@ def word_diff(old: str, new: str) -> int:
     )
 
 
+_SETEXT_UNDERLINE = re.compile(r"^\s*(?:={3,}|-{3,})\s*$")
+
+
 def _headings(text: str) -> list[str]:
-    return [line.strip() for line in text.splitlines() if line.lstrip().startswith("#")]
+    """ATX (``#``) lines plus setext headings: a text line over ``===`` or ``---``.
+
+    Setext matches ``rubric_checks``, which treats the same shape as a heading.
+    A setext entry keeps its underline character, so a level change counts too.
+    """
+    lines = text.splitlines()
+    found: list[str] = []
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("#"):
+            found.append(line.strip())
+        elif index and _SETEXT_UNDERLINE.match(line) and lines[index - 1].strip():
+            found.append(f"{lines[index - 1].strip()}\n{line.strip()[0]}")
+    return found
 
 
 def headings_changed(old: str, new: str) -> bool:
-    """True when the ordered list of ``#`` lines differs between the two texts."""
+    """True when the ordered Markdown headings (ATX or setext) differ between the two texts."""
     return _headings(old) != _headings(new)
 
 

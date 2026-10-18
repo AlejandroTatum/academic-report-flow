@@ -65,3 +65,23 @@ def test_body_edits_leave_headings_unchanged() -> None:
 def test_custom_limit_applies() -> None:
     assert bounded("a b c", "a x c", limit=1)[0] is False
     assert bounded("a b c", "a x c", limit=2)[0] is True
+
+
+def test_a_setext_heading_edit_is_not_bounded() -> None:
+    old = "Resultados\n==========\n\nTexto del resultado.\n"
+    new = "Hallazgos\n=========\n\nTexto del resultado.\n"
+    assert headings_changed(old, new)
+    assert not bounded(old, new)[0]
+
+
+def test_a_setext_level_change_is_a_heading_change() -> None:
+    assert headings_changed("Resultados\n==========\n", "Resultados\n----------\n")
+
+
+def test_adding_a_setext_heading_is_a_heading_change() -> None:
+    assert headings_changed("Texto.\n", "Texto.\n\nAnexos\n------\n")
+
+
+def test_body_edits_around_a_setext_heading_stay_bounded() -> None:
+    old = "Resultados\n==========\n\nPreparado por Juan.\n"
+    assert bounded(old, old.replace("Juan", "Ana")) == (True, 2)

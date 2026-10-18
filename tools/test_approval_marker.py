@@ -343,3 +343,20 @@ def test_carry_still_fails_closed_without_a_marker_or_body(tmp_path: Path) -> No
     _write_body(folder)
     (folder / "approved-body.md").write_text(CARRY_BODY, encoding="utf-8")
     assert approval_marker.approval_state(folder).state == "absent"
+
+
+def test_the_snapshot_is_read_once_for_the_hash_and_the_diff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    folder = tmp_path / "wf"
+    body = _approved(folder)
+    body.write_text(CARRY_BODY.replace("Juan", "Ana"), encoding="utf-8")
+    opened: list[str] = []
+    real_open = Path.open
+
+    def counting_open(self: Path, *args: object, **kwargs: object):
+        opened.append(self.name)
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", counting_open)
+
+    assert approval_marker.approval_state(folder).state == "carried"
+    assert opened.count("approved-body.md") == 1

@@ -542,3 +542,19 @@ def test_a_missing_report_yml_never_carries(tmp_path: Path) -> None:
     (folder / "report.yml").unlink()
 
     assert final_review_marker.final_review_state(folder, pdf).state == "stale"
+
+
+def test_the_review_snapshot_is_read_once_for_the_hash_and_the_diff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    folder = tmp_path / "wf"
+    _, pdf = _bounded_edit_with_validated_rebuild(folder)
+    opened: list[str] = []
+    real_open = Path.open
+
+    def counting_open(self: Path, *args: object, **kwargs: object):
+        opened.append(self.name)
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", counting_open)
+
+    assert final_review_marker.final_review_state(folder, pdf).state == "carried"
+    assert opened.count("reviewed-body.md") == 1
