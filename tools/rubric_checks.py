@@ -117,10 +117,14 @@ def _evaluate(folder: Path, check: dict, body: str) -> tuple[bool, str]:
         count = len(cited_keys(scope))
         return count >= check["count"], f"{count}/{check['count']} distinct citations"
     if kind == "figure_referenced":
-        count = len(re.findall(r"!\[[^]]*\]\([^)]+\)", scope))
+        # A plain-text draft names a figure as `Figura: caption (path)` (issue #96).
+        count = len(re.findall(r"!\[[^]]*\]\([^)]+\)", scope)) + len(
+            re.findall(r"(?im)^\s*(?:figura|figure)\b[^\n]*\([^)\s]+\.[A-Za-z0-9]+\)\s*$", scope)
+        )
         return count >= check.get("count", 1), f"{count}/{check.get('count', 1)} figures"
     if kind == "link_present":
-        links = re.findall(r"<https?://[^>]+>|(?<!!)\[[^]]+\]\(https?://[^)]+\)", scope)
+        # A plain-text draft writes bare URLs (issue #96).
+        links = re.findall(r"<https?://[^>]+>|(?<!!)\[[^]]+\]\(https?://[^)]+\)|(?<![<(])https?://[^\s<>)\]]+", scope)
         matched = [link for link in links if "pattern" not in check or re.search(check["pattern"], link)]
         return bool(matched), f"{len(matched)} matching links"
     if kind == "keywords_from_section":

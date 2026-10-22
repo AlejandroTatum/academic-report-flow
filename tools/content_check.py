@@ -569,6 +569,55 @@ def body_format_problems(body_text: str) -> list[str]:
     return problems
 
 
+# Backend formatting a plain-text draft must not carry (issue #96). Code spans
+# and fenced blocks are content and are skipped. Order is the report order.
+_PLAIN_TEXT_MARKUP: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("math", re.compile(r"\$\$|\$[^$\n]+\$")),
+    ("LaTeX command", re.compile(r"\\[A-Za-z]+")),
+    ("table", re.compile(r"^\s*\|.*\|\s*$")),
+    ("image", re.compile(r"!\[[^\]\n]*\]\(")),
+    ("bold", re.compile(r"\*\*[^*\n]+\*\*")),
+    ("HTML comment", re.compile(r"<!--")),
+)
+
+
+def plain_text_problems(body_text: str) -> list[str]:
+    """Backend formatting in a plain-text draft, one entry per offending line.
+
+    The draft keeps only ``#`` headings and ``[@key]`` citations as markers;
+    math, LaTeX commands, pipe tables, images, bold and HTML comments belong
+    to ``body.typeset.md`` after approval, so a formatting fix never touches
+    the approved text.
+    """
+    hits: list[str] = []
+    in_fence = False
+    for number, line in enumerate(body_text.splitlines(), start=1):
+        if _FENCE_RE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        text = _INLINE_CODE_RE.sub("", line)
+        hits.extend(f"line {number} ({label})" for label, pattern in _PLAIN_TEXT_MARKUP if pattern.search(text))
+    if not hits:
+        return []
+    return [
+        "backend formatting in the plain-text draft at "
+        + ", ".join(hits)
+        + ": write plain text (formulas in readable notation, figures as `Figura: caption (path)`); "
+        "formatting is applied in body.typeset.md after approval (typeset)"
+    ]
+
+
+def draft_format_problems(body_text: str) -> list[str]:
+    """Format defects of a plain-text draft: the level-1 heading rule only.
+
+    Unicode sub/superscripts are plain text here; ``body_format_problems``
+    applies the rendering rules to ``body.typeset.md``.
+    """
+    return [p for p in body_format_problems(body_text) if p.startswith("no level-1 heading")]
+
+
 def mechanical_checks(
     body_text: str,
     bib_text: str,
@@ -799,7 +848,7 @@ def run_check(
         checks[-1]["detail"] += "; verification reused: markup-only change"
     rubric_results = [vars(item) for item in rubric_checks.run_checks(folder, criteria, body_text)]
     failed = [item for item in rubric_results if not item["ok"]]
-    format_problems = body_format_problems(body_text)
+    format_problems = draft_format_problems(body_text) + plain_text_problems(body_text)
     statuses = {item["id"]: item["status"] for item in derived}
     detail = "; ".join(
         f"{item['criterion_id']} check {item['check_index']} ({item['type']}): {item['detail']}"
@@ -1003,24 +1052,22 @@ def body_check_results(folder: Path) -> list[dict]:
         body_text, _read_bib(config), criteria, [], min_sources, config.uncited_bibliography
     )
     results = [check for check in mechanical if check["check"] in _BODY_CHECK_MECHANICAL]
-    format_problems = body_format_problems(body_text)
+    format_problems = draft_format_problems(body_text)
     results.append(
         {
             "check": "body_format",
             "ok": not format_problems,
-            "detail": "; ".join(format_problems) or "level-1 headings present, no Unicode sub/superscripts",
+            "detail": "; ".join(format_problems) or "level-1 headings present",
         }
     )
-    if config.format in SECTION_SPECS:
-        structure_errors = section_structure_validation(config).errors
-        results.append(
-            {
-                "check": f"{config.format}_structure",
-                "ok": not structure_errors,
-                "detail": "; ".join(structure_errors)
-                or f"fixed {config.format.upper()} headings present and in order",
-            }
-        )
+    markup = plain_text_problems(body_text)
+    results.append(
+        {
+            "check": "plain_text",
+            "ok": not markup,
+            "detail": "; ".join(markup) or "plain text: only # headings and [@key] citations",
+        }
+    )
     failed_rubric = [item for item in rubric_checks.run_checks(folder, criteria, body_text) if not item.ok]
     results.append(
         {
