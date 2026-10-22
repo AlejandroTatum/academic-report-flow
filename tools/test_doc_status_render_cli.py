@@ -155,7 +155,7 @@ def test_render_human_golden(tmp_path: Path) -> None:
         [
             f"**Gate**: plan pending - {guidance}",
             "Route: intake > research > [plan] > draft > verify > approval > format"
-            " > generate > validate > review > deliver",
+            " > typeset > generate > validate > review > deliver",
             "",
             "**Summary**",
             "- intake: done - route=academic, title and student recorded",
@@ -165,6 +165,7 @@ def test_render_human_golden(tmp_path: Path) -> None:
             "- verify: pending",
             "- approval: pending",
             "- format: pending",
+            "- typeset: pending",
             "- generate: pending",
             "- validate: pending",
             "- review: pending",

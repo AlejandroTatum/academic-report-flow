@@ -26,6 +26,7 @@ from approval_marker import (
     write_draft_record,
     write_render_record,
 )
+import typeset
 from report_config import load_report_config
 from validate_report import validate
 
@@ -140,6 +141,15 @@ def main() -> None:
                 f"({approval.detail}). Pedí la aprobación explícita del usuario; "
                 "--no-approval-check es solo para previews."
             )
+        # issue #96: the approved body.md is plain text; the final build renders
+        # its formatted copy, so it waits until typeset passes.
+        pending_typeset = typeset.build_gate(args.folder)
+        if pending_typeset:
+            raise SystemExit(
+                f"TYPESET REQUIRED: el body.md aprobado es texto plano y body.typeset.md no está listo "
+                f"({pending_typeset}). Corré typeset.py bind, aplicá el formato en body.typeset.md "
+                "y typeset.py check antes de construir."
+            )
 
     config = load_report_config(args.folder)
     print(f"Tipo: {config.type} | backend: {config.backend} | output: {config.output_format}")
@@ -168,6 +178,16 @@ def main() -> None:
         )
     validated_pdf_hash = sha256_file(config.pdf_path) if config.output_format == "pdf" else None
     result = validate(config)
+    if result.errors and args.no_approval_check:
+        # issue #96: the plain draft has no backend formatting yet, so a preview
+        # reports what typeset will fix instead of failing the build.
+        print(
+            "PREVIEW FINDINGS: el borrador es texto plano; el formato se corrige en "
+            "body.typeset.md después de la aprobación, nunca en body.md."
+        )
+        print("- " + "\n- ".join(result.errors))
+        print(f"Reporte: {config.quality_report_path}")
+        return
     if result.errors:
         raise SystemExit("VALIDATION FAILED:\n- " + "\n- ".join(result.errors) + f"\n\nReporte: {config.quality_report_path}")
     if result.warnings:

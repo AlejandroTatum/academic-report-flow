@@ -43,6 +43,7 @@ PHASES = (
     "verify",
     "approval",
     "format",
+    "typeset",
     "generate",
     "validate",
     "review",
@@ -61,6 +62,7 @@ PHASE_REFERENCE = {
     "approval": "approval.md",
     "verify": "production.md",
     "format": "approval.md",
+    "typeset": "production.md",
     "generate": "production.md",
     "validate": "production.md",
     "review": "delivery.md",
@@ -79,6 +81,7 @@ PHASE_ARTIFACT = {
     "approval": "reports/<wf>/approval.yml",
     "verify": "reports/<wf>/content-check.yml",
     "format": "reports/<wf>/report.yml",
+    "typeset": "reports/<wf>/body.typeset.md",
     "generate": "outputs/<materia>/<final>.pdf",
     "validate": "reports/<wf>/validation.yml",
     "review": "reports/<wf>/final-review.yml",
@@ -169,7 +172,7 @@ def test_status_template_contract() -> None:
     assert len(route_lines) == 1, "exactly one route line"
     assert route_lines[0] == (
         "Route: intake > research > [plan] > draft > verify > approval > format"
-        " > generate > validate > review > deliver"
+        " > typeset > generate > validate > review > deliver"
     )
     brackets = re.findall(r"\[([a-z]+)\]", route_lines[0])
     assert len(brackets) == 1 and brackets[0] in PHASES, "exactly one bracketed phase"
@@ -926,7 +929,8 @@ def test_skill_body_stays_within_the_token_budget() -> None:
 
 def test_draft_requires_h1_sections_math_scripts_and_names_a_real_cli_mode() -> None:
     flat = re.sub(r"\s+", " ", read(CONTENT_MD))
-    for phrase in ("start at `# `", "`$c_1$`", "`$10^{-5}$`", "m/s$^2$", "content_check.py", "--body-check"):
+    # issue #96: the draft is plain text; math notation moved to typeset.
+    for phrase in ("start at `# `", "Unicode sub/superscripts allowed", "`$...$`", "body.typeset.md", "content_check.py", "--body-check"):
         assert phrase in flat, f"content.md must say `{phrase}`"
     assert "--body-check" in content_check_cli_help()
 
@@ -1058,7 +1062,8 @@ def test_stage_references_have_no_duplicate_step_numbers() -> None:
 def test_approval_previews_the_pdf_and_asks_format_spec_for_libre() -> None:
     """Task 11(a)(b): preview + inspection before the batch; libre adds format_spec as a choice."""
     approval = _flat(APPROVAL_MD)
-    for token in ("--no-approval-check", "preview", "every page", "before asking", "never the final", "format_spec", "sin portada", "con portada"):
+    # issue #96: the preview is for content review; layout is audited after typeset/generate.
+    for token in ("--no-approval-check", "preview", "preview findings", "body.typeset.md", "before asking", "never the final", "format_spec", "sin portada", "con portada"):
         assert token in approval, f"approval.md must describe the preview and libre format_spec: {token}"
 
 
@@ -1102,7 +1107,7 @@ def test_draft_states_concision_rules() -> None:
         "answers a guide or rubric requirement",
         "first sentence",
         "at most 2-3 sentences",
-        "tables or display equations",
+        "typeset turns them into tables and display equations",
         "only the concepts the report's own decisions use",
         "never define basic course concepts",
         "by cutting or shrinking, never by adding prose",
@@ -1146,10 +1151,11 @@ def test_verify_runs_before_approval_and_the_gate_shows_one_packet() -> None:
 
 
 def test_edit_rounds_recheck_only_what_changed() -> None:
-    """A small edit never re-reviews the whole document: scoped verify and changed preview pages only."""
+    """A small edit never re-reviews the whole document: scoped verify and only what the edit touched."""
     flat = re.sub(r"\s+", " ", read(APPROVAL_MD))
     assert "fresh independent verifier" not in flat
     assert "--since verification.yml" in flat
     assert "visual_pdf_auditor.py" in flat
-    assert "Changed pages" in flat
-    assert "every page on the first preview" in flat
+    assert "re-read only what the edit touched" in flat
+    assert "every page on the first preview" not in flat  # issue #96: no layout audit before approval
+    assert "Changed pages" in re.sub(r"\s+", " ", read(PRODUCTION_MD))

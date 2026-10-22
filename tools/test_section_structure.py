@@ -13,6 +13,7 @@ errors they return.
 """
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -22,7 +23,9 @@ import yaml
 TOOLS = Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS))
 
+import approval_marker  # noqa: E402
 import content_check  # noqa: E402
+import typeset  # noqa: E402
 from conftest import _cited_body, _report, _rubric, _sources_bib  # noqa: E402
 from report_config import ReportConfig  # noqa: E402
 from validate_report import metadata_validation, section_structure_validation  # noqa: E402
@@ -280,17 +283,21 @@ def structure_folder(tmp_path: Path, fmt: str, headings: tuple[str, ...]) -> Pat
 
 
 def structure_check(folder: Path, fmt: str) -> dict | None:
-    return {i["check"]: i for i in content_check.body_check_results(folder)}.get(f"{fmt}_structure")
+    """The fixed-heading check of the typeset body (issue #96: the plain draft is not checked)."""
+    approval_marker.record_approval(folder, "Ana")
+    shutil.copyfile(folder / "body.md", folder / "body.typeset.md")
+    typeset.bind(folder)
+    return {i["check"]: i for i in typeset.check_results(folder)}.get(f"{fmt}_structure")
 
 
 @pytest.mark.parametrize("fmt", ["aa", "acd"])
-def test_draft_check_passes_a_correct_body(tmp_path, fmt):
+def test_typeset_check_passes_a_correct_body(tmp_path, fmt):
     check = structure_check(structure_folder(tmp_path, fmt, FULL[fmt]), fmt)
     assert check is not None and check["ok"]
 
 
 @pytest.mark.parametrize("fmt", ["aa", "acd"])
-def test_draft_check_names_the_missing_section(tmp_path, fmt):
+def test_typeset_check_names_the_missing_section(tmp_path, fmt):
     kept = REQUIRED[fmt][:-1]
     check = structure_check(structure_folder(tmp_path, fmt, kept), fmt)
     assert check is not None and not check["ok"]
@@ -298,7 +305,7 @@ def test_draft_check_names_the_missing_section(tmp_path, fmt):
 
 
 @pytest.mark.parametrize("fmt", ["aa", "acd"])
-def test_draft_check_flags_wrong_order(tmp_path, fmt):
+def test_typeset_check_flags_wrong_order(tmp_path, fmt):
     required = list(REQUIRED[fmt])
     required[1], required[2] = required[2], required[1]
     check = structure_check(structure_folder(tmp_path, fmt, tuple(required)), fmt)
@@ -370,7 +377,7 @@ def test_ape_omit_fields_are_still_validated(tmp_path):
     )
 
 
-def test_ape_keeps_its_draft_check_name_and_message(tmp_path):
+def test_ape_keeps_its_check_name_and_message(tmp_path):
     folder = structure_folder(tmp_path, "ape", APE_FULL)
     check = structure_check(folder, "ape")
     assert check is not None and check["ok"]

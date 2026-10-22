@@ -27,6 +27,7 @@ Every command is absolute and cwd-independent. Run first:
 | approval | `approval.md` | human gate, no executor | `reports/<wf>/approval.yml` |
 | verify | `production.md` | academic-report-flow + one independent verifier | `reports/<wf>/content-check.yml` |
 | format | `approval.md` | academic-report-flow | `reports/<wf>/report.yml` |
+| typeset | `production.md` | academic-report-flow | `reports/<wf>/body.typeset.md` |
 | generate | `production.md` | academic-report-flow | `outputs/<materia>/<final>.pdf` |
 | validate | `production.md` | academic-report-flow or `gentle-ai review` | `reports/<wf>/validation.yml` |
 | review | `delivery.md` | human gate, no executor | `reports/<wf>/final-review.yml` |
@@ -51,7 +52,7 @@ Present the human block verbatim (ASCII only, flat bullets, no tables, no nested
 
 ```text
 **Gate**: plan pending - record the teacher's rubric in <report-folder>/rubric.yml, then re-run doc_status
-Route: intake > research > [plan] > draft > verify > approval > format > generate > validate > review > deliver
+Route: intake > research > [plan] > draft > verify > approval > format > typeset > generate > validate > review > deliver
 
 **Summary**
 - intake: done - route=academic, title and student recorded
@@ -61,6 +62,7 @@ Route: intake > research > [plan] > draft > verify > approval > format > generat
 - verify: pending
 - approval: pending
 - format: pending
+- typeset: pending
 - generate: pending
 - validate: pending
 - review: pending

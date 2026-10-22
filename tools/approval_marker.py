@@ -287,6 +287,9 @@ def record_approval(work_folder: Path, approved_by: str) -> Path:
         f"body_sha256: {hashlib.sha256(data).hexdigest()}\n"
         f"approved_at: {utc_now()}\n"
         f"approved_by: {json.dumps(name, ensure_ascii=False)}\n"
+        # issue #96: the approved body is plain text; formatting happens in
+        # body.typeset.md. Markers without this key are legacy (body.md renders).
+        "typeset: required\n"
     )
     write_files_atomically(
         [(folder / SNAPSHOT_NAME, data), (folder / MARKER_NAME, marker.encode("utf-8"))]
