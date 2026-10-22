@@ -20,12 +20,12 @@ The check only reports (per-criterion `cumple|falta`, the requirement matrix wit
 
 Runs after approval and `format`, before generate: the approved `body.md` is plain text, so backend formatting is applied only in its copy and never invalidates verified or approved content.
 
-1. `"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/typeset.py" bind "$REPORT_CONTENT_ROOT/reports/<work-folder>/"` copies `body.md` to `body.typeset.md` when missing and writes `typeset.yml` with the `body.md` sha256. It refuses while the approval is neither current nor carried.
+1. `"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/typeset.py" bind "$REPORT_CONTENT_ROOT/reports/<work-folder>/"` copies `body.md` to `body.typeset.md` when missing and writes `typeset.yml` with the `body.md` sha256, plus a `typeset-source.md` snapshot of the bound `body.md`. It refuses while the approval is neither current nor carried.
 2. Format `body.typeset.md` only: formulas as math, data as tables, `Figura: caption (path.png)` lines as `![caption](path.png)`, bare URLs as links, the format's fixed headings. Keep every word and `[@key]` of `body.md`; never touch `body.md`.
 3. `typeset.py check <folder>` passes only when the binding matches the current `body.md`, the typeset body passes the format check (level-1 headings, no Unicode sub/superscripts, no bold pseudo-headings) and the format's fixed headings, and it cites exactly the same `[@key]` set as `body.md`. Run it until it passes (`doc_status` shows `typeset: done`).
-4. A bounded edit of `body.md` after approval stales the binding: re-bind and re-apply the edit in `body.typeset.md`.
+4. A bounded edit of `body.md` after approval stales the binding: apply the same edit in `body.typeset.md`, then bind again. The re-bind refuses, writing nothing, while a word the edit inserted is missing from `body.typeset.md` or the text it removed is still there (`missing: «...»`, `still present: «...»`).
 
-Legacy: an `approval.yml` without `typeset: required` predates this phase; its report needs no typeset (`done`) and `body.md` renders as before. Both tools exit non-zero on failure and print the finding.
+Legacy: an `approval.yml` without `typeset: required` predates this phase; its report needs no typeset (`done`) and `body.md` renders as before. A typeset body bound on a legacy report is rendered, so it must pass the same checks before the final build. Both tools exit non-zero on failure and print the finding.
 
 ## Generate (artifact: the final PDF under `outputs/<materia>/`)
 
