@@ -1872,3 +1872,50 @@ def test_a_legacy_marker_without_section_hashes_carries_nothing(tmp_path: Path) 
 def test_verification_with_section_hashes_still_passes(tmp_path: Path) -> None:
     folder = tmp_path / "wf"
     assert _run(folder, _sectioned_verification(folder)) == 0
+
+
+# issue #98: currency amounts and Windows paths are plain text, not backend formatting.
+@pytest.mark.parametrize(
+    "line",
+    [
+        "Cuesta $5 y $10 por unidad.",
+        "El rango va de $1.000 a $2.500.",
+        "Guardá el archivo en C:\\Users\\ana\\datos.csv antes de correr.",
+        "Ejecutá .\\scripts\\run.ps1 o \\\\servidor\\carpeta\\informe.docx.",
+        "Abrí docs\\notas.txt y src\\app\\main.py.",
+    ],
+)
+def test_plain_text_allows_currency_and_windows_paths(line: str) -> None:
+    assert content_check.plain_text_problems(f"# Informe\n\n{line}\n") == []
+
+
+@pytest.mark.parametrize(
+    ("line", "label"),
+    [
+        ("El error $e_a$ baja.", "math"),
+        ("Vale $x + 1$ en total.", "math"),
+        ("Bloque $$x$$ aparte.", "math"),
+        ("Inline \\(x\\) y bloque.", "math"),
+        ("Fracción \\frac{1}{2} sin dólares.", "LaTeX command"),
+        ("Texto (\\textbf{negrita}).", "LaTeX command"),
+        ("Producto 2\\times3 y x\\cdot y.", "LaTeX command"),
+    ],
+)
+def test_plain_text_still_flags_math_and_latex_commands(line: str, label: str) -> None:
+    problems = content_check.plain_text_problems(f"# Informe\n\n{line}\n")
+    assert len(problems) == 1 and f"line 3 ({label})" in problems[0]
+
+
+def test_body_check_passes_a_draft_with_currency_and_a_windows_path(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = _verify_folder(tmp_path / "wf")
+    body = folder / "body.md"
+    body.write_text(
+        body.read_text(encoding="utf-8") + "\nCuesta $5 y $10; el archivo está en C:\\Users\\ana\\datos.csv.\n",
+        encoding="utf-8",
+    )
+
+    assert content_check.main([str(folder), "--body-check"]) == 0
+    assert "[FAIL]" not in capsys.readouterr().out
+    assert not (folder / "content-check.yml").exists()

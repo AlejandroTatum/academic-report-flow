@@ -354,3 +354,80 @@ def test_approval_guidance_is_content_review_not_layout_repair() -> None:
     assert "fix layout defects" not in text
     assert "content review" in text
     assert "body.typeset.md" in text
+
+
+# issue #98: a rebind proves the post-approval edit reached body.typeset.md.
+EDITED = DEFAULT_BODY.replace("Cuerpo del documento", "Cuerpo revisado del documento")
+
+
+def _bound_then_edited(tmp_path: Path, edited: str = EDITED) -> Path:
+    folder = _approved(tmp_path)
+    (folder / "body.typeset.md").write_text(FORMATTED, encoding="utf-8")
+    typeset.bind(folder)
+    (folder / "body.md").write_text(edited, encoding="utf-8")
+    assert approval_marker.approval_state(folder).state == "carried"
+    return folder
+
+
+def _files(folder: Path) -> dict[str, bytes]:
+    return {p.name: p.read_bytes() for p in sorted(folder.iterdir()) if p.is_file()}
+
+
+def test_bind_records_a_snapshot_of_the_bound_body(tmp_path: Path) -> None:
+    folder = _approved(tmp_path)
+
+    typeset.bind(folder)
+
+    assert (folder / "typeset-source.md").read_bytes() == (folder / "body.md").read_bytes()
+
+
+def test_rebind_refuses_while_inserted_words_are_missing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = _bound_then_edited(tmp_path)
+    before = _files(folder)
+
+    assert typeset.main(["bind", str(folder)]) == 1
+
+    err = capsys.readouterr().err
+    assert "typeset not bound: the body.md edit is not in body.typeset.md (missing: «revisado»)" in err
+    assert _files(folder) == before
+
+
+def test_rebind_refuses_while_removed_text_remains(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = _bound_then_edited(tmp_path, DEFAULT_BODY.replace("Cuerpo del documento", "Cuerpo documento"))
+    before = _files(folder)
+
+    assert typeset.main(["bind", str(folder)]) == 1
+
+    err = capsys.readouterr().err
+    assert "typeset not bound: the body.md edit is not in body.typeset.md (still present: «Cuerpo del documento»)" in err
+    assert _files(folder) == before
+
+
+def test_rebind_accepts_the_edit_applied_in_the_typeset_body(tmp_path: Path) -> None:
+    folder = _bound_then_edited(tmp_path)
+    (folder / "body.typeset.md").write_text(
+        FORMATTED.replace("Cuerpo del documento", "Cuerpo **revisado** del documento"), encoding="utf-8"
+    )
+
+    assert typeset.main(["bind", str(folder)]) == 0
+
+    assert read_yaml(folder / "typeset.yml")["body_sha256"] == _sha(folder / "body.md")
+    assert (folder / "typeset-source.md").read_bytes() == (folder / "body.md").read_bytes()
+    assert typeset.main(["check", str(folder)]) == 0
+
+
+# issue #98: a typeset body the build would render is always checked, legacy or not.
+def test_build_gate_checks_a_bound_typeset_on_a_legacy_report(tmp_path: Path) -> None:
+    folder = tmp_path / "legacy"
+    _report(folder)
+    _sources_bib(folder)
+    _approval(folder)
+    (folder / "body.typeset.md").write_text("## Informe\n\nTexto [@key1].\n", encoding="utf-8")
+    typeset.bind(folder)
+
+    gate = typeset.build_gate(folder)
+    assert gate is not None and "body_format" in gate and "citations_match" in gate
+    phase = doc_status._phase_typeset(folder, _config(folder), None)
+    assert phase.state == doc_status.PENDING and "body_format" in phase.detail

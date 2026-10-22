@@ -515,11 +515,12 @@ def _phase_typeset(folder: Path, _config: ReportConfig, _documents_root: Path | 
     """Report whether the approved plain-text body has a current formatted copy (issue #96).
 
     An approval recorded before the typeset phase (no ``typeset: required``)
-    renders ``body.md`` as before and is ``done``. Otherwise ``done`` needs
+    renders ``body.md`` as before and is ``done``, unless a typeset body is
+    bound anyway: the build renders it, so it is checked (issue #98). Otherwise ``done`` needs
     every ``typeset.check_results`` entry to pass; anything else is ordinary
     progress (``pending``) with the failing checks named. Read-only.
     """
-    if not typeset.typeset_required(folder):
+    if not typeset.typeset_in_use(folder):
         return PhaseState("typeset", DONE, "legacy approval: body.md renders as is (no typeset required)")
     results = typeset.check_results(folder)
     failed = [item for item in results if not item["ok"]]
@@ -563,7 +564,7 @@ def _phase_generate(folder: Path, config: ReportConfig, _documents_root: Path | 
     if approval_state(folder).state == "carried" and pdf.stat().st_mtime < body.stat().st_mtime:
         return PhaseState("generate", PENDING, f"final PDF {pdf.name} older than body.md")
     typeset_body = folder / "body.typeset.md"
-    if typeset.typeset_required(folder) and typeset_body.is_file() and pdf.stat().st_mtime < typeset_body.stat().st_mtime:
+    if typeset.typeset_in_use(folder) and typeset_body.is_file() and pdf.stat().st_mtime < typeset_body.stat().st_mtime:
         return PhaseState("generate", PENDING, f"final PDF {pdf.name} older than body.typeset.md")
     if pdf.stat().st_mtime >= marker.stat().st_mtime:
         return PhaseState("generate", DONE, f"final PDF {pdf.name} is not older than approval.yml")

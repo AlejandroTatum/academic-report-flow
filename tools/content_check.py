@@ -571,13 +571,28 @@ def body_format_problems(body_text: str) -> list[str]:
 
 # Backend formatting a plain-text draft must not carry (issue #96). Code spans
 # and fenced blocks are content and are skipped. Order is the report order.
+# Inline math follows Pandoc's rule, so currency such as "$5 y $10" is text: the
+# opening ``$`` is followed by a non-space, the closing one follows a non-space
+# and is not followed by a digit (issue #98).
 _PLAIN_TEXT_MARKUP: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("math", re.compile(r"\$\$|\$[^$\n]+\$|\\\(|\\\[")),
+    ("math", re.compile(r"\$\$|\$(?=\S)[^$\n]*(?<=\S)\$(?!\d)|\\\(|\\\[")),
     ("LaTeX command", re.compile(r"\\[A-Za-z]+")),
     ("table", re.compile(r"^\s*\|.*\|\s*$")),
     ("image", re.compile(r"!\[[^\]\n]*\]\(")),
     ("bold", re.compile(r"\*\*[^*\n]+\*\*")),
     ("HTML comment", re.compile(r"<!--")),
+)
+
+
+# A Windows path is text, not LaTeX (issue #98): a drive (``C:\dir``), ``.\`` or
+# UNC (``\\server``) prefix, two or more segments, or a file extension. A lone
+# ``2\times3`` or ``x\cdot`` has none of these and stays a command.
+_WINDOWS_PATH_RE = re.compile(
+    r"(?<!\S)(?:"
+    r"(?:[A-Za-z]:|\.{1,2}|\\)\\\S*"
+    r"|[\w.-]+\\[\w.-]+\\\S*"
+    r"|[\w.-]+\\[\w-]+\.[A-Za-z0-9]{1,5}\b"
+    r")"
 )
 
 
@@ -597,7 +612,7 @@ def plain_text_problems(body_text: str) -> list[str]:
             continue
         if in_fence:
             continue
-        text = _INLINE_CODE_RE.sub("", line)
+        text = _WINDOWS_PATH_RE.sub("", _INLINE_CODE_RE.sub("", line))
         hits.extend(f"line {number} ({label})" for label, pattern in _PLAIN_TEXT_MARKUP if pattern.search(text))
     if not hits:
         return []
