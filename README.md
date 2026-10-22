@@ -98,6 +98,7 @@ academic-report-flow/
 │   ├── build_latex_report.py      # Markdown -> LaTeX -> PDF renderer
 │   ├── build_report.py            # HTML/WeasyPrint preview of one Markdown file
 │   ├── report_config.py           # CODE root / CONTENT root resolution
+│   ├── typeset.py                 # post-approval formatting of the plain-text draft
 │   ├── output_router.py           # publishes final PDFs under outputs/<subject>/
 │   ├── source_library.py          # local academic source library
 │   ├── validate_report.py         # deliverable validation gates

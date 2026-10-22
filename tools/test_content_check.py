@@ -1278,11 +1278,14 @@ def test_unicode_scripts_in_code_are_allowed() -> None:
 def test_run_check_fails_on_format_defects_and_state_is_fail(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     (folder / "body.md").write_text(
-        "## Informe\n\nc\u2081 con [@key1] y [@key2], [@key3], [@key4], [@key5].\n", encoding="utf-8"
+        "## Informe\n\nc\u2081 con $x$ y [@key1] y [@key2], [@key3], [@key4], [@key5].\n", encoding="utf-8"
     )
     assert _run(folder) == 1
     findings = " ".join(_marker(folder)["findings"])
-    assert "level-1" in findings and "line 3" in findings
+    assert "level-1" in findings
+    # issue #96: backend formatting is rejected by name and line; Unicode scripts are plain text.
+    assert "line 3" in findings and "math" in findings
+    assert "m/s$^2$" not in findings
 
 
 def test_body_check_mode_reports_without_writing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1366,7 +1369,8 @@ def test_body_check_fails_on_bold_pseudo_heading(tmp_path: Path, capsys: pytest.
     assert content_check.main([str(folder), "--body-check"]) == 1
 
     out = capsys.readouterr().out
-    assert "[FAIL] body_format:" in out and "line 3" in out
+    # issue #96: bold is backend formatting; the plain-text check names it (typeset keeps the pseudo-heading rule).
+    assert "[FAIL] plain_text:" in out and "line 3" in out and "bold" in out
 
 
 def test_body_check_surfaces_a_section_scope_warning_without_failing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1401,6 +1405,16 @@ MARKUP_BODY = (
     "[@key3], [@key4] y [@key5].\n\n* primer punto\n* _segundo_ punto\n\n"
     "| a  | b  |\n|:---|:---|\n| uno | dos |\n"
 )
+# issue #96: the draft body check rejects tables and bold, so verification reuse is
+# exercised with the markup a plain draft may still change (list markers, emphasis, quotes).
+DRAFT_BODY = (
+    "# Informe\n\nEl cliente dijo \"entrega inmediata\" con fuentes [@key1], [@key2], "
+    "[@key3], [@key4] y [@key5].\n\n- primer punto\n- segundo punto\n"
+)
+DRAFT_MARKUP = (
+    "# Informe\n\nEl cliente dijo “entrega inmediata” con fuentes [@key1], [@key2], "
+    "[@key3], [@key4] y [@key5].\n\n* primer punto\n* _segundo_ punto\n"
+)
 
 
 def _verified_args(folder: Path) -> Path:
@@ -1410,7 +1424,7 @@ def _verified_args(folder: Path) -> Path:
 
 def _reuse_folder(folder: Path) -> Path:
     _verify_folder(folder)
-    _body(folder, PLAIN_BODY)
+    _body(folder, DRAFT_BODY)
     return _verified_args(folder)
 
 
@@ -1419,12 +1433,13 @@ def test_verify_brief_carries_the_normalized_text_hash(tmp_path: Path) -> None:
     _body(folder, PLAIN_BODY)
     assert f"body_text_sha256: {content_check.body_text_sha256(PLAIN_BODY)}" in content_check.verify_brief(folder)
     assert content_check.body_text_sha256(PLAIN_BODY) == content_check.body_text_sha256(MARKUP_BODY)
+    assert content_check.body_text_sha256(DRAFT_BODY) == content_check.body_text_sha256(DRAFT_MARKUP)
 
 
 def test_markup_only_edit_reuses_verification(tmp_path: Path) -> None:
     folder = tmp_path / "wf"
     path = _reuse_folder(folder)
-    _body(folder, MARKUP_BODY)
+    _body(folder, DRAFT_MARKUP)
     assert _run(folder, path) == 0
     marker = _marker(folder)
     assert "verification reused: markup-only change" in _mechanical(marker, "verification_matches_rubric")["detail"]
@@ -1441,7 +1456,7 @@ def test_unchanged_body_has_no_reuse_note(tmp_path: Path) -> None:
 def test_one_word_edit_still_needs_a_new_verification(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     folder = tmp_path / "wf"
     path = _reuse_folder(folder)
-    _body(folder, MARKUP_BODY.replace("primer", "tercer"))
+    _body(folder, DRAFT_MARKUP.replace("primer", "tercer"))
     assert _run(folder, path) == 2
     assert "verification is for a different draft; re-run the verifier" in capsys.readouterr().err
 
@@ -1449,14 +1464,14 @@ def test_one_word_edit_still_needs_a_new_verification(tmp_path: Path, capsys: py
 def test_added_character_still_needs_a_new_verification(tmp_path: Path) -> None:
     folder = tmp_path / "wf"
     path = _reuse_folder(folder)
-    _body(folder, MARKUP_BODY.replace("dos |", "dos. |"))
+    _body(folder, DRAFT_MARKUP.replace("_segundo_ punto", "_segundo_ punto."))
     assert _run(folder, path) == 2
 
 
 def test_rubric_change_blocks_reuse_even_for_markup_only_edit(tmp_path: Path) -> None:
     folder = tmp_path / "wf"
     path = _reuse_folder(folder)
-    _body(folder, MARKUP_BODY)
+    _body(folder, DRAFT_MARKUP)
     _rubric(folder, source="otra guia")
     assert _run(folder, path) == 2
 
@@ -1531,22 +1546,13 @@ def _ape_check(folder: Path) -> dict | None:
     return {i["check"]: i for i in content_check.body_check_results(folder)}.get("ape_structure")
 
 
-def test_body_check_fails_ape_body_with_wrong_heading_title(tmp_path: Path) -> None:
+def test_body_check_ignores_ape_headings_in_the_plain_draft(tmp_path: Path) -> None:
+    # issue #96: the fixed headings are enforced on body.typeset.md (test_typeset.py), not on the draft.
     from validate_report import APE_BODY_HEADINGS
 
     titles = tuple("Materiales y Herramientas" if t.startswith("Materiales") else t for t in APE_BODY_HEADINGS)
-    check = _ape_check(_ape_folder(tmp_path, titles))
 
-    assert check is not None and not check["ok"]
-    assert "Materiales, Reactivos, Equipos y Herramientas" in check["detail"]
-
-
-def test_body_check_passes_correct_ape_headings(tmp_path: Path) -> None:
-    from validate_report import APE_BODY_HEADINGS
-
-    check = _ape_check(_ape_folder(tmp_path, APE_BODY_HEADINGS))
-
-    assert check is not None and check["ok"]
+    assert _ape_check(_ape_folder(tmp_path, titles)) is None
 
 
 def test_body_check_skips_ape_structure_for_other_formats(tmp_path: Path) -> None:

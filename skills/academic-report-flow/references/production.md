@@ -16,11 +16,22 @@ When the executor cannot launch subagents, it stops at verify and reports the ve
 
 The check only reports (per-criterion `cumple|falta`, the requirement matrix with missing items, citation and link problems, unmapped paragraphs as deletion candidates). It never rewrites `body.md`; never add requirements for criteria the plan does not name. Report every finding verbatim and collect literal edit orders (`approval.md`); unmapped paragraphs are proposed for deletion, never added to. A recorded `fail` blocks the route (`content_check_failed`) until fixed; an edited draft stales the marker and reruns the check.
 
+## Typeset (artifact `reports/<wf>/body.typeset.md`, bound by `typeset.yml`)
+
+Runs after approval and `format`, before generate: the approved `body.md` is plain text, so backend formatting is applied only in its copy and never invalidates verified or approved content.
+
+1. `"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/typeset.py" bind "$REPORT_CONTENT_ROOT/reports/<work-folder>/"` copies `body.md` to `body.typeset.md` when missing and writes `typeset.yml` with the `body.md` sha256. It refuses while the approval is neither current nor carried.
+2. Format `body.typeset.md` only: formulas as math, data as tables, `Figura: caption (path.png)` lines as `![caption](path.png)`, bare URLs as links, the format's fixed headings. Keep every word and `[@key]` of `body.md`; never touch `body.md`.
+3. `typeset.py check <folder>` passes only when the binding matches the current `body.md`, the typeset body passes the format check (level-1 headings, no Unicode sub/superscripts, no bold pseudo-headings) and the format's fixed headings, and it cites exactly the same `[@key]` set as `body.md`. Run it until it passes (`doc_status` shows `typeset: done`).
+4. A bounded edit of `body.md` after approval stales the binding: re-bind and re-apply the edit in `body.typeset.md`.
+
+Legacy: an `approval.yml` without `typeset: required` predates this phase; its report needs no typeset (`done`) and `body.md` renders as before. Both tools exit non-zero on failure and print the finding.
+
 ## Generate (artifact: the final PDF under `outputs/<materia>/`)
 
-Runs only when `approval: done` (`approval.yml` exists and its `body_sha256` matches the current `body.md`). Never build before approval is done.
+Runs only when `approval: done` (`approval.yml` exists and its `body_sha256` matches the current `body.md`) and `typeset: done`. Never build before approval is done; the final build prints `TYPESET REQUIRED` while a required typeset is not current.
 
-`"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/build_report_auto.py" "$REPORT_CONTENT_ROOT/reports/<work-folder>/"` builds from `report.yml` (including `format:`) plus the approved `body.md`, runs the configured technical validation, and reports the artifact hash and page count. It does not publish, copy or version, and never writes `approval.yml` or claims `VISUAL_PASS`, `HUMAN_REVIEW` or `READY_TO_SUBMIT`. Final PDF/DOCX stay under `outputs/<materia-slug>/`, intermediates in `build/` or `backups/`.
+`"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/build_report_auto.py" "$REPORT_CONTENT_ROOT/reports/<work-folder>/"` builds from `report.yml` (including `format:`) plus `body.typeset.md` while its binding is current (otherwise the approved `body.md`), runs the configured technical validation, and reports the artifact hash and page count. A final PDF older than `body.typeset.md` is stale (generate pending). It does not publish, copy or version, and never writes `approval.yml` or claims `VISUAL_PASS`, `HUMAN_REVIEW` or `READY_TO_SUBMIT`. Final PDF/DOCX stay under `outputs/<materia-slug>/`, intermediates in `build/` or `backups/`.
 
 Optional `figure_placement: here` in `report.yml` pins every figure where it appears in `body.md` (LaTeX `[H]`) instead of letting it float to the end of its section or subsection (a figure never crosses the next heading of either level); the default `float` keeps today's output, and any other value is rejected.
 

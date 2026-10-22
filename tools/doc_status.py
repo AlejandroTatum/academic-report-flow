@@ -32,6 +32,7 @@ from pathlib import Path
 import content_check
 import final_review_marker
 import rubric_plan
+import typeset
 from guide_facts import load_guide_facts
 from course_profile import COURSE_LAYOUT, PRACTICE_FORMATS, course_repo
 from approval_marker import approval_state, bound_file_names, draft_is_fresh, render_settings_unchanged, sha256_file
@@ -61,6 +62,9 @@ PHASES = (
     "verify",
     "approval",
     "format",
+    # issue #96: the approved body.md is plain text; it is formatted in
+    # body.typeset.md before the final build.
+    "typeset",
     "generate",
     "validate",
     "review",
@@ -86,9 +90,10 @@ _GUIDANCE = {
     "plan": "record the teacher's rubric in {rubric}, then re-run doc_status",
     "draft": "draft {body}, then re-run doc_status",
     "approval": (
-        "before asking, build a preview PDF with {build_command} --no-approval-check, audit it with "
-        "visual_pdf_auditor.py and inspect every page the first time, after an edit round only the "
-        "Changed pages its visual_qa.md lists; fix layout defects in {body}, and rebuild; the message right before "
+        "before asking, build a preview PDF with {build_command} --no-approval-check for content "
+        "review: the draft is plain text, so layout findings it prints are not fixed in {body}; "
+        "formatting is applied in body.typeset.md after approval and the layout is audited after "
+        "typeset and generate, in validate; the message right before "
         "the prompt lists clickable Markdown links with absolute file:// URLs to the draft PDF "
         "({pdf}) and {body}: print it with {packet_command} --open (it also opens the fresh draft PDF "
         "for the user) and paste that approval packet "
@@ -108,6 +113,13 @@ _GUIDANCE = {
         "for APE, AA, ACD or libre, PDF or DOCX, and each remaining metadata gap with suggested "
         "options (never free text); decide group work and members here; "
         "record the answer in {report_yml}, then re-run doc_status"
+    ),
+    "typeset": (
+        "run {typeset_bind_command} (it copies the approved {body} to {typeset_body} when missing "
+        "and binds it), apply the backend formatting there and never in {body}: formulas as math, "
+        "data as tables, `Figura:` lines as `![caption](path)`, bare URLs as `<url>`, the format's "
+        "fixed headings; keep every word and [@key] of {body}; run {typeset_check_command} until it "
+        "passes, then re-run doc_status"
     ),
     "generate": "build with {build_command}, then re-run doc_status",
     "validate": "record {validation} for the final PDF, then re-run doc_status",
@@ -499,6 +511,27 @@ def _delivery_folder_problem(config: ReportConfig, documents_root: Path | None, 
     return ""
 
 
+def _phase_typeset(folder: Path, _config: ReportConfig, _documents_root: Path | None) -> PhaseState:
+    """Report whether the approved plain-text body has a current formatted copy (issue #96).
+
+    An approval recorded before the typeset phase (no ``typeset: required``)
+    renders ``body.md`` as before and is ``done``. Otherwise ``done`` needs
+    every ``typeset.check_results`` entry to pass; anything else is ordinary
+    progress (``pending``) with the failing checks named. Read-only.
+    """
+    if not typeset.typeset_required(folder):
+        return PhaseState("typeset", DONE, "legacy approval: body.md renders as is (no typeset required)")
+    results = typeset.check_results(folder)
+    failed = [item for item in results if not item["ok"]]
+    if not failed:
+        return PhaseState("typeset", DONE, "body.typeset.md formats the approved body.md and passes the checks")
+    if len(results) == 1:
+        return PhaseState("typeset", PENDING, failed[0]["detail"])
+    return PhaseState(
+        "typeset", PENDING, "typeset check fails: " + "; ".join(f"{i['check']}: {i['detail']}" for i in failed)
+    )
+
+
 def _phase_generate(folder: Path, config: ReportConfig, _documents_root: Path | None) -> PhaseState:
     """Report whether the final PDF is the one the markers authorized.
 
@@ -529,6 +562,9 @@ def _phase_generate(folder: Path, config: ReportConfig, _documents_root: Path | 
     body = folder / "body.md"
     if approval_state(folder).state == "carried" and pdf.stat().st_mtime < body.stat().st_mtime:
         return PhaseState("generate", PENDING, f"final PDF {pdf.name} older than body.md")
+    typeset_body = folder / "body.typeset.md"
+    if typeset.typeset_required(folder) and typeset_body.is_file() and pdf.stat().st_mtime < typeset_body.stat().st_mtime:
+        return PhaseState("generate", PENDING, f"final PDF {pdf.name} older than body.typeset.md")
     if pdf.stat().st_mtime >= marker.stat().st_mtime:
         return PhaseState("generate", DONE, f"final PDF {pdf.name} is not older than approval.yml")
     return PhaseState("generate", PENDING, f"final PDF {pdf.name} older than approval.yml")
@@ -683,6 +719,7 @@ def derive(folder: Path, *, documents_root: Path | None = None) -> DocStatus:
         _phase_verify,
         _phase_approval,
         _phase_format,
+        _phase_typeset,
         _phase_generate,
         _phase_validate,
         _phase_review,
@@ -835,6 +872,9 @@ def _guidance(
         packet_command=_tool_command("approval_packet.py", folder),
         build_command=_tool_command("build_report_auto.py", folder),
         deliver_command=_tool_command("deliver_report.py", folder),
+        typeset_bind_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "bind", str(folder)]),
+        typeset_check_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "check", str(folder)]),
+        typeset_body=folder / "body.typeset.md",
     )
 
 

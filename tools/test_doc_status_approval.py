@@ -426,7 +426,7 @@ def test_format_guidance_asks_only_missing_fields(tmp_path: Path) -> None:
 
 
 def test_approval_guidance_previews_the_pdf_before_asking(tmp_path: Path) -> None:
-    """Task 11(a): build and inspect a preview first, then show its path with body.md."""
+    """Task 11(a): build a preview first for content review, then show its path with body.md."""
     folder = tmp_path / "wf"
     _report(folder)
     _body(folder)
@@ -434,7 +434,7 @@ def test_approval_guidance_previews_the_pdf_before_asking(tmp_path: Path) -> Non
 
     guidance = doc_status._guidance("approval", folder)
 
-    for token in ("--no-approval-check", "preview", "inspect", "before asking", "file://"):
+    for token in ("--no-approval-check", "preview", "content review", "before asking", "file://"):
         assert token in guidance
     assert "never the final" in guidance
     assert str(folder) in guidance
@@ -542,15 +542,17 @@ def test_approval_gate_with_a_fresh_draft_prints_the_packet(tmp_path: Path) -> N
     assert str(folder) in guidance
 
 
-def test_approval_guidance_inspects_only_changed_preview_pages(tmp_path: Path) -> None:
+def test_approval_guidance_leaves_layout_to_typeset_and_validate(tmp_path: Path) -> None:
+    # issue #96: the plain draft is previewed for content; layout is audited after typeset/generate.
     folder = tmp_path / "wf"
     _report(folder)
     _body(folder)
     _fresh_draft(folder)
     guidance = doc_status._guidance("approval", folder)
-    assert "visual_pdf_auditor.py" in guidance
-    assert "only the Changed pages" in guidance
-    assert "inspect every page," not in guidance
+    assert "visual_pdf_auditor.py" not in guidance
+    assert "only the Changed pages" not in guidance
+    assert "fix layout defects" not in guidance
+    assert "body.typeset.md" in guidance
 
 
 def test_a_bounded_edit_after_approval_reports_done_with_the_carried_detail(tmp_path: Path) -> None:

@@ -687,8 +687,18 @@ class ReportConfig:
 
     @property
     def body_path(self) -> Path:
-        value = self.raw.get("body") or "body.md"
-        return resolve_in_folder(self.folder, value)
+        """The body the builders and validators render.
+
+        An explicit ``body:`` wins. Otherwise a ``body.typeset.md`` whose
+        ``typeset.yml`` binding matches the current ``body.md`` (issue #96: the
+        formatted copy of the approved plain text), else ``body.md``.
+        """
+        value = self.raw.get("body")
+        if value:
+            return resolve_in_folder(self.folder, value)
+        if typeset_binding_current(self.folder):
+            return self.folder / TYPESET_BODY_NAME
+        return resolve_in_folder(self.folder, "body.md")
 
     @property
     def bib_path(self) -> Path | None:
@@ -1051,6 +1061,30 @@ def relative_subpath(path: Path, base: Path) -> Path:
 def resolve_in_folder(folder: Path, value: str | Path) -> Path:
     path = Path(value)
     return path if path.is_absolute() else folder / path
+
+
+TYPESET_BODY_NAME = "body.typeset.md"
+TYPESET_BINDING_NAME = "typeset.yml"
+
+
+def typeset_binding_current(folder: Path) -> bool:
+    """True when ``body.typeset.md`` exists and ``typeset.yml`` binds the current ``body.md``.
+
+    Read-only and fail-closed: any missing, unreadable or malformed file is
+    ``False``, so the build falls back to ``body.md``.
+    """
+    import hashlib
+
+    folder = Path(folder)
+    try:
+        if not (folder / TYPESET_BODY_NAME).is_file():
+            return False
+        recorded = str(read_yaml(folder / TYPESET_BINDING_NAME).get("body_sha256") or "").strip().lower()
+        if not recorded:
+            return False
+        return recorded == hashlib.sha256((folder / "body.md").read_bytes()).hexdigest()
+    except Exception:
+        return False
 
 
 def read_yaml(path: Path) -> dict[str, Any]:

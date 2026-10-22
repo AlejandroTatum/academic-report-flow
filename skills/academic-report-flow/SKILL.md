@@ -27,7 +27,8 @@ Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `vali
 - Use one independent verifier for semantic verification (requirement -> evidence matrix, unquotable evidence is `missing`); the drafter never verifies itself.
 - Require verified sources before research is finished.
 - Apply batched edit orders verbatim before seeking re-approval; a bounded edit (at most 40 changed words, no heading touched) keeps the approval and the final review without asking, and verify, rebuild and validation still run.
-- Never build before approval is `done`; never present the approval gate before `draft` is `done`.
+- The draft is plain text: `# Title` headings and `[@key]` citations only, no math, tables, images or bold (`references/content.md`); backend formatting goes in `body.typeset.md` after approval, never in `body.md`.
+- Never build before approval is `done` and `typeset` passes; never present the approval gate before `draft` is `done`.
 - Stop at the earliest failed gate; never substitute an unsupported backend or executor.
 - Publish only through `deliver_report.py` with a current `APPROVAL_CURRENT` marker; publication is not approval.
 - No script, validator, or auditor ever grants `VISUAL_PASS`; `visual_pdf_auditor.py` PASS is only `AUDITOR_PRECHECK` evidence. Only independent semantic inspection of the assembled report grants it; `HUMAN_REVIEW` against immutable hashes precedes `READY_TO_SUBMIT`.
@@ -65,6 +66,6 @@ Return the verbatim human block, the `academic.doc-status/v1` block, the routed 
 - `references/data.md` - Decision 1: intake, `report.yml`.
 - `references/content.md` - research, plan, draft, body check.
 - `references/approval.md` - Decision 2: approval plus format.
-- `references/production.md` - verify, generate, validate, quality gates.
+- `references/production.md` - verify, typeset, generate, validate, quality gates.
 - `references/delivery.md` - Decision 3: final review, deliver.
 - `references/unl-shell.md`, `references/profiles/` (Route A only), `references/visual-directions.md`.
