@@ -16,10 +16,10 @@ Branch: fix/plain-text-draft-96. Risk: item 3 (changes the draft body check, the
 
 ## Tasks
 
-- T1 (S2, S3). Plain-text draft check and plain rubric forms, tests, content.md. Route: inline. Commit: pending.
-- T2 (S4, S5, S6). typeset.py, typeset phase, body resolution, build gate, approval field, tests, docs. Route: inline. Commit: pending.
-- T3 (S7, S8). Preview findings, approval guidance, remaining docs. Route: inline. Commit: pending.
-- T4 (S1-S8). Independent verification. Route: gentle-ai-verify. Commit: n/a.
+- T1 (S2, S3). Plain-text draft check and plain rubric forms, tests, content.md. Route: inline. Commit: 32c0e0e.
+- T2 (S4, S5, S6). typeset.py, typeset phase, body resolution, build gate, approval field, tests, docs. Route: inline (old-contract test updates: worker). Commit: 48e1b03.
+- T3 (S7, S8). Preview findings, approval guidance, remaining docs. Route: worker. Commit: 48e1b03.
+- T4 (S1-S8). Independent verification: PASS S1-S8. Route: gentle-ai-verify. Follow-up fixes (LaTeX-delimited math, bare-URL punctuation): see L6.
 
 ## Log
 
@@ -27,3 +27,5 @@ Branch: fix/plain-text-draft-96. Risk: item 3 (changes the draft body check, the
 - L2 (user, verbatim): "si soluciona, y reivsa que no existan mas issues"
 - L3 (user choice, verbatim): "Títulos # y citas [@clave] (recomendado)"
 - L4 (evidence): `gh issue list --state open` shows only #96 open.
+- L5 (evidence): full suite 2696 passed (tools/ + tests/, template tests via Docker) on 48e1b03. Slice note: 32c0e0e + 48e1b03 total ~1020 changed lines; 32c0e0e alone leaves contract tests red until 48e1b03.
+- L6 (evidence): verifier PASS S1-S8, no legacy regressions. Fixed its findings on \\( \\[ math and bare-URL trailing punctuation; suite 2510 passed (template tests excluded). Left open: currency `$5 y $10` and Windows paths flagged; binding does not prove the post-approval edit reached body.typeset.md (only citations_match ties content); a manual bind on a legacy report renders an unchecked typeset body.

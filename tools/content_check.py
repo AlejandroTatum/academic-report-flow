@@ -572,7 +572,7 @@ def body_format_problems(body_text: str) -> list[str]:
 # Backend formatting a plain-text draft must not carry (issue #96). Code spans
 # and fenced blocks are content and are skipped. Order is the report order.
 _PLAIN_TEXT_MARKUP: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("math", re.compile(r"\$\$|\$[^$\n]+\$")),
+    ("math", re.compile(r"\$\$|\$[^$\n]+\$|\\\(|\\\[")),
     ("LaTeX command", re.compile(r"\\[A-Za-z]+")),
     ("table", re.compile(r"^\s*\|.*\|\s*$")),
     ("image", re.compile(r"!\[[^\]\n]*\]\(")),

@@ -150,3 +150,17 @@ def test_rubric_checks_accept_plain_figure_lines_and_bare_urls(
     result, = run_checks(tmp_path, [{"id": "x", "checks": [check]}], body)
 
     assert result.ok is expected, result.detail
+
+
+@pytest.mark.parametrize("line", ["La forma \\(x^2\\) aparece.", "\\[x^2 + 1\\]"])
+def test_latex_delimited_math_is_formatting(tmp_path: Path, line: str) -> None:
+    folder = _folder(tmp_path, f"# Informe\n\nTexto con {CITES}.\n\n{line}\n")
+
+    assert "line 5 (math)" in _checks(folder)["plain_text"]["detail"]
+
+
+def test_bare_url_excludes_trailing_punctuation(tmp_path: Path) -> None:
+    body = "# Informe\n\nVer https://example.org/repo. Y luego (https://example.org/b), fin.\n"
+    checks = [{"type": "link_present", "pattern": r"repo$"}, {"type": "link_present", "pattern": r"/b$"}]
+
+    assert [r.ok for r in run_checks(tmp_path, [{"id": "x", "checks": checks}], body)] == [True, True]

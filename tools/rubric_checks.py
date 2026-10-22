@@ -124,7 +124,7 @@ def _evaluate(folder: Path, check: dict, body: str) -> tuple[bool, str]:
         return count >= check.get("count", 1), f"{count}/{check.get('count', 1)} figures"
     if kind == "link_present":
         # A plain-text draft writes bare URLs (issue #96).
-        links = re.findall(r"<https?://[^>]+>|(?<!!)\[[^]]+\]\(https?://[^)]+\)|(?<![<(])https?://[^\s<>)\]]+", scope)
+        links = re.findall(r"<https?://[^>]+>|(?<!!)\[[^]]+\]\(https?://[^)]+\)|(?<!<)https?://[^\s<>()\[\]]*[^\s<>()\[\].,;:!?]", scope)
         matched = [link for link in links if "pattern" not in check or re.search(check["pattern"], link)]
         return bool(matched), f"{len(matched)} matching links"
     if kind == "keywords_from_section":
