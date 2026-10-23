@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from table_styles import StatusIndicator, StyleDefinition
 
 from table_directives import strip_status_markers
-from table_styles import COLUMN_EMPHASIS_FILL_HEX, HEADER_FILL_HEX, ROW_ALTERNATING_FILL_HEX
+from table_styles import COLUMN_EMPHASIS_FILL_HEX, HEADER_FILL_HEX, ROW_ALTERNATING_FILL_HEX, WHITE_TEXT_HEADERS
 
 _ALIGN_ENUM = {
     "centered": WD_ALIGN_PARAGRAPH.CENTER,
@@ -210,7 +210,7 @@ def render_styled_table_docx(
                 _indicator_runs(cell.paragraphs[0], value, status_indicators)
                 legend_values.add(value)
             if is_header and header_fill:
-                if tokens["header"] == "dark_shaded":
+                if tokens["header"] in WHITE_TEXT_HEADERS:
                     for run in cell.paragraphs[0].runs:
                         run.font.color.rgb = RGBColor.from_string("FFFFFF")
                 _shade_cell(cell, header_fill)

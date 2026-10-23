@@ -36,6 +36,7 @@ _FONT_SIZE_PT = {"low": "11pt", "medium": "9.5pt", "high": "8pt"}
 _HEADER_STYLE = {
     "gray_shaded": f"background:#{HEADER_FILL_HEX['gray_shaded'].lower()};",
     "dark_shaded": f"background:#{HEADER_FILL_HEX['dark_shaded'].lower()};color:#ffffff;",
+    "institutional_shaded": f"background:#{HEADER_FILL_HEX['institutional_shaded'].lower()};color:#ffffff;",
     "plain": "",
 }
 _ROW_ALTERNATING_CSS = f"#{ROW_ALTERNATING_FILL_HEX.lower()}"
