@@ -1711,6 +1711,29 @@ def compilation_failure_message(
     return "\n".join(parts)
 
 
+# Bibliography state a failed run leaves behind. A stale main.aux can make the
+# next run pick the wrong backend and render every citation as its bare key
+# (#102), so each build starts without them.
+STALE_BUILD_SUFFIXES = (".aux", ".bbl", ".bcf", ".blg", ".fdb_latexmk")
+# biber marks fatal lines "ERROR - "; BibTeX ends its error lines with the
+# file position ("---line 3 of file x.bib", "---while reading file main.aux").
+BIBLIOGRAPHY_ERROR_RE = re.compile(r"ERROR - |---(?:line \d+ of file|while reading file)")
+
+
+def remove_stale_build_artifacts(build_dir: Path, stem: str) -> None:
+    for suffix in STALE_BUILD_SUFFIXES:
+        (build_dir / f"{stem}{suffix}").unlink(missing_ok=True)
+
+
+def bibliography_errors(build_dir: Path, stem: str, max_lines: int = 10) -> list[str]:
+    """Return the error lines biber or BibTeX wrote to ``<stem>.blg``."""
+    blg = build_dir / f"{stem}.blg"
+    if not blg.exists():
+        return []
+    lines = blg.read_text(encoding="utf-8", errors="replace").splitlines()
+    return [line.rstrip() for line in lines if BIBLIOGRAPHY_ERROR_RE.search(line)][:max_lines]
+
+
 def is_within(path: Path, base: Path) -> bool:
     """True when ``path`` is ``base`` or lives under it."""
     try:
@@ -1770,7 +1793,7 @@ def docker_compile_command(config: ReportConfig) -> list[str]:
         "texlive/texlive:latest",
         "sh", "-lc",
         f"lualatex -interaction=nonstopmode -halt-on-error {tex_name}; "
-        f"(biber {tex_stem} || bibtex {tex_stem} || true); "
+        f"if [ -f {tex_stem}.bcf ]; then biber {tex_stem}; else bibtex {tex_stem}; fi; "
         f"lualatex -interaction=nonstopmode -halt-on-error {tex_name}; "
         f"lualatex -interaction=nonstopmode -halt-on-error {tex_name}",
     ]
@@ -1799,6 +1822,7 @@ def is_same_file(built: Path, destination: Path) -> bool:
 def compile_latex(config: ReportConfig) -> None:
     build_dir = config.tex_path.parent
     build_dir.mkdir(parents=True, exist_ok=True)
+    remove_stale_build_artifacts(build_dir, config.tex_path.stem)
     if config.bib_path:
         shutil.copy2(config.bib_path, build_dir / config.bib_path.name)
     asset_errors = validate_assets_exist()
@@ -1842,14 +1866,20 @@ def compile_latex(config: ReportConfig) -> None:
         compile_step([engine, "-lualatex", "-interaction=nonstopmode", "-halt-on-error", config.tex_path.name], build_dir)
     elif latex_engine:
         compile_step([latex_engine, "-interaction=nonstopmode", "-halt-on-error", config.tex_path.name], build_dir)
-        if config.bib_path and shutil.which("biber"):
-            compile_step(["biber", config.tex_path.stem], build_dir)
-        elif config.bib_path and shutil.which("bibtex"):
-            compile_step(["bibtex", config.tex_path.stem], build_dir)
+        # biblatex with the biber backend writes <stem>.bcf; anything else
+        # (natbib, plain \bibliography) is a BibTeX document.
+        backend = "biber" if (build_dir / f"{config.tex_path.stem}.bcf").exists() else "bibtex"
+        if config.bib_path and shutil.which(backend):
+            compile_step([backend, config.tex_path.stem], build_dir)
         compile_step([latex_engine, "-interaction=nonstopmode", "-halt-on-error", config.tex_path.name], build_dir)
         compile_step([latex_engine, "-interaction=nonstopmode", "-halt-on-error", config.tex_path.name], build_dir)
     else:
         compile_step(docker_compile_command(config), config.folder)
+
+    bib_errors = bibliography_errors(build_dir, config.tex_path.stem)
+    if bib_errors:
+        blg = build_dir / f"{config.tex_path.stem}.blg"
+        print(f"Errores de bibliografía ({blg}):\n" + "\n".join(bib_errors), file=sys.stderr)
 
     built_pdf = build_dir / f"{config.tex_path.stem}.pdf"
     if not built_pdf.exists():
