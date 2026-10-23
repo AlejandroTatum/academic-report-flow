@@ -50,6 +50,7 @@ from build_latex_report import (
     LOGO_FILENAME,
     is_bibliography_heading,
 )
+from markdown_image import IMAGE_PATTERN
 from output_router import publish_global_output
 from report_config import GLOBAL_OUTPUTS, ReportConfig, load_report_config
 
@@ -107,7 +108,6 @@ INLINE_RE = re.compile(
 CITATION_RE = re.compile(r"\[@([A-Za-z0-9_:\-.,; ]+)\]")
 CODE_FENCE_RE = re.compile(r"^(?P<marker>`{3,}|~{3,})\s*(?P<language>[^`]*)$")
 HEADING_RE = re.compile(r"^(#{1,4})\s+(.+)$")
-IMAGE_RE = re.compile(r"^!\[(?P<caption>[^\]]*)\]\((?P<src>[^)]+)\)")
 BULLET_RE = re.compile(r"^[-*]\s+(.+)$")
 ORDERED_RE = re.compile(r"^\d+[.)]\s+(.+)$")
 DISPLAY_MATH_RE = re.compile(r"^\$\$(?P<formula>.+)\$\$$")
@@ -1019,7 +1019,7 @@ class DocxRenderer:
                 index += 1
                 continue
 
-            image = IMAGE_RE.match(stripped)
+            image = IMAGE_PATTERN.match(stripped)
             if image:
                 flush_paragraph()
                 close_list()

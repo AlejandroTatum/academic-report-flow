@@ -24,6 +24,7 @@ from report_config import (
     load_report_config,
     relative_subpath,
 )
+from markdown_image import IMAGE_PATTERN, figure_size
 from table_directives import DIRECTIVE_RE as TABLE_STYLE_DIRECTIVE_RE
 from table_directives import context_for_table
 from table_latex_tokens import render_styled_table_latex
@@ -162,9 +163,6 @@ def section_numbering_enabled(raw: dict) -> bool:
 
 # Asset constants — single source of truth for expected filenames.
 ASSETS_DIR = ROOT / "assets"
-# Markdown image syntax. Only ever matched against Markdown source, never
-# against a body that markdown_to_latex() has already converted.
-MARKDOWN_IMAGE_RE = re.compile(r"!\[.*\]\(.*\)")
 
 
 def cover_field(value: str | None) -> str:
@@ -1090,7 +1088,7 @@ def markdown_to_latex(
             i += 1
             continue
 
-        image = re.match(r"!\[(?P<caption>[^\]]*)\]\((?P<src>[^)]+)\)", stripped)
+        image = IMAGE_PATTERN.match(stripped)
         if image:
             flush_paragraph(); close_list()
             caption = convert_inline(image.group("caption"))
@@ -1098,7 +1096,7 @@ def markdown_to_latex(
             raw_src = image.group("src")
             resolved = resolve_figure(raw_src, build_dir) if build_dir is not None else None
             src = latex_escape(os.path.relpath(resolved, build_dir) if resolved is not None and build_dir is not None else raw_src)
-            options = figure_includegraphics_options(resolved)
+            options = figure_includegraphics_options(resolved, figure_size(image.group("attrs")))
             output.extend([
                 r"\Needspace{6\baselineskip}",
                 rf"\begin{{figure}}[{'H' if in_annex else figure_placement}]",
@@ -1388,7 +1386,7 @@ def render_tex(config: ReportConfig) -> str:
         )
     # Figure detection runs against the Markdown source: once converted, images
     # are \includegraphics commands and the Markdown pattern can never match.
-    has_figures = bool(MARKDOWN_IMAGE_RE.search(markdown_source))
+    has_figures = bool(IMAGE_PATTERN.search(markdown_source))
     meta = config.metadata
     front_matter = ""
     ai_declaration_latex = ""
@@ -1573,23 +1571,27 @@ def validate_assets_exist() -> list[str]:
 
 # Extensions \includegraphics tries when a reference carries no suffix.
 FIGURE_SUFFIXES = (".png", ".pdf", ".jpg", ".jpeg", ".eps")
-# Same Markdown image syntax as MARKDOWN_IMAGE_RE, capturing the source path.
-MARKDOWN_IMAGE_SRC_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 
 
-def figure_references(markdown: str) -> list[str]:
-    """Return every local image path referenced from a Markdown body.
+def sized_figure_references(markdown: str) -> list[tuple[str, dict[str, float]]]:
+    """Return every local image path referenced from a Markdown body, with the
+    figure's own size override (empty when it has none).
 
     Remote sources are skipped: LaTeX cannot fetch them, and reporting them as
     missing files would be misleading.
     """
-    references: list[str] = []
-    for match in MARKDOWN_IMAGE_SRC_RE.finditer(markdown):
-        source = match.group(1).strip().split(" ")[0].strip()
+    references: list[tuple[str, dict[str, float]]] = []
+    for match in IMAGE_PATTERN.finditer(markdown):
+        source = match.group("src").strip().split(" ")[0].strip()
         if not source or source.startswith(("http://", "https://", "data:")):
             continue
-        references.append(source)
+        references.append((source, figure_size(match.group("attrs"))))
     return references
+
+
+def figure_references(markdown: str) -> list[str]:
+    """Return every local image path referenced from a Markdown body."""
+    return [source for source, _ in sized_figure_references(markdown)]
 
 
 def resolve_figure(reference: str, build_dir: Path) -> Path | None:
@@ -1629,7 +1631,7 @@ FIGURE_WIDTH_FRACTION = 0.86
 FIGURE_MAX_HEIGHT_FRACTION = 0.80
 
 
-def figure_includegraphics_options(image_path: Path | None) -> str:
+def figure_includegraphics_options(image_path: Path | None, size: dict[str, float] | None = None) -> str:
     r"""Return the ``\includegraphics`` size options for one figure.
 
     Sized from the image's own pixel dimensions (read via Pillow, already a
@@ -1637,8 +1639,14 @@ def figure_includegraphics_options(image_path: Path | None) -> str:
     otherwise the historical width-only default applies, exactly as before
     this fix -- ``validate_figure_paths`` reports an unresolved figure as its
     own error, this function never needs to.
+
+    ``size`` is the figure's own ``{width=NN%}`` / ``{height=NN%}`` opt-in
+    (#103), as fractions; an absent key keeps the default for that axis.
     """
-    width = f"{FIGURE_WIDTH_FRACTION}\\textwidth"
+    size = size or {}
+    width = f"{size.get('width', FIGURE_WIDTH_FRACTION)}\\textwidth"
+    if "height" in size:
+        return f"width={width},height={size['height']}\\textheight,keepaspectratio"
     if image_path is not None:
         try:
             from PIL import Image
