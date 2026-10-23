@@ -349,6 +349,16 @@ def test_figures_are_sized_to_the_column(tmp_path: Path) -> None:
     assert r"\textwidth" not in figure.group(1)
 
 
+def test_column_tables_are_separated_from_the_surrounding_text(tmp_path: Path) -> None:
+    # A tabularx block adds no vertical space of its own (xltabular does): without
+    # an explicit gap the bottom rule touches the next paragraph's first line.
+    tex = render(tmp_path, body=TABLE_AND_FIGURE_BODY)
+    block = re.search(r"(.*)\n\\begingroup\n.*?\\end\{tabularx\}\n\\endgroup\n(.*)", tex, re.S)
+    assert block
+    assert block.group(1).rstrip().endswith(r"\par\medskip")
+    assert block.group(2).lstrip().startswith(r"\par\medskip")
+
+
 def test_pinned_figures_load_the_float_package(tmp_path: Path) -> None:
     # figure_placement: here renders figures as [H], which only float.sty defines;
     # without it lualatex stops with "Unknown float option `H'" and no PDF.

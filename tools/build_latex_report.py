@@ -850,8 +850,12 @@ def markdown_to_latex(
         # A column page cannot hold xltabular: the table is a tabularx block
         # one column wide, without the repeating header \endhead provides.
         env = "tabularx" if column_layout else "xltabular"
+        # tabularx adds no space around itself (xltabular does), so a column
+        # table gets an explicit gap from the caption above and the text below.
+        gap = [r"\par\medskip"] if column_layout else []
         output.extend([
             r"\Needspace{4\baselineskip}",
+            *gap,
             r"\begingroup",
             r"\footnotesize" if column_layout else r"\small",
             r"\renewcommand{\arraystretch}{1.2}",
@@ -868,6 +872,7 @@ def markdown_to_latex(
             r"\bottomrule",
             rf"\end{{{env}}}",
             r"\endgroup",
+            *gap,
             "",
         ])
 
