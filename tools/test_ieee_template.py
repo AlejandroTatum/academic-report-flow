@@ -359,6 +359,21 @@ def test_column_tables_are_separated_from_the_surrounding_text(tmp_path: Path) -
     assert block.group(2).lstrip().startswith(r"\par\medskip")
 
 
+def test_column_tables_start_without_paragraph_indent(tmp_path: Path) -> None:
+    # The table opens a paragraph: without \noindent it inherits \parindent and
+    # the \columnwidth-wide tabularx overflows the column by that indent.
+    tex = render(tmp_path, body=TABLE_AND_FIGURE_BODY)
+    assert re.search(r"\\noindent\s*\n\\begin\{tabularx\}\{\\columnwidth\}", tex)
+
+
+def test_long_affiliation_wraps_inside_the_text_width() -> None:
+    # IEEEtran sets the author block in a tabular, so a long affiliation never
+    # breaks and overflows the margins; a centred parbox lets it wrap.
+    block = build_latex_report.ieee_author_block({"student": "Ana Pérez", "affiliation": "Facultad X, Universidad Y", "email": "a@b.ec"})
+    assert r"\parbox{\textwidth}{\centering\textsuperscript{1}Facultad X, Universidad Y}" in block
+    assert block.endswith(r"\\a@b.ec}")
+
+
 def test_pinned_figures_load_the_float_package(tmp_path: Path) -> None:
     # figure_placement: here renders figures as [H], which only float.sty defines;
     # without it lualatex stops with "Unknown float option `H'" and no PDF.

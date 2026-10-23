@@ -735,7 +735,8 @@ def ieee_author_block(meta: dict) -> str:
     block = rf"\IEEEauthorblockN{{{name}{mark if affiliation else ''}}}"
     lines = []
     if affiliation:
-        lines.append(mark + latex_escape(affiliation))
+        # The author block is a tabular: a parbox lets a long affiliation wrap.
+        lines.append(r"\parbox{\textwidth}{\centering" + mark + latex_escape(affiliation) + "}")
     if email:
         lines.append(latex_escape(email))
     if lines:
@@ -859,6 +860,8 @@ def markdown_to_latex(
             r"\begingroup",
             r"\footnotesize" if column_layout else r"\small",
             r"\renewcommand{\arraystretch}{1.2}",
+            # A column-wide table must not inherit the paragraph indent.
+            *([r"\noindent"] if column_layout else []),
             rf"\begin{{{env}}}{{{text_width}}}{{@{{}}{colspec}@{{}}}}",
             r"\toprule",
             " & ".join(r"\reporttablehead{" + convert_inline(cell) + "}" for cell in header_cells) + r" \\",
