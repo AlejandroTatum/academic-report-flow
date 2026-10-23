@@ -237,16 +237,18 @@ ROUTE_COVER_DEFAULTS: dict[str, dict[str, Any]] = {
 }
 
 # Cover defaults derived from the chosen FORMAT (aa-acd-templates S8): the
-# `ape`, `aa` and `acd` templates have no cover page, so a report of those
-# formats is not asked for one and report.yml does not have to say
+# `ape`, `aa`, `acd` and `ieee` templates have no cover page, so a report of
+# those formats is not asked for one and report.yml does not have to say
 # `cover: {required: false}`. The body therefore starts on page 1. The logo
-# check is left alone: all three templates print the faculty logo. The format is
-# the more specific choice, so it outranks the route default on the keys it
+# check is left alone for ape, aa and acd, which print the faculty logo; the
+# IEEE essay prints no logo, so it also drops the logo requirement. The format
+# is the more specific choice, so it outranks the route default on the keys it
 # sets, and an explicit `cover:` block in report.yml outranks both.
 FORMAT_COVER_DEFAULTS: dict[str, dict[str, Any]] = {
     "ape": {"required": False, "body_starts_on_page": 1},
     "aa": {"required": False, "body_starts_on_page": 1},
     "acd": {"required": False, "body_starts_on_page": 1},
+    "ieee": {"required": False, "body_starts_on_page": 1, "logo_required": False},
 }
 
 
@@ -274,6 +276,8 @@ def unknown_route_message(route: str) -> str:
 #     format: aa      the current academic look (unl-report.tex), unchanged
 #     format: acd     the "Aprendizaje en Contacto con el Docente" session
 #                     record sheet (templates/acd-report.tex)
+#     format: ieee    an IEEE conference-style two-column essay, no cover
+#                     (templates/ieee-report.tex)
 #     format: libre   a user-specified format: `format_spec:` in report.yml is
 #                     mandatory, and the plain template applies by default
 #
@@ -321,6 +325,10 @@ FORMAT_REQUIRED_METADATA: dict[str, tuple[str, ...]] = {
         "schedule", "place", "planned_time",
     ),
     "libre": ("title", "student", "date"),
+    # The IEEE essay prints the title and an author block; `date` is required
+    # like in every format but is not typeset, and the optional `affiliation`
+    # and `email` are printed only when report.yml sets them.
+    "ieee": ("title", "student", "date"),
 }
 
 
@@ -435,7 +443,7 @@ class ReportConfig:
 
     @property
     def format(self) -> str | None:
-        """Canonical document format (``ape``, ``aa``, ``acd`` or ``libre``).
+        """Canonical document format (``ape``, ``aa``, ``acd``, ``ieee`` or ``libre``).
 
         Returns ``None`` when the key is absent: the format has not been
         chosen yet, which is valid while the flow is still content-first.
@@ -879,6 +887,9 @@ class ReportConfig:
             "planned_time": [
                 "planned_time", "tiempo_planificado", "tiempo_planificado_en_el_silabo",
             ],
+            # IEEE essay author block: optional, printed only when present.
+            "affiliation": ["affiliation", "afiliacion", "afiliación"],
+            "email": ["email", "correo", "correo_electronico", "correo_electrónico"],
         }
         for canonical, keys in aliases.items():
             if canonical in meta and meta[canonical]:

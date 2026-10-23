@@ -143,11 +143,19 @@ def test_only_aa_and_acd_opt_in() -> None:
     for capability in (
         build_latex_report.BOOKTABS_TEMPLATE_KEYS,
         build_latex_report.INLINE_FIGURE_TEMPLATE_KEYS,
-        build_latex_report.COMPACT_HEADING_TEMPLATE_KEYS,
     ):
         assert capability == expected
         assert not (capability & build_latex_report.APE_TEMPLATE_KEYS)
         assert not (capability & build_latex_report.UNL_TEMPLATE_KEYS)
+
+
+def test_compact_headings_are_aa_acd_and_the_two_column_ieee_essay() -> None:
+    capability = build_latex_report.COMPACT_HEADING_TEMPLATE_KEYS
+    assert capability == {"aa", "aa_report", "acd", "acd_report", "ieee", "ieee_report"}
+    assert not (capability & build_latex_report.APE_TEMPLATE_KEYS)
+    assert not (capability & build_latex_report.UNL_TEMPLATE_KEYS)
+    # A column page is the IEEE essay's alone.
+    assert build_latex_report.COLUMN_LAYOUT_TEMPLATE_KEYS == {"ieee", "ieee_report"}
 
 
 def aa_render(tmp_path: Path, **raw) -> str:

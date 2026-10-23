@@ -142,6 +142,20 @@ def test_check_enforces_fixed_format_headings_in_the_typeset_body(tmp_path: Path
     assert check["ok"] is False
 
 
+def test_check_has_no_fixed_headings_check_for_the_free_ieee_essay(tmp_path: Path) -> None:
+    folder = _approved(tmp_path)
+    _choose_format(folder, "ieee")
+    (folder / "body.typeset.md").write_text(
+        "# Resumen\n\nTexto.\n\n# Un título libre\n\nTexto con [@key1].\n", encoding="utf-8"
+    )
+    typeset.bind(folder)
+
+    checks = _check(folder)
+
+    assert not any(name.endswith("_structure") for name in checks)
+    assert "citations_match" in checks
+
+
 def _ape_typeset(tmp_path: Path, titles: tuple[str, ...]) -> Path:
     folder = _approved(tmp_path)
     _choose_format(folder, "ape")

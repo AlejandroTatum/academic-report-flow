@@ -1,0 +1,147 @@
+% IEEE conference-style essay template (ieee-essay-format T2).
+%   * IEEEtran in conference mode: A4, two columns, 10 pt body, 24 pt title,
+%     no cover page and no logo. The title block carries only the title and
+%     the author block (name, affiliation, email); the renderer prints the
+%     affiliation and email lines only when report.yml sets them.
+%   * Times through fontspec: TeX Gyre Termes ships with TeX Live and with the
+%     texlive/texlive image the renderer falls back to. Build with lualatex.
+%   * Sections are numbered I., II., ... with lettered subsections A., B., ...
+%     by IEEEtran itself, in small caps. The `# Resumen` section of body.md never reaches
+%     the body: the renderer sets it in the abstract slot (one paragraph,
+%     printed "Resumen—") with the keywords (labelled "Palabras clave") below it.
+%     Comments must not spell a double-brace token: the renderer replaces them
+%     everywhere in this file.
+%   * References: biblatex with the IEEE style (its options come from the
+%     renderer), in-text citations as [n], titled "Referencias" by the
+%     renderer. Tables and figures are sized to one column (\columnwidth); the
+%     renderer emits tabularx, never a page-breaking table package, because
+%     those cannot run in two-column mode.
+
+\documentclass[conference,a4paper,10pt]{IEEEtran}
+
+\usepackage{fontspec}
+% IEEEtran sets section titles in small caps; Termes has a real smcp feature.
+\setmainfont{TeX Gyre Termes}[Ligatures=TeX,SmallCapsFeatures={Letters=SmallCaps}]
+\IfFontExistsTF{TeX Gyre Heros}{%
+  \setsansfont{TeX Gyre Heros}[Ligatures=TeX]
+}{}
+\IfFontExistsTF{TeX Gyre Cursor}{%
+  \setmonofont{TeX Gyre Cursor}[Scale=MatchLowercase]
+}{}
+% es-nolayout: babel-spanish otherwise rewrites the section layout, which
+% turns "A." subsections into "I-A." and pads the section numbers.
+\usepackage[spanish,es-nolayout]{babel}
+\usepackage{amsmath}
+\usepackage{unicode-math}
+\IfFontExistsTF{TeX Gyre Termes Math}{%
+  \setmathfont{TeX Gyre Termes Math}
+}{%
+  \setmathfont{Latin Modern Math}
+}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{needspace}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{csquotes}
+\usepackage[{{BIBLATEX_OPTIONS}}]{biblatex}{{BIBLATEX_SETUP}}
+\usepackage[table]{xcolor}
+{{LISTING_PREAMBLE}}
+\usepackage{ifthen}
+\usepackage[hidelinks]{hyperref}
+% xurl permits breaks throughout long URL and nolinkurl runs.
+\usepackage{xurl}
+\urlstyle{same}
+
+% IEEEtran prints "Index Terms" and babel names the table "Cuadro": the
+% teacher's structure asks for "Palabras clave" and "Tabla".
+\renewcommand{\IEEEkeywordsname}{Palabras clave}
+\addto\captionsspanish{\renewcommand{\tablename}{Tabla}}
+
+\newcommand{\reporthasbib}{{{HAS_BIB}}}
+\ifthenelse{\equal{\reporthasbib}{true}}{\addbibresource{{{BIB_FILE}}}}{}
+
+\emergencystretch=3em
+% IEEEtran's own paragraph indent (1 em in conference mode), stated so the
+% layout rules the validators read hold for this template too.
+\setlength{\parindent}{1em}
+\newcommand{\reporttablehead}[1]{\textbf{#1}}
+
+% Code listings (fenced blocks in body.md): small plain monospace that fits a
+% single column, no line numbers.
+\lstdefinestyle{reportcode}{
+  basicstyle=\linespread{1}\scriptsize\ttfamily,
+  frame=leftline,
+  rulecolor=\color{coderule},
+  framerule=1pt,
+  framesep=4pt,
+  xleftmargin=6pt,
+  xrightmargin=0pt,
+  numbers=none,
+  breaklines=true,
+  breakatwhitespace=false,
+  postbreak=\mbox{\textcolor{codenum}{\tiny$\hookrightarrow$}\space},
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  tabsize=2,
+  extendedchars=true,
+  aboveskip=0.6em,
+  belowskip=0.4em,
+  keywordstyle=\bfseries,
+  commentstyle=\itshape,
+  stringstyle=\relax,
+}
+
+% Boxed environment used by the Markdown converter for highlighted answers.
+\newsavebox{\answerboxbox}
+\newenvironment{answerbox}{%
+  \par\medskip\noindent
+  \setlength{\fboxsep}{6pt}%
+  \begin{lrbox}{\answerboxbox}%
+  \begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}%
+}{%
+  \end{minipage}%
+  \end{lrbox}%
+  \fbox{\usebox{\answerboxbox}}%
+  \par\medskip
+}
+
+% The reference list: IEEE entries, footnote-sized, titled by the renderer
+% and set as an unnumbered section (IEEEtran prints it centred, in capitals).
+\defbibheading{bibliography}[\bibname]{\section*{#1}}
+\renewcommand*{\bibfont}{\footnotesize}
+\setlength{\bibitemsep}{0pt}
+% babel's Spanish label for a reference URL is "dirección"; IEEE entries read
+% "Disponible en:".
+\DefineBibliographyStrings{spanish}{url={Disponible en}}
+
+\hypersetup{
+  pdftitle={{{TITLE}}},
+  pdfauthor={{{STUDENT}}},
+  colorlinks=false,
+  pdfborder={0 0 0}
+}
+
+\begin{document}
+
+\title{{{TITLE}}}
+\author{{{IEEE_AUTHOR}}}
+\maketitle
+
+{{IEEE_ABSTRACT}}
+
+{{FRONT_MATTER}}
+
+{{BODY}}
+
+\ifthenelse{\equal{\reporthasbib}{true}}{
+{{PRINT_BIBLIOGRAPHY}}
+}{}
+
+% The renderer fills AFTER_BIBLIOGRAPHY only for an AI declaration placed after
+% the bibliography.
+{{AFTER_BIBLIOGRAPHY}}
+
+\end{document}

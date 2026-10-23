@@ -35,6 +35,7 @@ PLAIN_TEMPLATE = ROOT / "templates" / "plain-report.tex"
 APE_TEMPLATE = ROOT / "templates" / "ape-report.tex"
 ACD_TEMPLATE = ROOT / "templates" / "acd-report.tex"
 AA_TEMPLATE = ROOT / "templates" / "aa-report.tex"
+IEEE_TEMPLATE = ROOT / "templates" / "ieee-report.tex"
 TEMPLATE_ALIASES = {
     "default": DEFAULT_TEMPLATE,
     "unl": DEFAULT_TEMPLATE,
@@ -49,6 +50,8 @@ TEMPLATE_ALIASES = {
     "acd_report": ACD_TEMPLATE,
     "aa": AA_TEMPLATE,
     "aa_report": AA_TEMPLATE,
+    "ieee": IEEE_TEMPLATE,
+    "ieee_report": IEEE_TEMPLATE,
 }
 
 
@@ -88,7 +91,8 @@ ROUTE_TEMPLATE_DEFAULTS = {
 
 # Default template per chosen FORMAT (new-report-flow): `ape` renders the
 # teacher's Word replica, `acd` the session record sheet, `aa` the editorial
-# autonomous-learning report and `libre` the plain template. The format is the
+# autonomous-learning report, `ieee` the two-column IEEE conference essay and
+# `libre` the plain template. The format is the
 # user's post-approval presentation choice, so it outranks the route default —
 # but never an explicit `template:` key, which still wins in either direction
 # (a libre report may ask for any shell, an AA report may keep `unl`).
@@ -96,6 +100,7 @@ FORMAT_TEMPLATE_DEFAULTS = {
     "ape": "ape",
     "acd": "acd",
     "aa": "aa",
+    "ieee": "ieee",
     "libre": "plain",
 }
 
@@ -423,6 +428,8 @@ BIBLIOGRAPHY_TITLES = {
     "acd_report": "Referencias",
     "aa": "Referencias",
     "aa_report": "Referencias",
+    "ieee": "Referencias",
+    "ieee_report": "Referencias",
 }
 
 
@@ -658,6 +665,94 @@ def split_annexes_markdown(markdown_source: str) -> tuple[str, str | None]:
     return markdown_source, None
 
 
+# The IEEE essay's opening section: its prose becomes the abstract and its
+# `Palabras clave— ...` line the keywords, both typeset by IEEEtran above the
+# numbered sections instead of as a section of their own.
+IEEE_ABSTRACT_HEADING_FOLDED = "resumen"
+_IEEE_KEYWORDS_RE = re.compile(
+    r"^[*_\s]*palabras\s+clave[*_\s]*[—–:\-]+[*_\s]*(?P<keywords>.*?)\s*$", re.IGNORECASE
+)
+
+
+def split_ieee_abstract(markdown_source: str) -> tuple[str | None, str | None, str]:
+    """Split the `# Resumen` section off an IEEE essay body.
+
+    Returns ``(abstract, keywords, remaining_markdown)``. The abstract is every
+    prose paragraph of the section joined into ONE paragraph (the teacher's
+    format asks for a single one); ``keywords`` is the text after the
+    `Palabras clave—` label of the section's keywords line. Both are ``None``
+    when absent. Without a `# Resumen` heading nothing is split and the body is
+    returned untouched: whether an abstract is required is the author's call,
+    not the renderer's.
+    """
+    lines = markdown_source.splitlines()
+    start = next(
+        (
+            index for index, line in enumerate(lines)
+            if (match := re.match(r"^#\s+(.+?)\s*$", line))
+            and fold_heading(match.group(1)) == IEEE_ABSTRACT_HEADING_FOLDED
+        ),
+        None,
+    )
+    if start is None:
+        return None, None, markdown_source
+    end = next(
+        (index for index in range(start + 1, len(lines)) if re.match(r"^#\s", lines[index])),
+        len(lines),
+    )
+    paragraphs: list[str] = []
+    current: list[str] = []
+    for line in [*lines[start + 1 : end], ""]:
+        if line.strip():
+            current.append(line.strip())
+        elif current:
+            paragraphs.append(" ".join(current))
+            current = []
+    keywords: str | None = None
+    prose: list[str] = []
+    for paragraph in paragraphs:
+        match = _IEEE_KEYWORDS_RE.match(paragraph)
+        if match and keywords is None:
+            keywords = match.group("keywords") or None
+        else:
+            prose.append(paragraph)
+    remaining = "\n".join([*lines[:start], *lines[end:]]).strip()
+    return (" ".join(prose) or None), keywords, (f"{remaining}\n" if remaining else "")
+
+
+def ieee_author_block(meta: dict) -> str:
+    r"""The IEEEtran ``\IEEEauthorblockN``/``A`` pair for the title block.
+
+    Name first; the affiliation and email lines print only when report.yml
+    sets them (never a hard-coded institution), and the name carries the
+    footnote-style mark ``1`` only when there is an affiliation for it to
+    point at, as in the teacher's structure.
+    """
+    affiliation = str(meta.get("affiliation") or "").strip()
+    email = str(meta.get("email") or "").strip()
+    name = latex_escape(report_authors(meta))
+    mark = r"\textsuperscript{1}"
+    block = rf"\IEEEauthorblockN{{{name}{mark if affiliation else ''}}}"
+    lines = []
+    if affiliation:
+        lines.append(mark + latex_escape(affiliation))
+    if email:
+        lines.append(latex_escape(email))
+    if lines:
+        block += "\n" + r"\IEEEauthorblockA{" + r"\\".join(lines) + "}"
+    return block
+
+
+def ieee_abstract_block(abstract: str | None, keywords: str | None) -> str:
+    """IEEEtran's abstract and keywords environments (names come from the template)."""
+    parts = []
+    if abstract:
+        parts.append("\n".join([r"\begin{abstract}", convert_inline(abstract), r"\end{abstract}"]))
+    if keywords:
+        parts.append("\n".join([r"\begin{IEEEkeywords}", convert_inline(keywords), r"\end{IEEEkeywords}"]))
+    return "\n\n".join(parts)
+
+
 def markdown_to_latex(
     markdown: str,
     suppress_bibliography_heading: bool = False,
@@ -667,6 +762,7 @@ def markdown_to_latex(
     definition_lists: bool = False,
     booktabs_tables: bool = False,
     compact_headings: bool = False,
+    column_layout: bool = False,
 ) -> str:
     r"""Convert the report body to LaTeX.
 
@@ -683,7 +779,14 @@ def markdown_to_latex(
     (``BOOKTABS_TEMPLATE_KEYS``, ``COMPACT_HEADING_TEMPLATE_KEYS``); the
     defaults keep the legacy grid table and look-ahead the other templates
     were tuned against.
+
+    ``column_layout`` sets the body in a multi-column page (the IEEE essay,
+    ``COLUMN_LAYOUT_TEMPLATE_KEYS``): ``\textwidth`` is then the width of the
+    whole page, so tables and figures are sized to ``\columnwidth``, and
+    tables are non-floating ``tabularx`` blocks because ``longtable`` and
+    ``xltabular`` cannot run in two-column mode.
     """
+    text_width = r"\columnwidth" if column_layout else r"\textwidth"
     lines = markdown.splitlines()
     output: list[str] = []
     paragraph: list[str] = []
@@ -744,23 +847,26 @@ def markdown_to_latex(
             for weight, name in zip(weights, booktabs_alignments(rows, columns, markers))
         )
         header_cells = rows[0] + [""] * (columns - len(rows[0]))
+        # A column page cannot hold xltabular: the table is a tabularx block
+        # one column wide, without the repeating header \endhead provides.
+        env = "tabularx" if column_layout else "xltabular"
         output.extend([
             r"\Needspace{4\baselineskip}",
             r"\begingroup",
-            r"\small",
+            r"\footnotesize" if column_layout else r"\small",
             r"\renewcommand{\arraystretch}{1.2}",
-            rf"\begin{{xltabular}}{{\textwidth}}{{@{{}}{colspec}@{{}}}}",
+            rf"\begin{{{env}}}{{{text_width}}}{{@{{}}{colspec}@{{}}}}",
             r"\toprule",
             " & ".join(r"\reporttablehead{" + convert_inline(cell) + "}" for cell in header_cells) + r" \\",
             r"\midrule",
-            r"\endhead",
+            *([] if column_layout else [r"\endhead"]),
         ])
         for row in rows[1:]:
             cells = row + [""] * (columns - len(row))
             output.append(" & ".join(convert_inline(cell) for cell in cells) + r" \\")
         output.extend([
             r"\bottomrule",
-            r"\end{xltabular}",
+            rf"\end{{{env}}}",
             r"\endgroup",
             "",
         ])
@@ -769,7 +875,7 @@ def markdown_to_latex(
         if len(rows) < 2:
             return
         columns = max(len(row) for row in rows)
-        if booktabs_tables:
+        if booktabs_tables or column_layout:
             render_booktabs_table(rows, columns, markers or [])
             return
         # Clean bordered grid: visible rows (\hline) and columns (| separators),
@@ -1096,7 +1202,9 @@ def markdown_to_latex(
             raw_src = image.group("src")
             resolved = resolve_figure(raw_src, build_dir) if build_dir is not None else None
             src = latex_escape(os.path.relpath(resolved, build_dir) if resolved is not None and build_dir is not None else raw_src)
-            options = figure_includegraphics_options(resolved, figure_size(image.group("attrs")))
+            options = figure_includegraphics_options(
+                resolved, figure_size(image.group("attrs")), text_width=text_width
+            )
             output.extend([
                 r"\Needspace{6\baselineskip}",
                 rf"\begin{{figure}}[{'H' if in_annex else figure_placement}]",
@@ -1237,6 +1345,8 @@ APE_TEMPLATE_KEYS = frozenset({"ape", "ape_report"})
 ACD_TEMPLATE_KEYS = frozenset({"acd", "acd_report"})
 # And for aa-report.tex, the editorial autonomous-learning report.
 AA_TEMPLATE_KEYS = frozenset({"aa", "aa_report"})
+# And for ieee-report.tex, the IEEE conference-style two-column essay.
+IEEE_TEMPLATE_KEYS = frozenset({"ieee", "ieee_report"})
 
 # Template capabilities, not per-format special cases: a template that lists its
 # keys here gets the behaviour, and a new template opts in with one entry.
@@ -1253,7 +1363,10 @@ DEFINITION_LIST_TEMPLATE_KEYS = ACD_TEMPLATE_KEYS
 # converter into each (see markdown_to_latex).
 BOOKTABS_TEMPLATE_KEYS = ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS
 INLINE_FIGURE_TEMPLATE_KEYS = ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS
-COMPACT_HEADING_TEMPLATE_KEYS = ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS
+COMPACT_HEADING_TEMPLATE_KEYS = ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS | IEEE_TEMPLATE_KEYS
+# Multi-column templates: \textwidth is the whole page there, so the converter
+# sizes tables and figures to \columnwidth instead (see markdown_to_latex).
+COLUMN_LAYOUT_TEMPLATE_KEYS = IEEE_TEMPLATE_KEYS
 
 # The APE annexes heading: the last fixed section of the teacher's document.
 # Folded (accent/case-insensitive) so `# Anexos` and `# ANEXOS` both split.
@@ -1358,6 +1471,11 @@ def render_tex(config: ReportConfig) -> str:
     main_source, annex_source = markdown_source, None
     if template_key in ANNEXES_AFTER_BIBLIOGRAPHY_TEMPLATE_KEYS:
         main_source, annex_source = split_annexes_markdown(markdown_source)
+    # The IEEE essay prints its `# Resumen` section as the abstract above the
+    # numbered sections, so it leaves the body before conversion.
+    ieee_abstract, ieee_keywords = None, None
+    if template_key in IEEE_TEMPLATE_KEYS:
+        ieee_abstract, ieee_keywords, main_source = split_ieee_abstract(main_source)
     if config.figure_placement == "here":
         figure_spec = "H"
     else:
@@ -1368,6 +1486,7 @@ def render_tex(config: ReportConfig) -> str:
         "definition_lists": definition_lists,
         "booktabs_tables": template_key in BOOKTABS_TEMPLATE_KEYS,
         "compact_headings": template_key in COMPACT_HEADING_TEMPLATE_KEYS,
+        "column_layout": template_key in COLUMN_LAYOUT_TEMPLATE_KEYS,
     }
     body = markdown_to_latex(
         main_source, build_dir=build_dir, table_styles=table_styles, figure_placement=figure_spec,
@@ -1504,6 +1623,9 @@ def render_tex(config: ReportConfig) -> str:
         "{{AA_LABEL}}": latex_escape(aa_label(meta)),
         "{{AA_HEADING}}": latex_escape(aa_heading(meta)),
         "{{AA_FICHA}}": aa_ficha(meta),
+        # IEEE-essay-only machinery; harmless no-ops for every other template.
+        "{{IEEE_AUTHOR}}": ieee_author_block(meta),
+        "{{IEEE_ABSTRACT}}": ieee_abstract_block(ieee_abstract, ieee_keywords),
         "{{BIBLATEX_OPTIONS}}": BIBLATEX_OPTIONS[config.citation_style],
         "{{BIBLATEX_SETUP}}": BIBLATEX_SETUP[config.citation_style],
         "{{BIB_FILE}}": latex_escape(bib_file),
@@ -1631,7 +1753,9 @@ FIGURE_WIDTH_FRACTION = 0.86
 FIGURE_MAX_HEIGHT_FRACTION = 0.80
 
 
-def figure_includegraphics_options(image_path: Path | None, size: dict[str, float] | None = None) -> str:
+def figure_includegraphics_options(
+    image_path: Path | None, size: dict[str, float] | None = None, text_width: str = r"\textwidth"
+) -> str:
     r"""Return the ``\includegraphics`` size options for one figure.
 
     Sized from the image's own pixel dimensions (read via Pillow, already a
@@ -1644,7 +1768,7 @@ def figure_includegraphics_options(image_path: Path | None, size: dict[str, floa
     (#103), as fractions; an absent key keeps the default for that axis.
     """
     size = size or {}
-    width = f"{size.get('width', FIGURE_WIDTH_FRACTION)}\\textwidth"
+    width = f"{size.get('width', FIGURE_WIDTH_FRACTION)}{text_width}"
     if "height" in size:
         return f"width={width},height={size['height']}\\textheight,keepaspectratio"
     if image_path is not None:
