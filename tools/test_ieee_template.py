@@ -349,6 +349,14 @@ def test_figures_are_sized_to_the_column(tmp_path: Path) -> None:
     assert r"\textwidth" not in figure.group(1)
 
 
+def test_pinned_figures_load_the_float_package(tmp_path: Path) -> None:
+    # figure_placement: here renders figures as [H], which only float.sty defines;
+    # without it lualatex stops with "Unknown float option `H'" and no PDF.
+    tex = render(tmp_path, body=TABLE_AND_FIGURE_BODY, raw={"figure_placement": "here"})
+    assert r"\begin{figure}[H]" in tex
+    assert r"\usepackage{float}" in tex.split(r"\begin{document}")[0]
+
+
 @pytest.mark.parametrize("fmt", ["aa", "ape", "acd"])
 def test_other_formats_keep_full_width_tables_and_figures(tmp_path: Path, fmt: str) -> None:
     metadata = {
