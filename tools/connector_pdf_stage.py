@@ -113,19 +113,23 @@ def parse_template_geometry(tex_source: str) -> TemplateGeometry:
     )
 
 
-def final_print_scale(source_width: float, source_height: float, geometry: TemplateGeometry) -> float:
+def final_print_scale(
+    source_width: float, source_height: float, geometry: TemplateGeometry, size: dict[str, float] | None = None
+) -> float:
     """Uniform SVG-unit -> PDF-point scale, replaying ``figure_includegraphics_options``.
 
     Width-bound by default (``FIGURE_WIDTH_FRACTION`` of ``\\textwidth``);
     height-capped instead when that width would exceed
     ``FIGURE_MAX_HEIGHT_FRACTION`` of ``\\textheight`` — exactly how
-    ``keepaspectratio`` resolves it in the compiled PDF.
+    ``keepaspectratio`` resolves it in the compiled PDF. ``size`` is the
+    figure's own ``{width=NN%}``/``{height=NN%}`` override (#103).
     """
+    size = size or {}
     if source_width <= 0 or source_height <= 0:
         raise ValueError(f"non-positive source dimensions: {source_width}x{source_height}")
-    width_pt = geometry.text_width_pt * FIGURE_WIDTH_FRACTION
+    width_pt = geometry.text_width_pt * size.get("width", FIGURE_WIDTH_FRACTION)
     scale = width_pt / source_width
-    max_height_pt = geometry.text_height_pt * FIGURE_MAX_HEIGHT_FRACTION
+    max_height_pt = geometry.text_height_pt * size.get("height", FIGURE_MAX_HEIGHT_FRACTION)
     if source_height * scale > max_height_pt:
         scale = max_height_pt / source_height
     return scale
@@ -173,14 +177,16 @@ def _viewbox_size(text: str) -> tuple[float, float]:
     return float(match.group(1)), float(match.group(2))
 
 
-def audit_svg_at_final_size(svg_path: Path, tex_source: str) -> list[PageIssue]:
+def audit_svg_at_final_size(
+    svg_path: Path, tex_source: str, size: dict[str, float] | None = None
+) -> list[PageIssue]:
     """Parse *svg_path* and audit it at the print scale *tex_source*'s
     template geometry implies, from the SVG's own ``viewBox`` dimensions."""
     text = svg_path.read_text(encoding="utf-8")
     diagram = parse_svg(text)
     width, height = _viewbox_size(text)
     geometry = parse_template_geometry(tex_source)
-    scale = final_print_scale(width, height, geometry)
+    scale = final_print_scale(width, height, geometry, size)
     link_directions = load_link_directions(svg_path)
     issues = audit_final_size(diagram, scale, link_directions)
     if link_directions is None:

@@ -30,6 +30,7 @@ USER_AGENT = "academic-report-flow/1.0 (mailto omitted)"
 WEB_TYPES = {"misc", "online"}
 PASSING = {"VERIFIED", "VERIFIED_WITH_WARNINGS", "VERIFIED_URL"}
 _URL = re.compile(r"https?://[^\s{}]+")
+_UNESCAPED_PERCENT_IN_URL = re.compile(r"\\url\{[^}]*(?<!\\)%")
 
 
 def entries(text: str):
@@ -235,6 +236,13 @@ def verify_sources(folder: Path, fetch=None, sleep=None, probe=None) -> int:
         doi = re.sub(r'^(?:https?://(?:dx\.)?doi\.org/|doi:)', '', fields.get('doi', '').strip(), flags=re.I)
         isbn = re.sub(r"[^0-9Xx]", "", fields.get("isbn", ""))
         web = _web_url(fields)
+        if _UNESCAPED_PERCENT_IN_URL.search(fields.get("howpublished", "")):
+            # LaTeX reads % as a comment once biber copies the field into the
+            # .bbl, truncating it and aborting the build (#102).
+            result["status"] = "MALFORMED_FIELD"
+            result["detail"] = "howpublished: unescaped % inside \\url{}; move the address to the url field"
+            results.append(result)
+            continue
         if doi:
             url, kind = "https://api.crossref.org/works/" + quote(doi, safe="/"), "doi"
         elif isbn:

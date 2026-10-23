@@ -226,3 +226,96 @@ def test_compile_latex_fails_before_running_the_compiler(
         build_latex_report.compile_latex(config)
     assert "ausente.png" in str(excinfo.value)
     assert calls == [], "no compiler must run once a figure is known to be unusable"
+
+
+# ---------------------------------------------------------------------------
+# #102 — one failed run cannot poison the next; bibliography errors surface
+# ---------------------------------------------------------------------------
+
+STALE_SUFFIXES = (".aux", ".bbl", ".bcf", ".blg", ".fdb_latexmk")
+
+
+def _local_engine(monkeypatch: pytest.MonkeyPatch, tools: tuple[str, ...]) -> None:
+    monkeypatch.setattr(
+        build_latex_report.shutil, "which", lambda name: f"/usr/bin/{name}" if name in tools else None
+    )
+
+
+def _with_bib(config: types.SimpleNamespace) -> types.SimpleNamespace:
+    config.bib_path = config.folder / "sources.bib"
+    config.bib_path.write_text("@misc{k, title={T}}\n", encoding="utf-8")
+    return config
+
+
+def test_stale_bibliography_artifacts_are_removed_before_compiling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _with_bib(_config(tmp_path))
+    build_dir = config.tex_path.parent
+    for suffix in STALE_SUFFIXES:
+        (build_dir / f"main{suffix}").write_text("stale", encoding="utf-8")
+    seen: list[list[str]] = []
+
+    def fake_run(command, cwd=None, check=True):
+        if not seen:
+            seen.append([s for s in STALE_SUFFIXES if (build_dir / f"main{s}").exists()])
+        (build_dir / "main.pdf").write_bytes(b"%PDF-1.5\n")
+        return subprocess.CompletedProcess(args=list(command), returncode=0, stdout="")
+
+    _local_engine(monkeypatch, ("latexmk",))
+    monkeypatch.setattr(build_latex_report, "run", fake_run)
+    build_latex_report.compile_latex(config)
+    assert seen == [[]]
+    assert (build_dir / "main.tex").exists()
+
+
+@pytest.mark.parametrize("writes_bcf, backend", [(True, "biber"), (False, "bibtex")])
+def test_bibliography_backend_follows_the_document_not_the_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, writes_bcf: bool, backend: str
+) -> None:
+    config = _with_bib(_config(tmp_path))
+    build_dir = config.tex_path.parent
+    commands: list[str] = []
+
+    def fake_run(command, cwd=None, check=True):
+        commands.append(Path(command[0]).name)
+        if command[0].endswith("lualatex") and writes_bcf:
+            (build_dir / "main.bcf").write_text("<bcf/>", encoding="utf-8")
+        (build_dir / "main.pdf").write_bytes(b"%PDF-1.5\n")
+        return subprocess.CompletedProcess(args=list(command), returncode=0, stdout="")
+
+    _local_engine(monkeypatch, ("lualatex", "biber", "bibtex"))
+    monkeypatch.setattr(build_latex_report, "run", fake_run)
+    build_latex_report.compile_latex(config)
+    assert commands == ["lualatex", backend, "lualatex", "lualatex"]
+
+
+def test_bibliography_errors_are_printed_even_when_a_pdf_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    config = _with_bib(_config(tmp_path))
+    build_dir = config.tex_path.parent
+    error = "ERROR - BibTeX subsystem: sources.bib, line 3, syntax error: found '%'"
+
+    def fake_run(command, cwd=None, check=True):
+        if command[0].endswith("lualatex"):
+            (build_dir / "main.bcf").write_text("<bcf/>", encoding="utf-8")
+            (build_dir / "main.pdf").write_bytes(b"%PDF-1.5\n")
+            return subprocess.CompletedProcess(args=list(command), returncode=0, stdout="")
+        (build_dir / "main.blg").write_text(f"[1] INFO - start\n[2] {error}\n", encoding="utf-8")
+        return subprocess.CompletedProcess(args=list(command), returncode=2, stdout=error)
+
+    _local_engine(monkeypatch, ("lualatex", "biber"))
+    monkeypatch.setattr(build_latex_report, "run", fake_run)
+    build_latex_report.compile_latex(config)
+    printed = capsys.readouterr().err
+    assert error in printed
+    assert "main.blg" in printed
+
+
+def test_docker_fallback_does_not_swallow_a_biber_failure_into_bibtex(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    script = build_latex_report.docker_compile_command(config)[-1]
+    assert "|| bibtex" not in script
+    assert "|| true" not in script
+    assert "main.bcf" in script

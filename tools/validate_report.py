@@ -1139,10 +1139,10 @@ def connector_final_size_validation(config: ReportConfig) -> ValidationResult:
         return result
 
     from build_latex_report import (
-        figure_references,
         normalize_template_key,
         resolve_figure,
         resolve_template,
+        sized_figure_references,
         template_key_for,
     )
     from connector_geometry import run_geometry_audit
@@ -1151,8 +1151,8 @@ def connector_final_size_validation(config: ReportConfig) -> ValidationResult:
 
     build_dir = config.tex_path.parent
     markdown = config.body_path.read_text(encoding="utf-8")
-    svg_figures: list[Path] = []
-    for reference in figure_references(markdown):
+    svg_figures: list[tuple[Path, dict[str, float]]] = []
+    for reference, size in sized_figure_references(markdown):
         resolved = resolve_figure(reference, build_dir)
         if resolved is None:
             result.warnings.append(
@@ -1161,7 +1161,7 @@ def connector_final_size_validation(config: ReportConfig) -> ValidationResult:
             continue
         candidate = resolved if resolved.suffix.lower() == ".svg" else resolved.with_suffix(".svg")
         if candidate.exists():
-            svg_figures.append(candidate)
+            svg_figures.append((candidate, size))
         else:
             result.warnings.append(
                 f"No se encontró '{candidate.name}' junto a '{resolved.name}' para el gate de conectores en tamaño final; queda sin auditar"
@@ -1176,13 +1176,13 @@ def connector_final_size_validation(config: ReportConfig) -> ValidationResult:
         result.errors.append(f"No se pudo resolver la plantilla LaTeX para el gate de conectores en tamaño final: {exc}")
         return result
 
-    for svg_path in svg_figures:
+    for svg_path, size in svg_figures:
         # ANY geometry exception (malformed XML, corrupted path/point data)
         # becomes a reported finding here, through the same guard
         # visual_builder.py's isolated validate command uses (#43 T2) — the
         # two entry points can no longer diverge on which exceptions are
         # safe to catch.
-        issues = run_geometry_audit(svg_path.name, lambda svg_path=svg_path: audit_svg_at_final_size(svg_path, tex_source))
+        issues = run_geometry_audit(svg_path.name, lambda svg_path=svg_path, size=size: audit_svg_at_final_size(svg_path, tex_source, size))
         for issue in issues:
             if issue.level == CONNECTOR_FAILURE:
                 result.errors.append(f"[tamaño final] {issue.tag}: {issue.detail} ({svg_path.name})")

@@ -139,3 +139,15 @@ def test_unclosed_code_fence_does_not_hide_the_rest_of_the_body() -> None:
 
 def test_closed_blocks_still_hide_their_content() -> None:
     assert concision.prose_words("$$\ncabe destacar\n$$\n\n```\nen resumen\n```") == 0
+
+
+def test_plain_text_table_caption_and_data_lines_are_not_prose() -> None:
+    body = (
+        "Antes de la tabla.\n\n"
+        "Tabla 1. Equipos (nombre; rol)\n\n"
+        "- router; capa 3\n"
+        "- switch; capa 2\n\n"
+        "Despues de la tabla.\n\n"
+        "- una lista normal\n"
+    )
+    assert concision.prose_words(body) == 4 + 4 + 3

@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 import unicodedata
 
+from markdown_image import IMAGE_PATTERN
+
 LONG_PARAGRAPH_WORDS = 80
 
 # Stock padding; matched case- and accent-insensitively on whole words.
@@ -45,10 +47,11 @@ FILLER_PHRASES = (
 _WORD = re.compile(r"[^\W_]+(?:['’-][^\W_]+)*", re.UNICODE)
 _CITATION = re.compile(r"\[@[^\]]*\]")
 _INLINE_MATH = re.compile(r"(?<!\\)\$[^$\n]+?(?<!\\)\$")
-_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 _HEADING = re.compile(r"^\s{0,3}(#{1,6})\s+(.+?)\s*#*\s*$")
 _FENCE = re.compile(r"^\s*(`{3,}|~{3,})")
 _LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+# Plain-text draft table: a "Tabla N. caption" line whose data lines follow as list items.
+_TABLE_CAPTION = re.compile(r"^\s*(?:Tabla|Table)\s+\d+\s*[.:]", re.IGNORECASE)
 
 
 def _fold(text: str) -> str:
@@ -86,10 +89,19 @@ def _prose_blocks(body: str) -> list[str]:
 
     lines = body.splitlines()
     index = 0
+    in_table = False
     while index < len(lines):
         line = lines[index]
         stripped = line.strip()
         index += 1
+        if _TABLE_CAPTION.match(line):
+            flush()
+            in_table = True
+            continue
+        if in_table:
+            if not stripped or _LIST_ITEM.match(line):
+                continue
+            in_table = False
         if stripped.startswith("$$") and stripped.count("$$") >= 2:
             # One-line display math: only the text after the closing $$ is prose.
             line = stripped = stripped.split("$$", 2)[2].strip()
@@ -112,7 +124,7 @@ def _prose_blocks(body: str) -> list[str]:
 
 
 def _count(text: str) -> int:
-    return len(_WORD.findall(_INLINE_MATH.sub(" ", _IMAGE.sub(" ", _CITATION.sub(" ", text)))))
+    return len(_WORD.findall(_INLINE_MATH.sub(" ", IMAGE_PATTERN.sub(" ", _CITATION.sub(" ", text)))))
 
 
 def prose_words(body: str) -> int:

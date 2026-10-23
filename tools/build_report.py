@@ -37,6 +37,7 @@ TOOLS_DIR = str(Path(__file__).resolve().parent)
 if TOOLS_DIR not in sys.path:
     sys.path.insert(0, TOOLS_DIR)
 
+from markdown_image import IMAGE_PATTERN  # noqa: E402
 from table_directives import (  # noqa: E402
     DIRECTIVE_RE as TABLE_STYLE_DIRECTIVE_RE,
     FenceTracker,
@@ -66,7 +67,6 @@ TRUTHY = {"true", "1", "yes", "si", "sí", "on"}
 # A front-matter key: a plain identifier, never a sentence.
 FRONTMATTER_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.\-]*$")
 # ``![caption](src "optional title")``
-IMAGE_PATTERN = re.compile(r"!\[(?P<caption>[^\]]*)\]\((?P<src>[^)]+)\)")
 # Pandoc-style citation key, as used by the canonical LaTeX branch.
 CITATION_PATTERN = re.compile(r"\[@(?P<key>[A-Za-z0-9_][A-Za-z0-9_:.#$%&+?/-]*)\]")
 # Anything carrying a scheme (http:, data:) or a protocol-relative prefix.

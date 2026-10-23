@@ -343,3 +343,15 @@ def test_datacite_record_without_creators_or_attributes(tmp_path):
     rows = result_rows(folder)
     assert rows[0]['status'] == 'VERIFIED'
     assert rows[1]['status'] == 'MISMATCH' and 'DataCite' in rows[1]['detail']
+
+
+def test_percent_inside_url_in_howpublished_is_malformed(tmp_path, capsys):
+    folder = report(tmp_path, '@misc{p, title={P}, howpublished={\\url{https://example.org/a%20b}}}\n'
+                              '@online{u, title={U}, url={https://example.org/a%20b}}')
+    probed = []
+    assert verify_sources(folder, probe=lambda url, timeout: (probed.append(url), 200)[1]) == 1
+    rows = result_rows(folder)
+    assert [row['status'] for row in rows] == ['MALFORMED_FIELD', 'VERIFIED_URL']
+    assert '%' in rows[0]['detail'] and 'url' in rows[0]['detail']
+    assert probed == ['https://example.org/a%20b']
+    assert 'p: MALFORMED_FIELD' in capsys.readouterr().out
