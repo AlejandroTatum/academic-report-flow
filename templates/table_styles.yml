@@ -1,8 +1,8 @@
 # Versioned catalog of approved contextual table styles (issue #13).
 #
 # This is the executable source of truth: it replaces runtime dependence on
-# the private evaluation PDF/body.md that originally proposed these seven
-# styles. Every entry here is derived once, by hand, from that human review
+# the private evaluation PDF/body.md that originally proposed the first seven
+# styles (TAB-IN-08 was added later, see below). Every entry here is derived once, by hand, from that human review
 # artifact; nothing in this repository parses a PDF or reads a private path
 # at runtime (spec `test_issue_13_catalog_is_runtime_self_contained`).
 #
@@ -12,16 +12,19 @@
 #   schema_version: 1
 #   catalog_version: "<free string, bumped whenever tokens/rules change>"
 #   styles:
-#     <one of the seven approved IDs>:
+#     <one of the approved IDs>:
 #       label: <human name>
 #       deprecated: <bool>
 #       priority: <int, lower wins automatic-selection ties; deliberate
 #                   extension beyond the four keys the design named, needed
 #                   because deterministic selection requires an explicit,
 #                   auditable tie-break — see odd/tasks/contextual-table-styles.md>
+#       automatic: <bool, optional, default true; false = explicit-override-only:
+#                   the style is never a candidate for automatic selection
+#                   but a teacher/institution override can still request it>
 #       tokens:
 #         borders: full_grid | horizontal_only | minimal
-#         header: gray_shaded | dark_shaded | plain
+#         header: gray_shaded | dark_shaded | institutional_shaded | plain
 #         alignment: centered | left | numeric_right
 #         padding: generous | standard | compact | minimal
 #         density: low | medium | high
@@ -239,3 +242,27 @@ styles:
       density: [high]
     avoidance:
       density: [low]
+
+  # Institutional UNL style (added 2026-10). Explicit-override-only: request it
+  # per table with `table_styles: {overrides: {tabla-N: TAB-IN-08}}` in
+  # report.yml. `automatic: false` keeps it out of automatic selection, so
+  # reports without the override render exactly as before; the empty
+  # applicability/avoidance let the override apply to any table context.
+  TAB-IN-08:
+    label: "Institucional UNL"
+    deprecated: false
+    priority: 50
+    automatic: false
+    tokens:
+      borders: horizontal_only
+      header: institutional_shaded
+      alignment: left
+      padding: standard
+      density: medium
+      row_rhythm: alternating
+      palette: monochrome
+      indicators: none
+      caption: above
+      notes: below
+    applicability: {}
+    avoidance: {}

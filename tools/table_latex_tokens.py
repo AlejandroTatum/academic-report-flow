@@ -24,11 +24,18 @@ if TYPE_CHECKING:
     from table_styles import StatusIndicator, StyleDefinition
 
 from table_directives import strip_status_markers
+from table_styles import HEADER_FILL_HEX
 
 _ALIGN_COMMAND = {
     "centered": r"\centering\arraybackslash",
     "left": r"\raggedright\arraybackslash",
     "numeric_right": r"\raggedleft\arraybackslash",
+}
+# Header fills that carry white text; both backends of the same hex agree via
+# table_styles.HEADER_FILL_HEX (dark_shaded keeps its legacy gray-model spelling).
+_WHITE_TEXT_ROWCOLOR = {
+    "dark_shaded": r"\rowcolor[gray]{0.25}",
+    "institutional_shaded": rf"\rowcolor[HTML]{{{HEADER_FILL_HEX['institutional_shaded']}}}",
 }
 _PADDING_PT = {"generous": "6pt", "standard": "3pt", "compact": "2pt", "minimal": "1pt"}
 _ARRAYSTRETCH = {"generous": "1.4", "standard": "1.2", "compact": "1.05", "minimal": "1.0"}
@@ -118,8 +125,8 @@ def render_styled_table_latex(
     if tokens["header"] == "gray_shaded":
         lines.append(r"\rowcolor[gray]{0.92}")
         lines.append(header_line)
-    elif tokens["header"] == "dark_shaded":
-        lines.append(r"\rowcolor[gray]{0.25}")
+    elif tokens["header"] in _WHITE_TEXT_ROWCOLOR:
+        lines.append(_WHITE_TEXT_ROWCOLOR[tokens["header"]])
         colored_cells = ["{\\color{white} " + cell + "}" for cell in header_cells]
         lines.append(" & ".join(colored_cells) + r" \\")
     else:

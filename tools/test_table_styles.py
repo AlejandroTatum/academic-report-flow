@@ -150,7 +150,7 @@ def _mutate(raw: dict, *path_and_value) -> dict:
         (lambda raw: _mutate(raw, "catalog_version", ""), "'catalog_version' must be a non-empty string"),
         (lambda raw: _mutate(raw, "styles", "not-a-mapping"), "'styles' must be a mapping"),
         (lambda raw: {**raw, "styles": {k: v for k, v in raw["styles"].items() if k != "TAB-CL-01"}},
-         "styles must define exactly the seven approved IDs"),
+         "styles must define exactly the approved IDs"),
         (lambda raw: _mutate(raw, "styles", "TAB-CL-01", "not-a-mapping"), "style entry must be a mapping"),
         (lambda raw: _mutate(raw, "styles", "TAB-CL-01", "extra_key", True), "unknown keys"),
         (lambda raw: {**raw, "styles": {**raw["styles"], "TAB-CL-01":
@@ -183,7 +183,7 @@ def _mutate(raw: dict, *path_and_value) -> dict:
 )
 def test_issue_13_loader_rejects_every_malformed_shape(tmp_path: Path, mutate, match: str) -> None:
     """The strict loader's own contract (design: "Unknown keys, missing
-    tokens, invalid enums/colors, duplicate IDs, or non-seven ID sets block
+    tokens, invalid enums/colors, duplicate IDs, or non-approved ID sets block
     load") was entirely unexercised -- every named rejection path is now
     proven to actually raise ``CatalogError`` (T1+T2 review
     R3-untested-loader-rejections)."""

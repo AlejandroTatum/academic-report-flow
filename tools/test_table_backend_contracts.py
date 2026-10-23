@@ -3,8 +3,8 @@
 One selected style ID, rendered through a backend's token mapper, must
 consistently represent borders, header, alignment, padding, density,
 row rhythm, palette, indicators, caption and notes -- never a mix of
-fragments from different styles. This file is parametrized over the seven
-approved IDs per backend; harness commands select a backend by substring
+fragments from different styles. This file is parametrized over every
+approved ID per backend; harness commands select a backend by substring
 (`-k latex`, `-k docx`, `-k html`), so test names carry that suffix.
 """
 from __future__ import annotations
@@ -85,6 +85,9 @@ def test_issue_13_backend_style_coherence_latex(style_id: str) -> None:
         assert r"\rowcolor[gray]{0.92}" in text
     elif tokens["header"] == "dark_shaded":
         assert r"\rowcolor[gray]{0.25}" in text
+        assert r"\color{white}" in text
+    elif tokens["header"] == "institutional_shaded":
+        assert r"\rowcolor[HTML]{1F5F8B}" in text
         assert r"\color{white}" in text
     else:
         assert r"\rowcolor" not in text
@@ -218,6 +221,8 @@ def test_issue_13_backend_style_coherence_docx(style_id: str) -> None:
         assert header_fill == "EAEAEA"
     elif tokens["header"] == "dark_shaded":
         assert header_fill == "404040"
+    elif tokens["header"] == "institutional_shaded":
+        assert header_fill == "1F5F8B"
     else:
         assert header_fill is None
 
@@ -350,6 +355,9 @@ def test_issue_13_backend_style_coherence_html(style_id: str) -> None:
         assert "#eaeaea" in html
     elif tokens["header"] == "dark_shaded":
         assert "#404040" in html
+        assert "#ffffff" in html
+    elif tokens["header"] == "institutional_shaded":
+        assert "#1f5f8b" in html
         assert "#ffffff" in html
 
     align_css = {"centered": "center", "left": "left", "numeric_right": "right"}[tokens["alignment"]]

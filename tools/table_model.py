@@ -10,7 +10,7 @@ records the decision as a path-free ``SelectionReceipt``.
 Precedence (spec `test_issue_13_override_precedence`):
     teacher override > institution override > automatic selection
 
-Any override that is not one of the seven approved, non-deprecated IDs, or
+Any override that is not one of the approved, non-deprecated IDs, or
 that the table's context does not admit, blocks generation instead of being
 replaced silently (spec `test_issue_13_invalid_override_rejection`). An
 unsupported context with no override at all blocks the same way through

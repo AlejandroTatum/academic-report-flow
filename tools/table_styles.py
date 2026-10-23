@@ -1,7 +1,7 @@
 """Versioned catalog and deterministic selector for contextual table styles.
 
 Issue #13: replace the single generic table treatment with an explainable,
-institutionally controllable selection among seven approved styles. This
+institutionally controllable selection among approved styles. This
 module owns exactly two things:
 
 1. A strict loader for ``templates/table_styles.yml`` — the executable
@@ -46,6 +46,7 @@ APPROVED_STYLE_IDS = frozenset({
     "TAB-CE-05",
     "TAB-ES-06",
     "TAB-CC-07",
+    "TAB-IN-08",
 })
 
 REQUIRED_TOKEN_KEYS = frozenset({
@@ -55,7 +56,7 @@ REQUIRED_TOKEN_KEYS = frozenset({
 
 TOKEN_ENUMS: dict[str, frozenset[str]] = {
     "borders": frozenset({"full_grid", "horizontal_only", "minimal"}),
-    "header": frozenset({"gray_shaded", "dark_shaded", "plain"}),
+    "header": frozenset({"gray_shaded", "dark_shaded", "institutional_shaded", "plain"}),
     "alignment": frozenset({"centered", "left", "numeric_right"}),
     "padding": frozenset({"generous", "standard", "compact", "minimal"}),
     "density": frozenset({"low", "medium", "high"}),
@@ -93,7 +94,7 @@ _CONSTRAINT_FIELD = {
 }
 
 _TOP_LEVEL_KEYS = frozenset({"schema_version", "catalog_version", "styles", "status_indicators"})
-_STYLE_KEYS = frozenset({"label", "deprecated", "priority", "tokens", "applicability", "avoidance"})
+_STYLE_KEYS = frozenset({"label", "deprecated", "priority", "automatic", "tokens", "applicability", "avoidance"})
 
 # Shared literal shading colors every backend's token mapper renders for the
 # same token, so LaTeX/DOCX/HTML stay coherent (spec: "backend mappings MUST
@@ -101,7 +102,9 @@ _STYLE_KEYS = frozenset({"label", "deprecated", "priority", "tokens", "applicabi
 # mapper hand-picking its own hex value that silently drifts from the
 # others. Uppercase, no leading `#` -- DOCX/OOXML's native ``w:fill`` format;
 # each mapper (and any test needing these colors) derives its own spelling.
-HEADER_FILL_HEX = {"gray_shaded": "EAEAEA", "dark_shaded": "404040"}
+HEADER_FILL_HEX = {"gray_shaded": "EAEAEA", "dark_shaded": "404040", "institutional_shaded": "1F5F8B"}
+# Header fills that carry white bold text on top (contrast against the fill).
+WHITE_TEXT_HEADERS = frozenset({"dark_shaded", "institutional_shaded"})
 ROW_ALTERNATING_FILL_HEX = "F2F2F2"
 COLUMN_EMPHASIS_FILL_HEX = "D9D9D9"
 
@@ -156,6 +159,9 @@ class StyleDefinition:
     tokens: dict[str, str]
     applicability: dict[str, Any]
     avoidance: dict[str, Any]
+    # False = explicit-override-only: never a candidate for automatic
+    # selection, still valid for a teacher/institution override.
+    automatic: bool = True
 
 
 @dataclass(frozen=True)
@@ -214,7 +220,7 @@ def _validate_style(style_id: str, raw: Any) -> StyleDefinition:
     unknown = set(raw) - _STYLE_KEYS
     if unknown:
         raise CatalogError(f"{style_id}: unknown keys {sorted(unknown)}")
-    missing = _STYLE_KEYS - {"priority"} - set(raw)
+    missing = _STYLE_KEYS - {"priority", "automatic"} - set(raw)
     if missing:
         raise CatalogError(f"{style_id}: missing required keys {sorted(missing)}")
 
@@ -229,6 +235,10 @@ def _validate_style(style_id: str, raw: Any) -> StyleDefinition:
     priority = raw.get("priority", 50)
     if not isinstance(priority, int) or isinstance(priority, bool):
         raise CatalogError(f"{style_id}: 'priority' must be an int")
+
+    automatic = raw.get("automatic", True)
+    if not isinstance(automatic, bool):
+        raise CatalogError(f"{style_id}: 'automatic' must be a bool")
 
     tokens = raw["tokens"]
     if not isinstance(tokens, dict):
@@ -250,6 +260,7 @@ def _validate_style(style_id: str, raw: Any) -> StyleDefinition:
     return StyleDefinition(
         id=style_id, label=label, deprecated=deprecated, priority=priority,
         tokens=dict(tokens), applicability=dict(applicability), avoidance=dict(avoidance),
+        automatic=automatic,
     )
 
 
@@ -286,7 +297,7 @@ def load_catalog(path: Path | None = None) -> Catalog:
         missing_ids = APPROVED_STYLE_IDS - set(raw_styles)
         extra_ids = set(raw_styles) - APPROVED_STYLE_IDS
         raise CatalogError(
-            f"{source_path}: styles must define exactly the seven approved IDs "
+            f"{source_path}: styles must define exactly the approved IDs "
             f"(missing {sorted(missing_ids)}, unapproved {sorted(extra_ids)})"
         )
 
@@ -360,14 +371,14 @@ def _matches_any(context: TableContext, constraints: dict[str, Any]) -> bool:
 
 
 def eligible_candidates(context: TableContext, catalog: Catalog) -> list[str]:
-    """Approved, non-deprecated style IDs applicable to ``context`` and not avoided.
+    """Approved, non-deprecated, automatic style IDs applicable to ``context`` and not avoided.
 
     Sorted alphabetically — this is the candidate *set*, not the winner;
     ``select_style`` applies the priority tie-break on top of it.
     """
     candidates = []
     for style_id, style in catalog.styles.items():
-        if style.deprecated:
+        if style.deprecated or not style.automatic:
             continue
         if not _matches_all(context, style.applicability):
             continue

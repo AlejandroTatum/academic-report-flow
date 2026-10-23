@@ -118,7 +118,7 @@ validators:
 
 # =============================================================================
 # CONTEXTUAL TABLE STYLES (issue #13)
-# Institution-wide default among the seven approved templates/table_styles.yml
+# Institution-wide default among the approved templates/table_styles.yml
 # IDs. A report's own `table_styles: {overrides: {<table_key>: <ID>}}` (per
 # table, in report.yml) beats this institution default, which in turn beats
 # automatic contextual selection (tools/table_model.py resolve_table_style).
