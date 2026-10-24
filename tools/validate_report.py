@@ -1048,6 +1048,11 @@ def pdf_layout_validation(config: ReportConfig) -> ValidationResult:
     return result
 
 
+# Template rules latex_log_validation() requires of every LaTeX template, except
+# where the chosen format's layout rules them out.
+TEMPLATE_RULES_NOT_REQUIRED: dict[str, tuple[str, ...]] = {"ieee": ("onehalfspacing",)}
+
+
 def latex_log_validation(config: ReportConfig) -> ValidationResult:
     result = ValidationResult()
     log = config.log_path.read_text(encoding="utf-8", errors="ignore") if config.log_path.exists() else ""
@@ -1057,6 +1062,11 @@ def latex_log_validation(config: ReportConfig) -> ValidationResult:
         return result
 
     required_snippets = ["hyperref", "Needspace", "onehalfspacing", "parindent"]
+    # The IEEE essay is single-spaced by the format's own definition.
+    required_snippets = [
+        snippet for snippet in required_snippets
+        if snippet not in TEMPLATE_RULES_NOT_REQUIRED.get(config.format or "", ())
+    ]
     missing = [snippet for snippet in required_snippets if snippet not in tex]
     if missing:
         result.errors.append("LaTeX template sin reglas obligatorias: " + ", ".join(missing))

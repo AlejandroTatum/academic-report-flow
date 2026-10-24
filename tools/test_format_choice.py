@@ -146,26 +146,26 @@ def test_unknown_format_fails_loudly_on_load(tmp_path):
     folder = tmp_path / "r"
     folder.mkdir(parents=True)
     raw = dict(BASE_RAW)
-    raw["format"] = "ieee"
+    raw["format"] = "revista"
     (folder / "report.yml").write_text(yaml.safe_dump(raw), encoding="utf-8")
     (folder / "body.md").write_text("# x\n", encoding="utf-8")
     with pytest.raises(SystemExit) as excinfo:
         load_report_config(folder)
-    assert "ieee" in str(excinfo.value)
-    assert unknown_format_message("ieee") in str(excinfo.value)
+    assert "revista" in str(excinfo.value)
+    assert unknown_format_message("revista") in str(excinfo.value)
 
 
 def test_unknown_format_fails_required_metadata(tmp_path):
-    config = make_config_unloaded(tmp_path, {**BASE_RAW, "format": "ieee"})
+    config = make_config_unloaded(tmp_path, {**BASE_RAW, "format": "revista"})
     with pytest.raises(ValueError) as excinfo:
         _ = config.format_required_metadata
-    assert "ieee" in str(excinfo.value)
+    assert "revista" in str(excinfo.value)
 
 
 def test_unknown_format_is_a_metadata_error(tmp_path):
-    config = make_config_unloaded(tmp_path, {**BASE_RAW, "format": "ieee"})
+    config = make_config_unloaded(tmp_path, {**BASE_RAW, "format": "revista"})
     result = metadata_validation(config)
-    assert any("ieee" in error for error in result.errors)
+    assert any("revista" in error for error in result.errors)
 
 
 # ---------------------------------------------------------------------------

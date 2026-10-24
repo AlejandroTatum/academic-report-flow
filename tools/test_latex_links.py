@@ -85,7 +85,7 @@ def test_url_like_inline_code_preserves_url_special_characters():
 
 def test_report_templates_enable_arbitrary_url_breaks():
     templates = Path(__file__).resolve().parent.parent / 'templates'
-    for name in ('ape-report.tex', 'unl-report.tex', 'plain-report.tex'):
+    for name in ('ape-report.tex', 'unl-report.tex', 'plain-report.tex', 'ieee-report.tex'):
         source = (templates / name).read_text(encoding='utf-8')
         assert r'\usepackage{xurl}' in source, name
         assert source.index(r'\usepackage[hidelinks]{hyperref}') < source.index(r'\usepackage{xurl}'), name

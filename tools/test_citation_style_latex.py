@@ -17,7 +17,7 @@ import report_config  # noqa: E402
 
 IEEE_OPTIONS = "backend=biber,style=ieee,sorting=none,hyperref=true"
 APA_OPTIONS = "backend=biber,style=apa,hyperref=true"
-TEMPLATES = ["unl", "plain", "ape", "chamba_overleaf"]
+TEMPLATES = ["unl", "plain", "ape", "chamba_overleaf", "ieee"]
 BODY = "Los procesos [@a2018, b2019] planifican tareas.\n"
 BIB = "@book{a2018, author={A, B}, title={T}, year={2018}}\n@book{b2019, author={C, D}, title={U}, year={2019}}\n"
 
@@ -40,7 +40,7 @@ def render(folder: Path, template: str, **extra: object) -> str:
     return build_latex_report.render_tex(report_config.ReportConfig.load(folder))
 
 
-@pytest.mark.parametrize("template", ["unl-report", "plain-report", "ape-report", "chamba-overleaf"])
+@pytest.mark.parametrize("template", ["unl-report", "plain-report", "ape-report", "chamba-overleaf", "ieee-report"])
 def test_templates_use_the_options_placeholder(template: str) -> None:
     text = (ROOT / "templates" / f"{template}.tex").read_text(encoding="utf-8")
     assert r"\usepackage[{{BIBLATEX_OPTIONS}}]{biblatex}{{BIBLATEX_SETUP}}" in text
