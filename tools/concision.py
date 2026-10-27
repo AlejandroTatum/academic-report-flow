@@ -3,7 +3,7 @@
 No guide asks for more text, so these checks only cap: a per-section word
 budget (explicit ``max_words`` per criterion, or the criterion's weight share of
 the rubric's total ``max_words``), the total budget, stock filler phrases, and
-paragraphs longer than ``LONG_PARAGRAPH_WORDS``. Only prose counts: headings,
+a warning for paragraphs longer than ``LONG_PARAGRAPH_WORDS``. Only prose counts: headings,
 tables, code, display math, images and citation keys are excluded.
 """
 
@@ -226,10 +226,14 @@ def long_paragraph_problems(body: str, limit: int = LONG_PARAGRAPH_WORDS) -> lis
 
 
 def concision_results(body: str, criteria: list[dict], total: int | None) -> list[dict]:
-    """Body-check entries (``check``/``ok``/``detail``) for the three caps."""
+    """Blocking budget and filler checks plus an advisory paragraph-length warning."""
     entries = (
         ("word_budget", budget_problems(body, criteria, total), "within the word budget (or none set)"),
         ("filler_phrases", filler_problems(body), "no stock filler phrases"),
-        ("long_paragraphs", long_paragraph_problems(body), f"no paragraph over {LONG_PARAGRAPH_WORDS} words"),
     )
-    return [{"check": name, "ok": not problems, "detail": "; ".join(problems) or ok} for name, problems, ok in entries]
+    results = [{"check": name, "ok": not problems, "detail": "; ".join(problems) or ok} for name, problems, ok in entries]
+    long = long_paragraph_problems(body)
+    results.append({"check": "long_paragraphs", "ok": True,
+                    "detail": "warning: review readability; " + "; ".join(long) if long
+                    else f"no paragraph over {LONG_PARAGRAPH_WORDS} words"})
+    return results

@@ -281,7 +281,7 @@ def test_generate_reference_forbids_unapproved_build() -> None:
     assert "approval: done" in flat, "production.md must name the `approval: done` precondition"
     assert "body_sha256" in flat, "production.md must name the hash the approval binds to"
     assert "body.md" in flat, "production.md must name body.md as the approved input"
-    assert "preview" not in flat, "the preview binding is gone: approval binds body.md only"
+    assert "preapproval draft preview" in flat and "never the final artifact" in flat
     assert re.search(r"(?:never|must not|do not|does not) build (?:before|until)", flat), (
         "production.md must forbid building before approval is done"
     )
@@ -595,9 +595,20 @@ def test_no_flow_file_mentions_the_removed_preview() -> None:
     offenders = [
         str(path.relative_to(SKILL_ROOT))
         for path in all_skill_files()
-        if path != APPROVAL_MD and re.search(r"(?<!post-)\bpreview", read(path), re.IGNORECASE)
+        if path not in (APPROVAL_MD, PRODUCTION_MD, SKILL_MD) and re.search(r"(?<!post-)\bpreview", read(path), re.IGNORECASE)
     ]
     assert offenders == [], f"stale preview mentions remain: {offenders}"
+
+
+def test_clarity_policy_preserves_scope_authorship_and_semantic_review() -> None:
+    skill, content, approval, production, routing = map(_flat, (SKILL_MD, CONTENT_MD, APPROVAL_MD, PRODUCTION_MD, ROUTING_MD))
+    assert "add necessary evidence" in skill and "never by adding prose" not in content
+    assert "structural defaults, not independent content requirements" in routing
+    assert "preserve user-authored wording" in approval and "do not silently change approved prose" in approval
+    assert "do not authorize one" in approval
+    assert "semantic repetition" in production and "whole draft" in production
+    assert "advisory warnings" in content
+    assert routing.index("| verify |") < routing.index("| approval |")
 
 
 def test_skill_tree_adds_no_detector_or_percentage_gate() -> None:
@@ -1100,17 +1111,15 @@ def test_citation_style_opt_in_is_documented_in_every_reference() -> None:
 
 
 def test_draft_states_concision_rules() -> None:
-    # verify-concise-drafts S4/S5: no padding, no basic concepts, fix by cutting.
     text = re.sub(r"\s+", " ", read(CONTENT_MD))
     for phrase in (
         "never a minimum length",
         "answers a guide or rubric requirement",
-        "first sentence",
-        "at most 2-3 sentences",
+        "2-3 supporting sentences are a guideline",
         "typeset turns them into tables and display equations",
-        "only the concepts the report's own decisions use",
-        "never define basic course concepts",
-        "by cutting or shrinking, never by adding prose",
+        "theory needed for the requested coverage",
+        "add necessary evidence, context or explanation",
+        "Never invent facts or remove required coverage",
     ):
         assert phrase in text, phrase
 
@@ -1123,7 +1132,7 @@ def test_skill_hard_rules_state_quality_over_quantity() -> None:
 
 def test_plan_and_body_check_state_word_ceiling_and_padding_checks() -> None:
     text = re.sub(r"\s+", " ", read(CONTENT_MD))
-    for phrase in ("never a minimum", "max_words:", "weight share", "the word budget", "no stock filler phrases", "no paragraph over 80 words"):
+    for phrase in ("never a minimum", "max_words:", "weight share", "the word budget", "no stock filler phrases", "paragraphs over 80 words as advisory warnings"):
         assert phrase in text, phrase
 
 
@@ -1147,15 +1156,16 @@ def test_verify_runs_before_approval_and_the_gate_shows_one_packet() -> None:
     assert "one summary row per criterion (cumple/falta, found/total), the missing items" in approval
     assert "per-requirement evidence matrix is for agents" in approval
     assert "before `approval`" in production
-    assert "approval_packet.py <folder>" in production
+    assert "approval packet" in production
 
 
 def test_edit_rounds_recheck_only_what_changed() -> None:
-    """A small edit never re-reviews the whole document: scoped verify and only what the edit touched."""
+    """Incremental requirement verification does not replace whole-draft semantic review."""
     flat = re.sub(r"\s+", " ", read(APPROVAL_MD))
     assert "fresh independent verifier" not in flat
     assert "--since verification.yml" in flat
     assert "visual_pdf_auditor.py" in flat
     assert "re-read only what the edit touched" in flat
+    assert "semantic review still examines the whole draft" in flat
     assert "every page on the first preview" not in flat  # issue #96: no layout audit before approval
     assert "Changed pages" in re.sub(r"\s+", " ", read(PRODUCTION_MD))

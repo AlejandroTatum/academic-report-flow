@@ -22,13 +22,13 @@ Recommend at most one type with a reason, never select it. Ambiguity stops the r
 Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `validate_report.py`, visual audit, `deliver_report.py`); run them and obey their blocks. Three human decisions: data, draft approval plus format, final review.
 
 - Present the human block verbatim and every human gate losslessly; never proceed on silence.
-- Quality over quantity: no minimum length; every paragraph answers a guide requirement, and findings are fixed by cutting, never by adding prose (`references/content.md`).
+- Quality over quantity: no minimum length; preserve complete coverage. Cut redundancy or add necessary evidence or explanation when needed (`references/content.md`).
 - Require rubric TDD checks in the plan before drafting; the draft turns them green.
 - Use one independent verifier for semantic verification (requirement -> evidence matrix, unquotable evidence is `missing`); the drafter never verifies itself.
 - Require verified sources before research is finished.
 - Apply batched edit orders verbatim before seeking re-approval; a bounded edit (at most 40 changed words, no heading touched) keeps the approval and the final review without asking, and verify, rebuild and validation still run.
 - The draft is plain text: `# Title` headings and `[@key]` citations only, no math, tables, images or bold (`references/content.md`); backend formatting goes in `body.typeset.md` after approval, never in `body.md`.
-- Never build before approval is `done` and `typeset` passes; never present the approval gate before `draft` is `done`.
+- A preapproval draft preview is permitted only for review (`approval.md`); never build the final artifact before approval is `done` and `typeset` passes. Never present the approval gate before `draft` and `verify` are `done`.
 - Stop at the earliest failed gate; never substitute an unsupported backend or executor.
 - Publish only through `deliver_report.py` with a current `APPROVAL_CURRENT` marker; publication is not approval.
 - No script, validator, or auditor ever grants `VISUAL_PASS`; `visual_pdf_auditor.py` PASS is only `AUDITOR_PRECHECK` evidence. Only independent semantic inspection of the assembled report grants it; `HUMAN_REVIEW` against immutable hashes precedes `READY_TO_SUBMIT`.
@@ -53,7 +53,7 @@ Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `vali
 
 1. Run `doc_status.py`; present the human block verbatim; read `next`.
 2. Load that reference; run its executor and tools.
-3. Fix findings only through the user's literal edit orders, then rebuild and rerun the gates.
+3. Apply the correction policy in `approval.md`, preserve user-authored wording, then rerun the affected gates.
 4. Re-run `doc_status`; report the new phase.
 
 ## Output Contract

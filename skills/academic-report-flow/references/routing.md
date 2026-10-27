@@ -24,8 +24,8 @@ Every command is absolute and cwd-independent. Run first:
 | research | `content.md` | research-workflow | `reports/<wf>/sources.bib` |
 | plan | `content.md` | academic-report-flow | `reports/<wf>/rubric.yml` |
 | draft | `content.md` | academic-report-flow | `reports/<wf>/body.md` |
-| approval | `approval.md` | human gate, no executor | `reports/<wf>/approval.yml` |
 | verify | `production.md` | academic-report-flow + one independent verifier | `reports/<wf>/content-check.yml` |
+| approval | `approval.md` | human gate, no executor | `reports/<wf>/approval.yml` |
 | format | `approval.md` | academic-report-flow | `reports/<wf>/report.yml` |
 | typeset | `production.md` | academic-report-flow | `reports/<wf>/body.typeset.md` |
 | generate | `production.md` | academic-report-flow | `outputs/<materia>/<final>.pdf` |
@@ -73,7 +73,7 @@ Route: intake > research > [plan] > draft > verify > approval > format > typeset
 
 ## Document routes
 
-The user chooses one route (`data.md`); load only its references; never blend routes or fall back silently. Declare it as `route:` in `report.yml` (an absent key means Route A, for legacy reports only; an unrecognised value stops the run).
+The user chooses one route (`data.md`); load only its references; never blend routes or fall back silently. Declare it as `route:` in `report.yml` (an absent key means Route A, for legacy reports only; an unrecognised value stops the run). The section lists below are structural defaults, not independent content requirements: the guide, rubric and explicit user instructions govern scope. Do not invent content to fill a default; resolve incompatible fixed-format requirements with the user.
 
 ### Route A - University academic work (`route: academic` or `a`)
 

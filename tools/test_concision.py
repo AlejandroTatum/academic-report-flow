@@ -118,6 +118,16 @@ def test_concision_results_fail_with_details() -> None:
     assert results["long_paragraphs"]["ok"] is True
 
 
+def test_long_paragraph_is_advisory_but_explicit_budget_still_blocks() -> None:
+    body = "# A\n\n" + " ".join(["palabra"] * 81)
+    results = {r["check"]: r for r in concision.concision_results(body, [], total=None)}
+    assert results["long_paragraphs"]["ok"] is True
+    assert "warning" in results["long_paragraphs"]["detail"].lower()
+    assert "81 words" in results["long_paragraphs"]["detail"]
+    limited = {r["check"]: r for r in concision.concision_results(body, [], total=80)}
+    assert limited["word_budget"]["ok"] is False
+
+
 def test_inline_math_is_not_counted_as_prose() -> None:
     assert concision.prose_words(r"Con $V_f \approx 2\ \text{V}$ enciende.") == 2
 

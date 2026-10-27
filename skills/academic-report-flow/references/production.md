@@ -4,7 +4,7 @@ Tools enforce quality between Decisions 2 and 3: run each, report findings, neve
 
 ## Verify (artifact `reports/<wf>/content-check.yml`)
 
-Runs after the draft passes the body check and before `approval`, so the approval packet (`approval.md`) carries the matrix. A failing verify shows the user that same packet (`approval_packet.py <folder> --open`) to collect literal edit orders; after the edits rebuild the draft PDF and re-verify with `--since`.
+Runs after the draft passes the body check and before `approval`, so the approval packet (`approval.md`) carries the matrix. Correct failures under the authorship policy in `approval.md`; ask for literal edit orders when user-authored text or intent is involved. After edits rebuild the draft PDF and re-verify with `--since`.
 
 1. `"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/content_check.py" "$REPORT_CONTENT_ROOT/reports/<work-folder>/" --verify-brief`. Do not pass the drafting conversation to the verifier.
 2. Give its exact output to ONE independent read-only verifier subagent. It never scores: it returns the requirement -> evidence matrix YAML the brief specifies (per rubric criterion, one or more `requirement` entries with `status: found|missing`, `location`, and `evidence`, an exact quote from `body.md`, required when `found`; plus `unmapped_paragraphs` and `findings`). Evidence it cannot quote is `missing`, never "seems to comply".
@@ -14,7 +14,7 @@ Runs after the draft passes the body check and before `approval`, so the approva
 
 When the executor cannot launch subagents, it stops at verify and reports the verifier pending; the orchestrator runs the verifier exactly as above (brief verbatim, one independent read-only subagent, YAML saved unchanged) and the executor never stands in for the verifier.
 
-The check only reports (per-criterion `cumple|falta`, the requirement matrix with missing items, citation and link problems, unmapped paragraphs as deletion candidates). It never rewrites `body.md`; never add requirements for criteria the plan does not name. Report every finding verbatim and collect literal edit orders (`approval.md`); unmapped paragraphs are proposed for deletion, never added to. A recorded `fail` blocks the route (`content_check_failed`) until fixed; an edited draft stales the marker and reruns the check.
+The check only reports (per-criterion `cumple|falta`, the requirement matrix with missing items, citation and link problems, unmapped paragraphs as deletion candidates). It never rewrites `body.md`; never add requirements for criteria the plan does not name. The independent verifier also reviews the whole draft for semantic repetition, circular explanations, ambiguity and missing context, reporting specific locations and suggested corrections in findings, including during incremental verification. Mechanical length and filler checks cannot establish semantic concision; findings are advisory, not scores. Report every finding verbatim; use the correction policy and literal edit orders (`approval.md`) to preserve authorship. Deletion candidates are suggestions, not automatic removals. A recorded `fail` blocks the route (`content_check_failed`) until fixed; an edited draft stales the marker and reruns the check.
 
 ## Typeset (artifact `reports/<wf>/body.typeset.md`, bound by `typeset.yml`)
 
@@ -29,7 +29,7 @@ Legacy: an `approval.yml` without `typeset: required` predates this phase; its r
 
 ## Generate (artifact: the final PDF under `outputs/<materia>/`)
 
-Runs only when `approval: done` (`approval.yml` exists and its `body_sha256` matches the current `body.md`) and `typeset: done`. Never build before approval is done; the final build prints `TYPESET REQUIRED` while a required typeset is not current.
+Runs only when `approval: done` (the `body_sha256` binds approved `body.md` bytes, current or carried under the bounded-edit rule in `approval.md`) and `typeset: done`. Never build before approval is done for final generation; the separate preapproval draft preview in `approval.md` is review-only, never the final artifact. The final build prints `TYPESET REQUIRED` while a required typeset is not current.
 
 `"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/build_report_auto.py" "$REPORT_CONTENT_ROOT/reports/<work-folder>/"` builds from `report.yml` (including `format:`) plus `body.typeset.md` while its binding is current (otherwise the approved `body.md`), runs the configured technical validation, and reports the artifact hash and page count. A final PDF older than `body.typeset.md` is stale (generate pending). It does not publish, copy or version, and never writes `approval.yml` or claims `VISUAL_PASS`, `HUMAN_REVIEW` or `READY_TO_SUBMIT`. Final PDF/DOCX stay under `outputs/<materia-slug>/`, intermediates in `build/` or `backups/`.
 

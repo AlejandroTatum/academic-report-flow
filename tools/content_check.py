@@ -376,7 +376,11 @@ def verify_brief(folder: Path, since: Path | None = None) -> str:
             "substring of body.md. When you cannot quote it, mark the requirement missing; never write "
             "that something seems to comply. Check data (numbers, names, links per part) against the guide. "
             "Links are fetched by the tool. List paragraphs that answer no requirement under "
-            "unmapped_paragraphs (deletion candidates).\n"
+            "unmapped_paragraphs (deletion candidates). Independently review the whole draft for "
+            "semantic repetition, circular explanations, ambiguity and missing necessary context; "
+            "report specific locations and suggested corrections in findings, without rewriting. "
+            "Length and filler checks cannot establish semantic concision. Repeat this whole-draft "
+            "review even during incremental verification; findings are advisory, not a score.\n"
             f"Citations [@key] in body.md render in {config.citation_style.upper()} format at build time from sources.bib; citation keys are expected, not a formatting defect. Check that cited keys exist in sources.bib instead.\n"
             + _criteria_section(criteria)
             + incremental

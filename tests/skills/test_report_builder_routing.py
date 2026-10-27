@@ -248,7 +248,8 @@ def test_skill_keeps_intake_data_only_and_gates_the_build_on_approval(skill: str
     """
     lowered = re.sub(r"\s+", " ", plain(skill)).lower()
     assert "intake data (references/data.md) never authorizes generation" in lowered
-    assert "never build before approval is done" in lowered
+    assert "a preapproval draft preview is permitted only for review" in lowered
+    assert "never build the final artifact before approval is done and typeset passes" in lowered
     for stale in (
         "wait for explicit confirmation before generation",
         "generation begins only after the user confirms this block",

@@ -68,6 +68,16 @@ def _req(criterion: str, status: str = "found", evidence: str = "Cuerpo con fuen
             "location": "Cuerpo", "evidence": evidence, **extra}
 
 
+def test_body_check_long_paragraph_warns_without_blocking_budget(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    body = "# A\n\n" + " ".join(["palabra"] * 81)
+    monkeypatch.setattr(content_check, "body_check_results", lambda folder: content_check.concision.concision_results(body, [], None))
+    assert content_check.run_body_check(Path("unused")) == 0
+    assert "warning: review readability" in capsys.readouterr().out
+    monkeypatch.setattr(content_check, "body_check_results", lambda folder: content_check.concision.concision_results(body, [], 80))
+    assert content_check.run_body_check(Path("unused")) == 1
+    assert "FAIL" in capsys.readouterr().out
+
+
 def test_matrix_derives_cumple_falta_per_criterion_with_no_flojo(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     matrix = _verification(folder, findings=["shared"], requirements=[
@@ -215,6 +225,9 @@ def test_verify_brief_is_bound_and_read_only(tmp_path: Path, capsys: pytest.Capt
     assert "[@key]" in brief and "IEEE" in brief and "sources.bib" in brief
     # A plural demand ("Wokwi links") is one requirement per item, never one for all.
     assert "one requirement per item" in brief
+    assert "semantic repetition" in brief and "circular explanations" in brief
+    assert "whole draft" in brief and "incremental verification" in brief
+    assert "findings are advisory" in brief
     assert "not a formatting defect" in brief
     assert "judge" not in brief.lower()
 
