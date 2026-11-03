@@ -99,6 +99,26 @@ def test_nested_list_preserves_enumerate_and_continuation():
     assert rendered.index('continuation paragraph') < rendered.index(r'\item c')
 
 
+def test_ordered_list_keeps_its_start_number_after_an_interruption():
+    # A code block between steps 4 and 5 closes the list; the next list must
+    # continue at 5, not restart at 1.
+    rendered = markdown_to_latex('4. four\n\n```\nls\n```\n\n5. five\n6. six')
+    second = rendered[rendered.index(r'\end{lstlisting}'):]
+    assert r'\setcounter{enumi}{4}' in second
+    assert second.index(r'\begin{enumerate}') < second.index(r'\setcounter{enumi}{4}') < second.index(r'\item five')
+    assert rendered.count(r'\setcounter') == 2
+
+
+def test_ordered_list_starting_at_one_has_no_counter_reset():
+    assert r'\setcounter' not in markdown_to_latex('1. a\n2. b')
+
+
+def test_nested_ordered_list_start_uses_its_own_level_counter():
+    rendered = markdown_to_latex('1. a\n   3. c\n   4. d\n2. b')
+    assert r'\setcounter{enumii}{2}' in rendered
+    assert r'\setcounter{enumi}' not in rendered
+
+
 @pytest.mark.skipif(
     _LATEX_ENGINE is None and not _DOCKER_FALLBACK,
     reason="no local LaTeX engine (latexmk/lualatex/xelatex/pdflatex) and no already-present local Docker image texlive/texlive:latest (bounded image inspect; the test never pulls)",

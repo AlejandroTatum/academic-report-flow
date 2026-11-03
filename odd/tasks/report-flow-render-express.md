@@ -18,11 +18,11 @@ Runner: `.venv/bin/python -m pytest tools/ tests/`. RDD: user-left-unreviewed fo
 ## Tasks
 
 - [x] T0 S0 skills sync hook publishes only from `main` — parent — commit: (this commit)
-- [ ] T1 S1 nested ordered list numbering — worker — commit:
-- [ ] T2 S2 figure paths relative to report folder — worker — commit:
-- [ ] T3 S3 autolinks to `\url{}` — worker — commit:
-- [ ] T4 S4 HUMAN_REVIEW from final-review.yml — worker — commit:
-- [ ] T5 S5 independent content-check judge in skill instructions — worker — commit:
+- [x] T1 S1 nested lists already render (tools/test_latex_links.py::test_nested_list_preserves_enumerate_and_continuation); real root cause was an interrupted list restarting at 1, fixed with \setcounter — parent — commit: (this commit)
+- [x] T2 S2 already fixed: tools/test_figure_paths.py (report-relative precedence + legacy build-relative) — no commit
+- [x] T3 S3 already fixed: tools/test_latex_links.py::test_autolink_and_named_link_are_clickable — no commit
+- [x] T4 S4 already fixed: tools/deliver_report.py:167 grants HUMAN_REVIEW from a current final-review.yml — no commit
+- [x] T5 S5 already in skill: references/production.md:10-15 (one independent read-only verifier; drafter never verifies) — no commit
 - [ ] T6 S6 R3 advisory follow-ups — worker — commit:
 - [ ] T7 S7 express mode + route B-E profiles — after user decision — commit:
 - [ ] T8 sync skills to runtimes after merge (user authorizes integration) — parent — commit:
