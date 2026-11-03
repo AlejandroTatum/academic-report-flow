@@ -23,7 +23,7 @@ Runner: `.venv/bin/python -m pytest tools/ tests/`. RDD: user-left-unreviewed fo
 - [x] T3 S3 already fixed: tools/test_latex_links.py::test_autolink_and_named_link_are_clickable — no commit
 - [x] T4 S4 already fixed: tools/deliver_report.py:167 grants HUMAN_REVIEW from a current final-review.yml — no commit
 - [x] T5 S5 already in skill: references/production.md:10-15 (one independent read-only verifier; drafter never verifies) — no commit
-- [ ] T6 S6 R3 advisory follow-ups — worker — commit:
+- [x] T6 S6 reviewed against tools/validate_report.py:672-750,886-896, no code change: verbatim-render — a listing the PDF does not hold verbatim removes nothing, so it fails toward a false positive, never a hidden defect (docstring L712-714); lazy-import — same in-function `from build_latex_report import` pattern used at L290/340/590/915, tools/ is always on sys.path; patterns-vs-collapsed-text and first-occurrence-cut — the check only counts occurrences (L893-896); cutting the first match instead of the code's own one keeps the count, so detection is unchanged; a hidden defect needs a code span whose whitespace-free text straddles half of a prose command, no realistic reproducer found — no commit
 - [ ] T7 S7 express mode + route B-E profiles — after user decision — commit:
 - [ ] T8 sync skills to runtimes after merge (user authorizes integration) — parent — commit:
 
