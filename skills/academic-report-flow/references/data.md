@@ -16,6 +16,16 @@ Default for every new request (work folder rules: `routing.md`; state the folder
 - Never ask formatting questions at intake (template, identity tables, cover, visual direction, document format APE, AA, ACD or libre, delivery format PDF or DOCX): intake never asks the delivery format; the format phase owns every formatting decision (`approval.md`), including group work (`metadata.practice_type: Grupal`, `metadata.members`).
 - Full-route confirmations 1 to 5 below do not apply in content-first: audience and purpose (derived and recorded, never asked), template and identity, delivery format, visual direction.
 
+## Express flow (quick daily documents)
+
+For a quick project, business, technical or one-page document the user wants without intermediate stops, record `flow: express` (routes B-E only; `doc_status` blocks it on `route: academic`). Offer it through `ask_user_choice` when the request is a non-academic document and does not say which flow; never infer it.
+
+- Intake asks only what the request lacks to identify the document (route, title, author); no guide, rubric or teacher batch.
+- Record the format defaults yourself, never ask them: `format: libre`, `format_spec: "documento sobrio sin portada"`, `output: pdf`, plus `min_sources: 0` unless the user supplies or requests sources.
+- Plan: write `rubric.yml` from the route's section list (`routing.md`) and the user's request; the independent verifier still runs.
+- Approval: run `approval_marker.py approve <folder> --express` (never `--by`); no draft PDF, no approval packet, no question. The tools refuse it outside `flow: express`.
+- The only human gate is the final review of the built PDF (`final-review.yml`); a request for changes there edits `body.md`, re-runs `--express` and rebuilds.
+
 ## report.yml record
 
 Keys the pipeline reads; never add `report.yml` keys beyond this record, and never invent a parallel key for a meaning that already has one (no top-level `audience:`, `document_type:` or `visual_direction:`):
@@ -23,6 +33,7 @@ Keys the pipeline reads; never add `report.yml` keys beyond this record, and nev
 ```yaml
 type: report                  # backend: essay | report | technical_report | visual | docx ...
 route: project                # academic | project | business | technical | other
+# flow: express               # routes B-E only: one human gate, the final review (see Express flow)
 output: pdf                   # pdf | docx
 template: plain               # only when confirmed; omit otherwise
 

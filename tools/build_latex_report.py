@@ -1303,11 +1303,18 @@ def markdown_to_latex(
         # Ordered lists — "1." and "1)" alike. Without this the numbers stay in
         # the paragraph buffer and the whole procedure renders as one justified
         # run-on line.
-        ordered = re.match(r"^\d+[.)]\s+(.+)$", stripped)
+        ordered = re.match(r"^(\d+)[.)]\s+(.+)$", stripped)
         if ordered:
             flush_paragraph()
             open_list("enumerate", len(line) - len(line.lstrip()))
-            output.append(r"\item " + convert_inline(ordered.group(1)))
+            start = int(ordered.group(1))
+            depth = sum(1 for _, env in list_stack if env == "enumerate")
+            # A list cut by a code block, figure or paragraph reopens here;
+            # keep the author's number instead of restarting at 1.
+            if output[-1] == r"\begin{enumerate}" and start > 1 and depth <= 4:
+                level = ("i", "ii", "iii", "iv")[depth - 1]
+                output.append(rf"\setcounter{{enum{level}}}{{{start - 1}}}")
+            output.append(r"\item " + convert_inline(ordered.group(2)))
             i += 1
             continue
 

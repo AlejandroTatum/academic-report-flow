@@ -249,6 +249,11 @@ whenever the repository changes. All three are covered because a plain `git pull
 fires `post-merge` while `git pull --rebase` fires `post-rewrite` instead, and a
 branch switch fires neither.
 
+The hooks only sync while `main` is checked out. On a feature branch or a detached
+HEAD (for example in a linked worktree) they do nothing, so unreviewed skill text
+never reaches the runtimes; run `./scripts/sync_skills.sh --apply` by hand if you
+really want to try a branch live.
+
 The hook fingerprints the tracked contents of `skills/` and exits immediately when
 nothing changed, so an ordinary pull costs nothing. When a sync fails it says so
 and deliberately leaves the fingerprint unwritten, so the next pull retries rather

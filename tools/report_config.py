@@ -143,6 +143,9 @@ OVERRIDABLE_SECTIONS = frozenset({"cover"})
 # nothing may fall back silently to the academic route.
 ROUTE_KEY = "route"
 DEFAULT_ROUTE = "academic"
+FLOW_KEY = "flow"
+DEFAULT_FLOW = "standard"
+FLOWS = ("standard", "express")
 
 ROUTE_ALIASES = {
     "a": "academic",
@@ -466,6 +469,20 @@ class ReportConfig:
     @property
     def format_hint_is_known(self) -> bool:
         return self.format_hint in FORMAT_REQUIRED_METADATA
+
+    @property
+    def flow(self) -> str:
+        """``standard`` (absent key) or ``express``; an unknown value verbatim.
+
+        ``express`` drops the draft approval question for quick documents on
+        the non-academic routes: the user decides once, at the final review.
+        """
+        written = str(self.raw.get(FLOW_KEY) or "").strip().lower()
+        return written or DEFAULT_FLOW
+
+    @property
+    def flow_is_known(self) -> bool:
+        return self.flow in FLOWS
 
     @property
     def format_spec(self) -> str:

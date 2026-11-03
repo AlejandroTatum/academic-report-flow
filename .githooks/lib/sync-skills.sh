@@ -20,6 +20,12 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 SYNC="$REPO_ROOT/scripts/sync_skills.sh"
 [[ -x "$SYNC" ]] || exit 0
 
+# Only the default branch is published. A feature branch or detached HEAD
+# (usually a linked worktree) holds unreviewed skill text that must not reach
+# the live runtimes on a checkout, rebase or commit.
+BRANCH="$(git symbolic-ref --short -q HEAD 2>/dev/null)" || exit 0
+[[ "$BRANCH" == "main" ]] || exit 0
+
 GIT_DIR="$(git rev-parse --git-dir)"
 STAMP="$GIT_DIR/skills-sync.stamp"
 
