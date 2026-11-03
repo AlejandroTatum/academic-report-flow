@@ -268,7 +268,24 @@ def write_files_atomically(files: list[tuple[Path, bytes]]) -> None:
             tmp.unlink(missing_ok=True)
 
 
-def record_approval(work_folder: Path, approved_by: str) -> Path:
+EXPRESS_APPROVER = "express flow (no draft gate)"
+
+
+def express_refusal(work_folder: Path) -> str:
+    """Why ``--express`` may not approve this folder, or ``""`` when it may."""
+    from report_config import ReportConfig, read_yaml
+
+    folder = Path(work_folder)
+    report = folder / "report.yml"
+    config = ReportConfig(folder=folder, raw=read_yaml(report) if report.is_file() else {})
+    if config.route == "academic":
+        return "--express is not allowed on route=academic"
+    if config.flow != "express":
+        return "--express needs flow: express in report.yml"
+    return ""
+
+
+def record_approval(work_folder: Path, approved_by: str, *, express: bool = False) -> Path:
     """Write ``approval.yml`` and ``approved-body.md`` from the current ``body.md``.
 
     Call it only for an explicit human approval of those exact bytes. Raises
@@ -290,6 +307,7 @@ def record_approval(work_folder: Path, approved_by: str) -> Path:
         # issue #96: the approved body is plain text; formatting happens in
         # body.typeset.md. Markers without this key are legacy (body.md renders).
         "typeset: required\n"
+        + ("gate: express\n" if express else "")
     )
     write_files_atomically(
         [(folder / SNAPSHOT_NAME, data), (folder / MARKER_NAME, marker.encode("utf-8"))]
@@ -304,10 +322,22 @@ def main(argv: list[str] | None = None) -> int:
         "approve", help="write approval.yml and approved-body.md; only after an explicit human approval"
     )
     approve.add_argument("folder", type=Path)
-    approve.add_argument("--by", required=True, help="the approving human's name")
+    who = approve.add_mutually_exclusive_group(required=True)
+    who.add_argument("--by", help="the approving human's name")
+    who.add_argument(
+        "--express",
+        action="store_true",
+        help="flow: express only: the agent records the draft approval; the user decides at final review",
+    )
     args = parser.parse_args(argv)
     try:
-        marker = record_approval(args.folder, args.by)
+        if args.express:
+            refusal = express_refusal(args.folder)
+            if refusal:
+                raise ValueError(refusal)
+            marker = record_approval(args.folder, EXPRESS_APPROVER, express=True)
+        else:
+            marker = record_approval(args.folder, args.by)
     except ValueError as exc:
         print(f"approval not recorded: {exc}", file=sys.stderr)
         return 1

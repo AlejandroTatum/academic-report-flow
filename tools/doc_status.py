@@ -174,6 +174,17 @@ def _phase_intake(folder: Path, config: ReportConfig, _documents_root: Path | No
         return PhaseState("intake", PENDING, "report.yml missing")
     if not config.route_is_known:
         return PhaseState("intake", BLOCKED, f"route={config.route} not recognized", "unknown_route")
+    if not config.flow_is_known:
+        return PhaseState(
+            "intake", BLOCKED, f"flow={config.flow} not recognized: use standard or express", "unknown_flow"
+        )
+    if config.flow == "express" and config.route == "academic":
+        return PhaseState(
+            "intake",
+            BLOCKED,
+            "flow=express is not allowed on route=academic: university work keeps its gates",
+            "express_academic_route",
+        )
     if config.format is not None and not config.format_is_known:
         return PhaseState(
             "intake", BLOCKED, f"format={config.format} not recognized", "unknown_format"
@@ -808,7 +819,13 @@ def _guidance(
     folder = Path(work_folder)
     if config is None:
         config = ReportConfig(folder=folder, raw=read_yaml(folder / "report.yml"))
-    if phase_name == "approval" and not draft_is_fresh(config.pdf_path, folder / "body.md"):
+    if phase_name == "approval" and config.flow == "express":
+        template = (
+            "express flow: there is no draft gate; do not ask the user and do not build a preview; "
+            "run {express_approve_command}, then re-run doc_status; "
+            "the user sees the document once, at review"
+        )
+    elif phase_name == "approval" and not draft_is_fresh(config.pdf_path, folder / "body.md"):
         template = (
             "rebuild the draft PDF: {build_command} --no-approval-check (the draft PDF is missing "
             "or does not match the current {body}); do not present the approval prompt until it "
@@ -871,6 +888,9 @@ def _guidance(
         final_review=folder / "final-review.yml",
         check_command=_tool_command("content_check.py", folder),
         packet_command=_tool_command("approval_packet.py", folder),
+        express_approve_command=shlex.join(
+            [sys.executable, str(ROOT / "tools" / "approval_marker.py"), "approve", str(folder), "--express"]
+        ),
         build_command=_tool_command("build_report_auto.py", folder),
         deliver_command=_tool_command("deliver_report.py", folder),
         typeset_bind_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "bind", str(folder)]),

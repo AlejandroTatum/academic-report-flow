@@ -2,6 +2,8 @@
 
 Phases `approval` (human gate) and `format`; the `typeset` phase that follows them is in `production.md`. No executor is delegated to the gate: the orchestrator presents the prompt and only the human's explicit answer may produce the marker. `doc_status` offers it only once the body check passes (`content.md`) and the verify passes (`production.md`): verify runs before approval, so the human approves with the requirement matrix in hand.
 
+Express (`flow: express`, `data.md`) has no draft gate: run `approval_marker.py approve <folder> --express`, which writes the same marker with `approved_by: "express flow (no draft gate)"` and `gate: express`, and continue; the human decides once, at review.
+
 ## Marker
 
 Artifact `reports/<wf>/approval.yml`, binding the exact bytes of `body.md` to a named human decision:
