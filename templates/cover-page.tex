@@ -1,0 +1,87 @@
+% Full-page UNL cover, shared by every assignment (ABPR, AA, APE, ACD, ...).
+% Same palette and type as aa-report.tex, laid out to fill the whole A4 sheet:
+% accent band on the left, letterhead, activity title block, identification
+% panel and a city/year footer. Filled by tools/build_cover.py.
+\documentclass[11pt]{article}
+\usepackage[a4paper,top=1.5cm,bottom=1.5cm,left=3.4cm,right=2.2cm]{geometry}
+\usepackage{fontspec}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{eso-pic}
+\usepackage{array}
+
+\IfFontExistsTF{Source Serif 4}{\setmainfont{Source Serif 4}[Ligatures=TeX]}{\setmainfont{TeX Gyre Pagella}[Ligatures=TeX]}
+\IfFontExistsTF{Source Sans 3}{\setsansfont{Source Sans 3}[Ligatures=TeX]}{\setsansfont{TeX Gyre Heros}[Ligatures=TeX]}
+\IfFontExistsTF{SourceSerif4-Light.otf}{%
+  \newfontfamily\serlight{SourceSerif4}[Extension=.otf,UprightFont=*-Light,ItalicFont=*-LightIt]
+}{\newcommand{\serlight}{\normalfont}}
+
+\definecolor{ink}{HTML}{1B1F1D}
+\definecolor{accent}{HTML}{1F4E3D}
+\definecolor{muted}{HTML}{5F6B66}
+\definecolor{hair}{HTML}{C9D1CC}
+\definecolor{wash}{HTML}{EEF2F0}
+
+\newcommand{\spaced}[1]{{\addfontfeatures{LetterSpace=8}#1}}
+\newcommand{\labelcaps}[1]{{\sffamily\fontsize{8}{10}\selectfont\color{muted}\spaced{\MakeUppercase{#1}}\par}}
+% One identification cell: small caps label over the value.
+\newcommand{\cell}[2]{\parbox[t]{\linewidth}{\labelcaps{#1}\vspace{4pt}{\raggedright\fontsize{12.5}{16}\selectfont\color{ink}#2\par}\vspace{6pt}}}
+
+\newcommand{\coversubtitle}[1]{\vspace{20pt}{\raggedright\itshape\fontsize{20}{27}\selectfont\color{muted}#1\par}}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+\AddToShipoutPictureBG*{%
+  % Full-height accent band and a hairline beside it.
+  \put(0,0){\color{accent}\rule{1.6cm}{\paperheight}}%
+  \put(\LenToUnit{1.6cm},0){\color{wash}\rule{0.35cm}{\paperheight}}%
+  % Vertical running label inside the band.
+  \put(\LenToUnit{1.05cm},\LenToUnit{1.6cm}){\rotatebox{90}{\sffamily\footnotesize\bfseries\color{white}%
+    \spaced{\MakeUppercase{{{UNIVERSITY}}}\ \,·\ \,{{YEAR}}}}}%
+}
+
+% Letterhead.
+\begin{minipage}[t]{6.2cm}\vspace{0pt}\includegraphics[width=6.0cm]{{{LOGO_PATH}}}\end{minipage}\hfill
+\begin{minipage}[t]{\dimexpr\linewidth-6.8cm\relax}\vspace{6pt}\raggedleft\sffamily\color{ink}
+  {\small\bfseries\spaced{\MakeUppercase{{{UNIVERSITY}}}}\par}\vspace{4pt}
+  {\footnotesize {{FACULTY}}\par}\vspace{2pt}
+  {\footnotesize {{CAREER}}\par}
+\end{minipage}
+
+\vspace{0.5cm}
+{\color{accent}\rule{\linewidth}{1.2pt}}
+
+\vfill
+
+% Title block.
+{\sffamily\normalsize\bfseries\color{accent}\spaced{{{KICKER}}}\par}
+\vspace{12pt}
+{\color{accent}\rule{2.6cm}{3pt}}\par
+\vspace{18pt}
+{\serlight\fontsize{56}{60}\selectfont\color{ink}{{HEADING}}\par}
+{{TITLE_BLOCK}}
+
+\vfill
+
+% Identification panel.
+{\color{accent}\rule{\linewidth}{1.2pt}}\par\nointerlineskip
+\colorbox{wash}{\begin{minipage}{\dimexpr\linewidth-2\fboxsep\relax}
+\vspace{20pt}
+\hspace{16pt}\begin{minipage}{\dimexpr\linewidth-32pt\relax}
+{\sffamily\small\bfseries\color{accent}\spaced{DATOS DE IDENTIFICACIÓN}\par}
+\vspace{20pt}
+\begin{tabular}{@{}p{\dimexpr0.5\linewidth-12pt\relax}@{\hspace{24pt}}p{\dimexpr0.5\linewidth-12pt\relax}@{}}
+{{FICHA_ROWS}}
+\end{tabular}
+\end{minipage}
+\vspace{16pt}
+\end{minipage}}
+
+\vfill
+
+% Footer.
+{\color{hair}\rule{\linewidth}{0.5pt}}\par\vspace{8pt}
+{\sffamily\small\color{muted}{{CITY}}\hfill\bfseries\color{accent}{{YEAR}}\par}
+\end{document}

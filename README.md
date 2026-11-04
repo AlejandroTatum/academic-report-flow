@@ -179,6 +179,33 @@ A folder named with a leading `_` is scratch work and is not copied to
 `outputs/<materia>/`. That prefix is *only* about publication — use
 `publish_global:` when you want to say so explicitly.
 
+### Cover page for any assignment
+
+`templates/cover-page.tex` is the shared full-page UNL cover (ABPR, AA, APE,
+ACD...). Fill a small YAML and build it:
+
+```yaml
+activity: ABPR            # required
+subject: Fundamentos de Redes de Comunicaciones   # required
+heading: Video integrador # required, large title
+title: Subtítulo descriptivo   # optional
+student: Nombre Apellido  # or members: [Ana, Luis]
+teacher: Ing. Nombre Apellido
+cycle: Quinto
+parallel: A               # optional, printed only when given
+unit: "Unidad 1: Introducción"
+date: "3 de noviembre de 2026"
+```
+
+```bash
+.venv/bin/python tools/build_cover.py cover.yml            # -> portada.pdf next to the YAML
+.venv/bin/python tools/build_cover.py cover.yml --tex-only # only write portada.tex
+```
+
+Optional keys with defaults: `city` (Loja, Ecuador), `year` (from `date`),
+`university`, `faculty`, `career`. It compiles with `lualatex` or, if absent,
+the TeX Live Docker image.
+
 ### 5. Optional: install the Node toolchain
 
 Only needed for `tools/visual_builder.py`. Everything above works without it.
