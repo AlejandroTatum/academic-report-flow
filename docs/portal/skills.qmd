@@ -1,0 +1,46 @@
+---
+title: "Skills"
+---
+
+`skills/` contiene las definiciones de skills del agente y es su única fuente de verdad. Los runtimes del agente
+(`~/.claude/skills/`, `~/.config/opencode/skills/`, entre otros) son espejos: se edita aquí y se sincroniza hacia afuera
+([Sincronización](sincronizacion-skills.qmd)). La estructura obligatoria de un `SKILL.md` está en la
+[guía de estilo de skills](../skill-style-guide.md).
+
+| Skill | Responsabilidad |
+|---|---|
+| `skills/academic-report-flow/` | Posee todo el flujo documental: intake, investigación, plan, borrador, aprobación, verify, formato, generación, validación, revisión y entrega |
+| `skills/research-workflow/` | Produce paquetes de evidencia trazables afirmación por afirmación; no crea ni entrega informes |
+| `skills/academic-visual-builder/` | Posee los recursos visuales: figuras, diagramas, infografías y su validación |
+
+`academic-report-flow` conduce el bucle `doc_status -> next -> referencia -> delegar -> volver a correr`: el token
+`next` que devuelve `tools/doc_status.py` decide qué referencia se carga y qué ejecutor trabaja
+([Flujo del documento](flujo.qmd)).
+
+## Referencias de cada skill
+
+**`academic-report-flow`** (`skills/academic-report-flow/references/`)
+
+| Archivo | Contenido |
+|---|---|
+| `routing.md` | bucle, carpetas de trabajo, bloque de estado y rutas A a E |
+| `data.md` | Decisión 1: intake, flujo express, registro de `report.yml` |
+| `content.md` | investigación, plan, borrador y verificación del cuerpo |
+| `approval.md` | Decisión 2: aprobación más formato |
+| `production.md` | verify, typeset, generación, validación y compuertas de calidad |
+| `delivery.md` | Decisión 3: revisión final y entrega |
+| `unl-shell.md`, `visual-directions.md` | carcasa institucional UNL (solo ruta A) y direcciones visuales |
+
+Los perfiles de curso de `references/profiles/` contienen datos reales de materias y no se publican en este portal.
+
+**`research-workflow`**: `references/research-protocol.md` y la plantilla `assets/evidence-matrix-template.md`.
+
+**`academic-visual-builder`**: `references/visual-workflow.md` (rutas y flujo), `figures-yml-schema.md` (contrato de
+`figures.yml`), `bauhaus-maps.md` (estilo por defecto de mapas conceptuales y de proceso) y `editorial-style.md`
+(estilo editorial para las demás figuras); ejemplos en `assets/examples/`.
+
+## Contrato de las skills
+
+Las skills se prueban con pruebas estáticas de contrato en `tests/skills/` ([Pruebas](pruebas.qmd)); los casos de
+conversación de `tests/skills/conversation-cases.md` requieren una corrida real de la skill y se verifican leyendo la
+primera respuesta del asistente. Las propuestas de cambio están en [Mejoras de la skill](mejoras-skill.qmd).

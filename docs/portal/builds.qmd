@@ -1,0 +1,72 @@
+---
+title: "Builds"
+---
+
+## Informe entregable (pipeline canónico)
+
+Un informe es una carpeta con `report.yml`, `body.md` y `sources.bib`. Parte de
+`examples/ejemplo_informe_academico/`, que es una carpeta completa y mínima: cópiala dentro de
+`$REPORT_CONTENT_ROOT/reports/`, renómbrala y edítala (las rutas relativas internas asumen esa ubicación).
+
+```bash
+python3 tools/build_report_auto.py <carpeta-del-reporte>/
+python3 tools/validate_report.py <carpeta-del-reporte>/
+```
+
+El build exige un `approval.yml` vigente; para un preview usa `--no-approval-check` y para solo validar,
+`--validate-only` ([Pipelines](pipelines.qmd)). En el flujo con agente, `doc_status.py` indica qué fase toca y las
+herramientas de entrega publican el PDF final ([Flujo del documento](flujo.qmd)).
+
+El ejemplo incluido cumple todas las reglas del validador sin excepciones y `tools/test_shipped_example.py` lo mantiene
+así. Muestra además dos decisiones a propósito:
+
+- `route:` se declara en vez de dejarlo al valor académico por defecto. La ruta decide qué metadatos se exigen; un
+  documento de proyecto o de negocio que no la declara se valida como trabajo universitario y se le pide un docente.
+- El PDF final va a `outputs/<materia>/`, nunca a `reports/<trabajo>/outputs/`.
+
+Una carpeta con prefijo `_` es borrador y no se copia a `outputs/<materia>/`; ese prefijo solo se refiere a la
+publicación (`publish_global:` lo dice de forma explícita).
+
+## Vista previa de un Markdown
+
+```bash
+python3 tools/build_report.py examples/sample_report.md --html outputs/sample_report.html
+python3 tools/build_report.py examples/sample_report.md --pdf outputs/sample_report.pdf
+```
+
+Ambos comandos usan el pipeline de vista previa, no sirven para una entrega.
+
+## Portada para cualquier trabajo
+
+`templates/cover-page.tex` es la portada UNL de página completa compartida (ABPR, AA, APE, ACD…). Se llena un YAML
+pequeño y se construye:
+
+```yaml
+activity: ABPR            # obligatorio
+subject: Fundamentos de Redes de Comunicaciones   # obligatorio
+heading: Video integrador # obligatorio, título grande
+title: Subtítulo descriptivo   # opcional
+student: Nombre Apellido  # o members: [Ana, Luis]
+teacher: Ing. Nombre Apellido
+cycle: Quinto
+parallel: A               # opcional, se imprime solo si se da
+unit: "Unidad 1: Introducción"
+date: "3 de noviembre de 2026"
+```
+
+```bash
+.venv/bin/python tools/build_cover.py cover.yml            # -> portada.pdf junto al YAML
+.venv/bin/python tools/build_cover.py cover.yml --tex-only # solo escribe portada.tex
+```
+
+Claves opcionales con valores por defecto: `city` (Loja, Ecuador), `year` (se toma de `date`), `university`, `faculty`
+y `career`. Compila con `lualatex` o, si no está, con la imagen Docker de TeX Live.
+
+## Recursos visuales
+
+```bash
+python3 tools/visual_builder.py --help
+```
+
+Soporta Mermaid, Vega-Lite, ECharts, capturas HTML con Playwright y la validación de los recursos generados. Los
+requisitos de cada flujo están en [Instalación](instalacion.qmd#cadena-de-node).

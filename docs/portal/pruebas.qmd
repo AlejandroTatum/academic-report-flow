@@ -1,0 +1,37 @@
+---
+title: "Pruebas"
+---
+
+## Organización
+
+| Ubicación | Qué cubre |
+|---|---|
+| `tools/test_*.py` | pruebas unitarias y de comportamiento de las herramientas de `tools/` |
+| `tests/skills/` | contratos estáticos de las skills y de la sincronización (`test_document_workflow_contract.py`, `test_report_builder_routing.py`, `test_research_workflow_contract.py`, `test_visual_builder_contract.py`, `test_sync_skills.py`, `test_sync_hook.py`) |
+| `tests/skills/conversation-cases.md` | casos de comportamiento que requieren una corrida real de la skill; no son automáticos |
+| `tools/fixtures/`, `tests/fixtures/` | datos de apoyo para las pruebas |
+| `conftest.py` (raíz) y `tools/conftest.py` | ayudantes compartidos y aislamiento de cada corrida respecto del contenido real |
+
+El `conftest.py` de la raíz fija `REPORT_CONTENT_ROOT` a un directorio temporal antes de importar nada, de modo que ninguna
+prueba lee ni escribe el árbol real de trabajos privados ([Pipelines](pipelines.qmd#raiz-codigo-contenido)).
+
+## Cómo correrlas
+
+`pytest` no es una dependencia de runtime; vive en `requirements-dev.txt`:
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+python3 -m pytest tools/ tests/
+```
+
+Solo los contratos de skills, que es lo que exige `scripts/sync_skills.sh` antes de sincronizar:
+
+```bash
+python3 -m pytest tests/skills/ -q
+```
+
+## Notas
+
+- La nota de compatibilidad de `---` entre los backends LaTeX, DOCX y HTML está en [Pipelines](pipelines.qmd#compatibilidad-de-tres-guiones).
+- `tools/test_shipped_example.py` mantiene el ejemplo `examples/ejemplo_informe_academico/` cumpliendo todas las reglas
+  del validador sin excepciones.

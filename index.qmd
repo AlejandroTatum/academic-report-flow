@@ -1,0 +1,22 @@
+---
+title: "Academic Report Automation"
+subtitle: "Documentación del proyecto"
+---
+
+Toolkit en Python para generar informes universitarios estructurados: contenido en Markdown/YAML,
+validación de entregables, referencias IEEE y recursos visuales reproducibles, con entrega en PDF o DOCX.
+Este portal reúne la documentación que vive en el repositorio; cómo se construye y qué publica está en
+[Portal de documentación](docs/portal.md).
+
+## Por dónde empezar
+
+| Si quieres… | Lee |
+|---|---|
+| Entender para qué sirve el proyecto | [Contexto](docs/portal/contexto.qmd) |
+| Ver el flujo de un documento de principio a fin | [Flujo del documento](docs/portal/flujo.qmd) · [Decisiones del usuario](docs/portal/decisiones-usuario.qmd) |
+| Elegir entre `build_report_auto.py` y `build_report.py` | [Pipelines](docs/portal/pipelines.qmd) |
+| Buscar qué hace cada herramienta de `tools/` | [Herramientas](docs/portal/herramientas.qmd) |
+| Instalar el entorno y generar un informe | [Instalación](docs/portal/instalacion.qmd) · [Builds](docs/portal/builds.qmd) |
+| Correr las pruebas | [Pruebas](docs/portal/pruebas.qmd) |
+| Entender o sincronizar las skills del agente | [Skills](docs/portal/skills.qmd) · [Sincronización](docs/portal/sincronizacion-skills.qmd) |
+| Proponer cambios | [Mejoras de la skill](docs/portal/mejoras-skill.qmd) · [Cómo contribuir](docs/portal/contribuir.qmd) |

@@ -1,0 +1,43 @@
+---
+title: "Contexto"
+---
+
+## Qué problema resuelve
+
+Los informes universitarios exigen formato consistente, metadatos, figuras, referencias y entrega en PDF o DOCX.
+Este toolkit automatiza las partes repetitivas y deja el razonamiento del estudiante y la revisión final como lo más
+importante del proceso.
+
+> Principio: la automatización apoya la comprensión, la estructura, el formato y la revisión. No reemplaza el razonamiento
+> técnico, la evaluación de fuentes ni la responsabilidad final del estudiante sobre el contenido.
+
+## Capacidades
+
+- Contenido en Markdown/YAML (`report.yml`, `body.md`, `sources.bib`).
+- Generación de HTML, PDF (LaTeX) y DOCX.
+- Plantillas de formato académico UNL (`templates/`).
+- Validación de referencias IEEE y de calidad del entregable.
+- Recursos visuales con Mermaid, Vega-Lite, ECharts y capturas HTML (requiere la cadena de Node opcional,
+  ver [Instalación](instalacion.qmd#cadena-de-node)).
+- Una skill de agente que conduce el flujo documental con tres decisiones humanas
+  (ver [Flujo del documento](flujo.qmd)).
+
+## Qué pipeline usar
+
+Hay dos pipelines Markdown y no son intercambiables.
+
+| | Pipeline canónico | Pipeline de vista previa |
+|---|---|---|
+| Punto de entrada | `tools/build_report_auto.py` | `tools/build_report.py` |
+| Ruta | Markdown → `build_latex_report.py` → LaTeX → PDF | Markdown → HTML → PDF con WeasyPrint |
+| Entrada | carpeta con `report.yml`, `body.md`, `sources.bib` | un solo archivo Markdown |
+| Portadas, bibliografía, compuertas de validación | sí | no |
+| Úsalo para | todo lo que se entrega | mirar rápido un archivo Markdown |
+
+`build_report_auto.py` es el canónico para todo lo que vas a entregar. Detalles en [Pipelines](pipelines.qmd).
+
+## Alcance público
+
+La versión pública del repositorio está sanitizada para portafolio: contiene plantillas genéricas y datos de ejemplo.
+El trabajo real de cursos vive fuera del repositorio, en la raíz de contenido
+(ver [Pipelines](pipelines.qmd#raiz-codigo-contenido)).

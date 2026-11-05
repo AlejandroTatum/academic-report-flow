@@ -1,0 +1,62 @@
+---
+title: "Pipelines"
+---
+
+## Dos pipelines Markdown
+
+| | Canónico (`build_report_auto.py`) | Vista previa (`build_report.py`) |
+|---|---|---|
+| Ruta | Markdown → `build_latex_report.py` → LaTeX → PDF | Markdown → HTML → PDF con WeasyPrint |
+| Entrada | carpeta con `report.yml`, `body.md`, `sources.bib` | un solo archivo Markdown |
+| Portadas, bibliografía BibTeX, compuertas de validación | sí | no |
+| Lee `report.yml` | sí | no |
+
+**`build_report_auto.py` es el canónico para todo lo que se entrega.** Es el pipeline que la skill exige
+(`skills/academic-report-flow/references/routing.md` y `production.md`) y el único que renderiza citas BibTeX, portadas
+institucionales y las compuertas de validación.
+
+`build_report.py` es una vista previa ligera de un solo archivo: sirve para ver prosa y tablas en el navegador sin
+LaTeX. No resuelve claves `[@cita]` ni construye bibliografía; si encuentra sintaxis de cita, lo avisa con un banner
+en lugar de renderizarla.
+
+## Cómo enruta el pipeline canónico
+
+`build_report_auto.py` es un router de backends: elige según `report.yml` el builder LaTeX
+(`build_latex_report.py`), el de DOCX (`build_docx_report.py`) o uno visual, y falla con un mensaje claro ante un
+backend no soportado en lugar de pasar a validación. Sin un `approval.yml` vigente no construye, salvo con
+`--no-approval-check` (solo previews, nunca para entrega). Otras banderas: `--validate-only` y `--tex-only`.
+
+## Compatibilidad de tres guiones (`---`) {#compatibilidad-de-tres-guiones}
+
+Los tres backends leen la misma secuencia de forma distinta, así que un `body.md` escrito para uno puede malinterpretarse
+en otro:
+
+- **Rama LaTeX** (`build_latex_report.py`): una línea que cumple `^-{3,}$` se convierte en `\newpage`, en cualquier punto.
+- **Rama DOCX** (`build_docx_report.py`): la misma línea inserta un salto de página, igual que en LaTeX.
+- **Rama HTML** (`build_report.py`): un `---` en la **primera** línea abre un bloque de front-matter YAML con los metadatos.
+
+`build_report.py` trata `---` como front-matter solo cuando abre el archivo y el bloque se lee como pares `clave: valor`.
+Un `---` usado como salto de página, o cualquiera más abajo, se renderiza como regla horizontal y nunca se confunde con
+metadatos. Las ramas LaTeX y DOCX no tienen esa guarda, de modo que un front-matter pensado para la rama HTML se volverá
+saltos de página allí. Mantén cada `body.md` atado a un solo backend.
+
+## Raíz de código y raíz de contenido {#raiz-codigo-contenido}
+
+`tools/report_config.py` separa dos raíces a propósito:
+
+| Raíz | Qué contiene | Cómo se define |
+|---|---|---|
+| Código (`ROOT`) | `tools/`, `templates/`, activos del logo, cadena de Node | el checkout que contiene `tools/` |
+| Contenido (`CONTENT_ROOT`) | `reports/`, `academic-sources/`, `assets/generated/`, `outputs/`, `backups/`, `build/`, `visuals/` | variable `REPORT_CONTENT_ROOT`; si no existe, `DEFAULT_CONTENT_ROOT` de `report_config.py` |
+
+Tienen ciclos de vida y privacidad distintos: el código se versiona y puede ser público; el contenido es trabajo
+académico personal, crece cada semestre y puede vivir en otro disco. Derivar ambos de la ubicación de los scripts enviaba
+reportes y figuras al checkout del código apenas este se movía, y esa es la falla que la separación evita.
+
+`skills/academic-report-flow/references/routing.md` suma una tercera elección independiente, `REPORT_PYTHON` (el
+intérprete con las dependencias), para el caso de un worktree sin `.venv`. La carpeta de un trabajo es
+`$REPORT_CONTENT_ROOT/reports/<slug>/`; los PDF finales se publican bajo `outputs/<materia>/` y, al entregar, en la
+biblioteca de Documentos mediante `deliver_report.py`.
+
+Una carpeta de trabajo cuyo nombre empieza con `_` es borrador y no se copia a `outputs/<materia>/`; ese prefijo solo
+afecta a la publicación.

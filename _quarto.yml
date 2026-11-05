@@ -1,0 +1,83 @@
+# Documentation portal (docs/portal.md). Private: rendered locally with `quarto render` / `quarto preview`.
+# There is no CI job and no GitHub Pages deploy.
+project:
+  type: website
+  output-dir: _site
+  # Whitelist: only these files become pages. Real course data (skills/**/profiles/, outputs/,
+  # openspec/changes/archive/**), odd/ and the historical diagrams stay out.
+  render:
+    - index.qmd
+    - docs/portal.md
+    - docs/portal/*.qmd
+    - docs/skill-style-guide.md
+    - openspec/specs/document-workflow/spec.md
+    - openspec/specs/document-workflow-orchestration/spec.md
+
+# Draws the plain ```mermaid fences (docs/portal.md#diagramas).
+filters:
+  - mermaid-fence
+
+lang: es
+
+execute:
+  enabled: false
+
+website:
+  title: "Academic Report Automation"
+  search:
+    location: sidebar
+  page-navigation: true
+  navbar:
+    left:
+      - href: index.qmd
+        text: Inicio
+      - href: docs/portal/contexto.qmd
+        text: Contexto
+      - href: docs/portal/flujo.qmd
+        text: Flujo
+      - href: docs/portal/herramientas.qmd
+        text: Herramientas
+      - href: docs/portal/instalacion.qmd
+        text: Operación
+  sidebar:
+    style: docked
+    contents:
+      - index.qmd
+      # Same sections as the other portals (docs/portal.md#secciones). Sections without pages are omitted.
+      - section: Contexto
+        contents:
+          - docs/portal/contexto.qmd
+      - section: Especificación
+        contents:
+          - openspec/specs/document-workflow/spec.md
+          - openspec/specs/document-workflow-orchestration/spec.md
+          - docs/portal/decisiones-usuario.qmd
+      - section: Modelado
+        contents:
+          - docs/portal/flujo.qmd
+      - section: Arquitectura
+        contents:
+          - docs/portal/pipelines.qmd
+          - docs/portal/herramientas.qmd
+          - docs/portal/skills.qmd
+          - docs/skill-style-guide.md
+      - section: Calidad
+        contents:
+          - docs/portal/pruebas.qmd
+      - section: Operación
+        contents:
+          - docs/portal/instalacion.qmd
+          - docs/portal/builds.qmd
+          - docs/portal/sincronizacion-skills.qmd
+      - section: Equipo
+        contents:
+          - docs/portal/mejoras-skill.qmd
+          - docs/portal/contribuir.qmd
+          - docs/portal.md
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-copy: true
+    lightbox: true
