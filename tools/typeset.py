@@ -31,6 +31,7 @@ import sys
 from difflib import SequenceMatcher
 from pathlib import Path
 
+import timings
 from approval_marker import BODY_NAME, MARKER_NAME, approval_state, utc_now, write_files_atomically
 from content_check import body_format_problems
 from report_config import (
@@ -201,7 +202,9 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"bound {target} to {BODY_NAME}; format it there, never in {BODY_NAME}")
     try:
-        results = check_results(args.folder)
+        # A refused bind wrote nothing and returned above; only a real check is timed.
+        with timings.timed(args.folder, "typeset", "typeset.py"):
+            results = check_results(args.folder)
     except (OSError, ValueError, TypeError) as exc:
         print(f"typeset check input error: {exc}", file=sys.stderr)
         return 2

@@ -28,8 +28,11 @@ skill references it changes; `scripts/sync_skills.sh` refreshes the installed sk
 - S6 (text quality, slice 6): more deterministic lint in `concision.py` (warn-only except unambiguous patterns)
   and `prose_findings` surfaced in the verifier output.
 
-Out of scope until the user decides (questions 5-6 of `mejoras-skill.qmd`): slice 5 (timings, parallel verify)
-and slice 8 (`typeset.py auto`, grouping phases).
+- S7 (slice 5, L6): "Solo la 5 (recomendado)" — measure how long each phase takes in `timings.yml` and run the
+  verification in parallel with the draft preview build. No phase is added, removed or renamed, and the human
+  decisions are unchanged.
+
+Out of scope until the user decides with timing data: slice 8 (`typeset.py auto`, grouping phases).
 
 ## Tasks
 
@@ -37,12 +40,14 @@ and slice 8 (`typeset.py auto`, grouping phases).
 - T2 (S6): concision lint and prose_findings — writer C — commit: 354babd (242 focused tests pass; docs/portal/herramientas.qmd row update deferred to T1 surface)
 - T3 (S1-S3): rubric_trace, rubric_grade, review presentation, validate checks — writer B — commit: "feat(rubric): trace, informational grade and final-artifact checks" (842 focused tests pass)
 - T4 (S5): guide inventory and `partial` state — commit: "feat(rubric): guide inventory mapping and partial requirement state" (804 focused tests + tests/skills 417 pass; added `covers:` list for semantic inventory items)
-- T5: full suite, sync installed skill, PR — parent — commit: pending
+- T5: full suite, sync installed skill, PR — parent — done: PR #109 merged (a95d1be), skills synced, 2978 passed, independent verify PASS
+- T6 (S7): phase timings and parallel verify — branch `feat/flow-timings` — PAUSED by user ("frenamos, me cambio de cuenta"): writer cancelled mid-GREEN; WIP committed unverified, not pushed. Resume: rerun focused tests, finish instrumentation, full suite, PR.
 
 ## Log
 
 - L1: "quiero que hagas la docuemntacion del proeycto en quarto como los demas repos, mejores readme, y podemos ir planteando mejoras en la skill. aunque por ahora me va regular" (context: odd/tasks/quarto-docs-portal.md)
 - L2: "subelos en pages y agrega si. tambien pushea y actualiza la skill"
 - L3: Earlier user priorities: "en cuanto a la rubrica, me gustaria que este mas presente en cada punto y sobre todo al final, califique sobre eso."; "Muy lenta / demasiadas fases", "Calidad del texto", "No sigue la rúbrica/guía".
+- L6: Decision on speed slices: user selected "Solo la 5 (recomendado)" (measure timings and parallelize verification; slice 8 decided later with data).
 - L5: "exacto solo es informativa" — the rubric grade is informational only: never a gate on review or delivery; `test_skill_tree_adds_no_detector_or_percentage_gate` stays unchanged.
 - L4: "tambien otro problema es que el borrador lo da en formato AA, para mayor eficiencia, un formato simple sin logos sin plantilla. que abra un pdf temporar con el contenido"

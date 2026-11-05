@@ -65,6 +65,7 @@ import concision
 import link_check
 import rubric_plan
 import rubric_checks
+import timings
 import yaml
 from approval_marker import BODY_NAME, sha256_file
 from report_config import ReportConfig, read_yaml
@@ -1224,13 +1225,15 @@ def main(argv: list[str] | None = None, fetcher: link_check.Fetcher | None = Non
         return 0
 
     if args.body_check:
-        return run_body_check(args.folder)
+        with timings.timed(args.folder, "draft", "content_check.py"):
+            return run_body_check(args.folder)
 
     if len(args.verification) != 1:
         print("content check input error: exactly one verification file required: pass one --verification",
               file=sys.stderr)
         return 2
-    outcome = run_check(args.folder, args.verification[0], fetcher=fetcher)
+    with timings.timed(args.folder, "verify", "content_check.py"):
+        outcome = run_check(args.folder, args.verification[0], fetcher=fetcher)
     if outcome.errors:
         for error in outcome.errors:
             print(f"content check input error: {error}", file=sys.stderr)

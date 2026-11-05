@@ -19,7 +19,7 @@ Recommend at most one type with a reason, never select it. Ambiguity stops the r
 
 ## Hard Rules
 
-Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `validate_report.py`, visual audit, `deliver_report.py`); run them and obey their blocks. Three human decisions: data, draft approval plus format, final review. Express (`flow: express`, routes B-E only, `references/data.md`) keeps one: the final review.
+Tools record per-phase durations in `timings.yml` in the work folder (informational, never a gate; `tools/timings.py <folder>` prints totals, slowest first). Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `validate_report.py`, visual audit, `deliver_report.py`); run them and obey their blocks. Three human decisions: data, draft approval plus format, final review. Express (`flow: express`, routes B-E only, `references/data.md`) keeps one: the final review.
 
 - Present the human block verbatim and every human gate losslessly; never proceed on silence.
 - Quality over quantity: no minimum length; preserve complete coverage. Cut redundancy or add necessary evidence or explanation when needed (`references/content.md`).

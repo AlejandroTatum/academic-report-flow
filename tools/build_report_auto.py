@@ -26,6 +26,7 @@ from approval_marker import (
     write_draft_record,
     write_render_record,
 )
+import timings
 import typeset
 from report_config import load_report_config
 from validate_report import validate
@@ -132,7 +133,12 @@ def main() -> None:
         help="Construye sin approval.yml vigente (solo previews; nunca para entrega)",
     )
     args = parser.parse_args()
+    phase = "validate" if args.validate_only else "generate"
+    with timings.timed(args.folder, phase, "build_report_auto.py"):
+        _run(args)
 
+
+def _run(args: argparse.Namespace) -> None:
     if not (args.validate_only or args.no_approval_check):
         approval = approval_state(args.folder)
         if not approval.ok:

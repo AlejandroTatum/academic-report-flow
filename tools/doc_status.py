@@ -90,7 +90,8 @@ _GUIDANCE = {
     "plan": "record the teacher's rubric in {rubric}, then re-run doc_status",
     "draft": "draft {body}, then re-run doc_status",
     "approval": (
-        "before asking, build the plain draft PDF with {draft_command} for content "
+        "before asking, have the plain draft PDF built with {draft_command} (already done when it ran "
+        "in parallel with the verify and is fresh) for content "
         "review (no cover, logos or course template, in a temporary folder, opened for the user): "
         "the draft is plain text, so no layout is judged and none is fixed in {body}; "
         "formatting is applied in body.typeset.md after approval and the layout is audited after "
@@ -106,7 +107,9 @@ _GUIDANCE = {
         "launch ONE independent verifier for {rubric} with the brief from {check_command} "
         "--verify-brief (add --verify-brief --since verification.yml when it exists, so only "
         "changed sections are re-checked), save its matrix as verification.yml; run {check_command} "
-        "--verification verification.yml, then re-run doc_status"
+        "--verification verification.yml, then re-run doc_status; the verifier and {draft_command} "
+        "(the preview build) do not depend on each other: start both in parallel for the same {body} "
+        "bytes, and the approval gate stays closed until the draft and the verification are both current"
     ),
     "format": (
         "the format answers normally arrive with the approval batch; ask only the missing "
