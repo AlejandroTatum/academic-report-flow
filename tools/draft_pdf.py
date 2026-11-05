@@ -15,6 +15,7 @@ import argparse
 import re
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import pdf_viewer
@@ -32,7 +33,7 @@ from markdown_image import IMAGE_PATTERN
 from report_config import ReportConfig, read_yaml, resolve_in_folder
 
 # report.yml keys that change how the body reads, not how the page looks.
-CONTENT_KEYS = ("citation_style", "section_numbering", "figure_placement", "uncited_bibliography")
+CONTENT_KEYS = ("citation_style", "section_numbering", "figure_placement")
 FIGURES_DIR = "figures"
 REMOTE_SOURCE = ("http://", "https://", "data:")
 
@@ -67,6 +68,22 @@ def _copy_figures(body: str, folder: Path, target: Path) -> str:
     return IMAGE_PATTERN.sub(rewrite, body)
 
 
+@dataclass
+class DraftConfig(ReportConfig):
+    """Draft config on the plain ``other`` route that still prints the whole bibliography.
+
+    ``ReportConfig.uncited_bibliography`` only allows the academic route, which the draft
+    leaves on purpose; the report's own config already validated the flag, so the draft
+    carries the result instead of the strict key.
+    """
+
+    print_whole_bibliography: bool = False
+
+    @property
+    def uncited_bibliography(self) -> bool:
+        return self.print_whole_bibliography
+
+
 def _draft_config(folder: Path, target: Path) -> ReportConfig:
     """The plain-template config of the draft: course metadata and cover machinery stay behind."""
     report_yml = folder / "report.yml"
@@ -88,7 +105,7 @@ def _draft_config(folder: Path, target: Path) -> ReportConfig:
     if bib is not None:
         shutil.copy2(bib, target / bib.name)
         raw["bibliography"] = str(target / bib.name)
-    return ReportConfig(folder=target, raw=raw)
+    return DraftConfig(folder=target, raw=raw, print_whole_bibliography=original.uncited_bibliography)
 
 
 def render_draft(folder: Path) -> Path:
