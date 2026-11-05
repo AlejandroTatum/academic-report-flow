@@ -296,6 +296,11 @@ def _phase_approval(folder: Path, _config: ReportConfig, _documents_root: Path |
     also returns to ``pending``, because editing after approval is the normal
     review loop, not a deadlock. Only a malformed marker is ``blocked``, with the
     predicate's own bounded reason. The marker is never written here.
+
+    Approval is not offered (``blocked``, ``guide_inventory_unmapped``) while a
+    guide inventory item has no criterion and no ``not_applicable:`` entry: evidence
+    coverage of the guide, never a score threshold and never about ``missing``
+    requirements (the verify gate owns those).
     """
     state = approval_state(folder)
     if state.state == "current":
@@ -303,6 +308,16 @@ def _phase_approval(folder: Path, _config: ReportConfig, _documents_root: Path |
         return PhaseState("approval", DONE, f"approval.yml matches {bound}")
     if state.state == "carried":
         return PhaseState("approval", DONE, state.detail)
+    if state.state in ("absent", "stale"):
+        unmapped = rubric_plan.inventory_problems(folder)
+        if unmapped:
+            ids = ", ".join(problem.split(":", 1)[0] for problem in unmapped)
+            return PhaseState(
+                "approval",
+                BLOCKED,
+                f"guide inventory items without a criterion or not_applicable entry: {ids}",
+                "guide_inventory_unmapped",
+            )
     if state.state == "absent":
         return PhaseState("approval", PENDING, state.detail)
     if state.state == "stale":
@@ -825,6 +840,16 @@ def _guidance(
             "express flow: there is no draft gate; do not ask the user and do not build a preview; "
             "run {express_approve_command}, then re-run doc_status; "
             "the user sees the document once, at review"
+        )
+    elif phase_name == "approval" and blocked_reason == "guide_inventory_unmapped":
+        template = (
+            "do not offer approval yet: list the guide inventory with "
+            + _tool_command("guide_facts.py", folder).replace("{", "{{").replace("}", "}}")
+            + " --inventory, then in {rubric} name every unmapped item (G1, G2...) under a criterion's "
+            "deliverables: or covers:, or under a top-level not_applicable: entry {{item, reason}} "
+            "with the reason (an over-detected line, never a demand you skipped); run "
+            + _tool_command("rubric_plan.py", folder).replace("{", "{{").replace("}", "}}")
+            + ", re-verify if the rubric changed, then re-run doc_status"
         )
     elif phase_name == "approval" and not draft_preview_is_fresh(folder):
         template = (

@@ -36,12 +36,12 @@ ejecuta `python3 tools/<herramienta>.py --help` o lee el módulo. Las pruebas vi
 
 | Herramienta | Propósito |
 |---|---|
-| `guide_facts.py` | Extrae solo los hechos que la guía del docente declara explícitamente |
-| `rubric_plan.py` | La rúbrica del docente como plan verificable por máquina |
+| `guide_facts.py` | Extrae solo los hechos que la guía del docente declara explícitamente; con `--inventory` lista, numeradas `G1`, `G2`…, las exigencias detectadas (verbos de mandato, preguntas, entregables) de forma heurística |
+| `rubric_plan.py` | La rúbrica del docente como plan verificable por máquina; exige que cada ítem del inventario de la guía figure en `deliverables:`/`covers:` de un criterio o en `not_applicable:` con motivo (`guide_inventory_unmapped`), y `doc_status` no ofrece la aprobación mientras falte alguno |
 | `rubric_checks.py` | Aserciones deterministas de solo lectura sobre un plan de rúbrica y un borrador |
 | `rubric_trace.py` | Solo lectura: mapea cada criterio de la rúbrica (peso, secciones que lo cubren, checks, requisitos) y lista los no cubiertos; sirve en plan, borrador (`--section`), aprobación y validate (`--body`, `--pdf`) |
 | `rubric_grade.py` | Tabla final de calificación en la carpeta de trabajo (`rubric-grade.md/.yml`): peso, ubicación de la evidencia (sección y página del PDF), puntaje estimado `peso × found/total` y brecha; estimación mecánica, nunca la nota del docente, y solo la herramienta puntúa |
-| `content_check.py` | Verificación dura de contenido: registra la matriz del verificador y deriva el veredicto; guarda `prose_findings` en `content-check.yml` |
+| `content_check.py` | Verificación dura de contenido: registra la matriz del verificador (`found\|partial\|missing`; `partial` lleva la brecha escrita y mantiene el criterio en `falta`) y deriva el veredicto; guarda `prose_findings` en `content-check.yml` |
 | `concision.py` | Presupuestos de palabras, detección de relleno y lint de prosa consultivo (`prose_findings`) en un borrador |
 | `structure_contract.py` | Contrato de estructura confirmada del informe |
 | `evidence_contract.py` | Contrato de la matriz afirmación–evidencia |

@@ -177,7 +177,7 @@ def test_contract_constants_are_pinned() -> None:
     assert content_check.CONTENT_CHECK_SCHEMA == "academic.content-check/v1"
     assert content_check.VERIFICATION_SCHEMA == "academic.verification/v1"
     assert CONTENT_CHECK_SCHEMA == content_check.CONTENT_CHECK_SCHEMA
-    assert content_check.REQUIREMENT_STATUSES == ("found", "missing")
+    assert content_check.REQUIREMENT_STATUSES == ("found", "partial", "missing")
     assert content_check.JUDGMENT_STATUSES == ("cumple", "flojo", "falta")  # legacy markers
     assert content_check.MECHANICAL_NAMES == {
         "citations_resolve", "eligible_sources_cited", "verification_matches_rubric", "rubric_checks", "links_resolve",
@@ -218,7 +218,7 @@ def test_verify_brief_is_bound_and_read_only(tmp_path: Path, capsys: pytest.Capt
         assert str(folder / name) in brief
     assert _sha(folder / "body.md") in brief
     assert _sha(folder / "rubric.yml") in brief
-    assert "independent" in brief and "found|missing" in brief
+    assert "independent" in brief and "found|partial|missing" in brief
     assert "Do not edit" in brief and "unmapped_paragraphs" in brief
     assert "never score" in brief.lower() and "exactly" in brief and "missing" in brief
     assert "objetivo" in brief and "metodologia" in brief

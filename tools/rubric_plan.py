@@ -9,7 +9,11 @@ so the schema here is the contract between those two phases.
 
 ``validate_rubric`` is the pure shape checker; ``rubric_state`` is the
 folder-level predicate (``absent|malformed|valid``) status tools consume, and
-``load_rubric`` returns the criteria of a valid plan. Like every marker
+``load_rubric`` returns the criteria of a valid plan. ``inventory_problems`` is the
+evidence-coverage check against the guide inventory (``guide_facts.py``): every
+inventory item (``G1``...) must be named by some criterion's ``deliverables:`` or
+``covers:`` (an id, or the item's text) or by a top-level ``not_applicable:``
+entry ``{item, reason}``; it never judges whether the criterion is good enough. Like every marker
 predicate in this repo, ``rubric_state`` never raises and never writes: an
 unreadable, non-UTF-8 or non-mapping file is ``malformed`` data the caller can
 report, never a crash and never something this module "repairs".
@@ -18,8 +22,10 @@ from __future__ import annotations
 
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
+import guide_facts
 from report_config import read_yaml
 
 RUBRIC_NAME = "rubric.yml"
@@ -105,6 +111,29 @@ def _deliverable_errors(criterion: dict, index: int) -> list[str]:
     return []
 
 
+def _text_list_errors(value: object, label: str) -> list[str]:
+    if not isinstance(value, list) or not all(_is_text(v) for v in value):
+        return [f"{label} must be a list of non-empty strings"]
+    return []
+
+
+def _not_applicable_errors(entries: object) -> list[str]:
+    if not isinstance(entries, list):
+        return [f"{RUBRIC_NAME} not_applicable must be a list of {{item, reason}} mappings"]
+    errors = []
+    for index, entry in enumerate(entries, start=1):
+        label = f"{RUBRIC_NAME} not_applicable {index}"
+        if not isinstance(entry, dict):
+            errors.append(f"{label} must be a mapping with item and reason")
+            continue
+        for key in ("item", "reason"):
+            if not _is_text(entry.get(key)):
+                errors.append(f"{label} {key} must be a non-empty string")
+        for key in entry.keys() - {"item", "reason"}:
+            errors.append(f"{label} unexpected key '{key}'")
+    return errors
+
+
 def _is_positive_int(value: object) -> bool:
     # A word ceiling: a whole number above zero (bool is an int subclass).
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
@@ -122,6 +151,9 @@ def validate_rubric(data: object) -> list[str]:
         errors.append(f"{RUBRIC_NAME} source must be a non-empty string")
     if "max_words" in data and not _is_positive_int(data["max_words"]):
         errors.append(f"{RUBRIC_NAME} max_words must be a positive integer")
+
+    if "not_applicable" in data:
+        errors.extend(_not_applicable_errors(data["not_applicable"]))
 
     criteria = data.get("criteria")
     if not isinstance(criteria, list) or not criteria:
@@ -152,6 +184,8 @@ def validate_rubric(data: object) -> list[str]:
                 errors.append(f"{RUBRIC_NAME} criterion {index} weight must be greater than 0")
         if "max_words" in criterion and not _is_positive_int(criterion["max_words"]):
             errors.append(f"{RUBRIC_NAME} criterion {index} max_words must be a positive integer")
+        if "covers" in criterion:
+            errors.extend(_text_list_errors(criterion["covers"], f"{RUBRIC_NAME} criterion {index} covers"))
         if "deliverables" in criterion:
             errors.extend(_deliverable_errors(criterion, index))
         if "checks" in criterion:
@@ -210,6 +244,47 @@ def load_max_words(report_dir: Path) -> int | None:
     return value if _is_positive_int(value) else None
 
 
+_ITEM_ID = re.compile(r"\bG\d+\b")
+
+
+def _fold(text: str) -> str:
+    return " ".join(unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower().split())
+
+
+def _is_mapped(item: dict, references: list[str], waivers: list[str]) -> bool:
+    """Whether a criterion names the item (id or text) or a ``not_applicable:`` entry waives it."""
+    text = _fold(item["text"])
+    if any(item["id"] in _ITEM_ID.findall(ref) or text in _fold(ref) for ref in references):
+        return True
+    return any(w.strip().upper() == item["id"] or _fold(w) == text for w in waivers)
+
+
+def inventory_problems(report_dir: Path) -> list[str]:
+    """One line per guide inventory item no criterion names and no ``not_applicable:`` entry waives.
+
+    Empty without a declared guide, an empty inventory or a valid rubric (a
+    malformed rubric is reported by ``rubric_state``). Never raises, never writes.
+    """
+    folder = Path(report_dir)
+    if rubric_state(folder) != "valid":
+        return []
+    try:
+        data = read_yaml(folder / RUBRIC_NAME)
+        inventory = guide_facts.load_guide_inventory(folder, read_yaml(folder / "report.yml"))
+    except Exception:
+        return []
+    references = [
+        text for criterion in data["criteria"] if isinstance(criterion, dict)
+        for key in ("deliverables", "covers") for text in criterion.get(key) or [] if isinstance(text, str)
+    ]
+    waivers = [entry["item"] for entry in data.get("not_applicable") or []]
+    return [
+        f"{item['id']}: {item['kind']}: \"{item['text']}\" has no criterion (deliverables: or covers:) "
+        "and no not_applicable: entry with a reason"
+        for item in inventory if not _is_mapped(item, references, waivers)
+    ]
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI: validate ``<folder>/rubric.yml``; print problems, exit 1 on failure."""
     args = sys.argv[1:] if argv is None else argv
@@ -226,6 +301,10 @@ def main(argv: list[str] | None = None) -> int:
         problems = [f"{RUBRIC_NAME} unreadable: {exc}"]
     if problems:
         print("rubric_malformed:\n- " + "\n- ".join(problems))
+        return 1
+    unmapped = inventory_problems(Path(args[0]))
+    if unmapped:
+        print("guide_inventory_unmapped:\n- " + "\n- ".join(unmapped))
         return 1
     print(f"{RUBRIC_NAME} OK")
     return 0

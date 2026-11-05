@@ -4,13 +4,16 @@
 verify-concise-drafts T6 replaces the two independent judges with ONE
 independent read-only verifier. It scores nothing: it fills a requirement ->
 evidence matrix (``verification.yml``, schema ``academic.verification/v1``):
-``requirements: [{criterion, requirement, status: found|missing, location,
-evidence}]`` plus ``unmapped_paragraphs`` (deletion candidates) and free-text
-``findings``. ``found`` needs ``evidence``, an exact quote from ``body.md``.
+``requirements: [{criterion, requirement, status: found|partial|missing, location,
+evidence, gap}]`` plus ``unmapped_paragraphs`` (deletion candidates) and free-text
+``findings``. ``found`` needs ``evidence``, an exact quote from ``body.md``;
+``partial`` (covered in part) needs that quote too and ``gap``, what is still
+absent; ``gap`` is written only for ``partial``, so records without it stay valid.
 This tool never generates the matrix; it validates it against the plan
 (``tools/rubric_plan.py``), downgrades any ``found`` requirement whose quote is
-not in ``body.md`` (whitespace-normalized) to ``missing`` with a finding, derives
-each criterion as ``cumple`` (all its requirements found) or ``falta``, adds the
+not in ``body.md`` (whitespace-normalized) to ``missing`` with a finding (same for
+``partial``), derives each criterion as ``cumple`` (all its requirements found;
+a ``partial`` does not count, only the grade weighs it) or ``falta``, adds the
 deterministic mechanical checks over ``body.md`` and the document bib, and writes
 ``content-check.yml`` (schema ``academic.content-check/v1``) with the derived
 ``result``: ``pass`` only when every criterion is ``cumple`` AND every
@@ -72,7 +75,7 @@ from validate_ieee_refs import bib_keys, cited_keys
 CONTENT_CHECK_NAME = "content-check.yml"
 CONTENT_CHECK_SCHEMA = "academic.content-check/v1"
 VERIFICATION_SCHEMA = "academic.verification/v1"
-REQUIREMENT_STATUSES = ("found", "missing")
+REQUIREMENT_STATUSES = ("found", "partial", "missing")
 JUDGMENT_STATUSES = ("cumple", "flojo", "falta")  # legacy two-judge markers
 RESULT_VALUES = ("pass", "fail")
 LEGACY_MECHANICAL_NAMES = {"citations_resolve", "eligible_sources_cited", "judgments_match_rubric", "rubric_checks"}
@@ -345,14 +348,17 @@ def _carried_requirements(folder: Path, criteria: list[dict], rubric_hash: str, 
     old = previous["section_sha256"]
     keep = {cid for cid, digest in current.items() if cid not in answered and old.get(cid) == digest}
     records = [record for record in previous["requirements"] if _carryable(record, keep)]
-    return [{key: str(record.get(key) or "") for key in ("criterion", "requirement", "status", "location", "evidence")}
+    return [{key: str(record.get(key) or "")
+             for key in ("criterion", "requirement", "status", "location", "evidence",
+                         *(("gap",) if record.get("status") == "partial" else ()))}
             for record in records]
 
 
 def _carryable(record: object, keep: set[str]) -> bool:
     """The marker is now an input, so a carried record meets parse_verification's
-    rules: a kept criterion, a non-blank demand, a valid status and, when found,
-    a non-blank quote (an empty quote would pass the in-body check)."""
+    rules: a kept criterion, a non-blank demand, a valid status and, when found or
+    partial, a non-blank quote (an empty quote would pass the in-body check) and,
+    when partial, a non-blank gap."""
     if not isinstance(record, dict):
         return False
     criterion, demand, evidence = record.get("criterion"), record.get("requirement"), record.get("evidence")
@@ -360,7 +366,11 @@ def _carryable(record: object, keep: set[str]) -> bool:
         return False
     if not isinstance(demand, str) or not demand.strip() or record.get("status") not in REQUIREMENT_STATUSES:
         return False
-    return record["status"] != "found" or (isinstance(evidence, str) and bool(evidence.strip()))
+    if record["status"] == "missing":
+        return True
+    gap = record.get("gap")
+    return (isinstance(evidence, str) and bool(evidence.strip())
+            and (record["status"] == "found" or (isinstance(gap, str) and bool(gap.strip()))))
 
 
 def verify_brief(folder: Path, since: Path | None = None) -> str:
@@ -397,8 +407,9 @@ def verify_brief(folder: Path, since: Path | None = None) -> str:
         "body_text_sha256": body_text_sha256(body_text),
         "section_sha256": section_hashes(body_text, criteria),
         "requirements": [{"criterion": "<rubric criterion id>", "requirement": "<the guide/rubric demand, quoted>",
-                          "status": "found|missing", "location": "<where in body.md>",
-                          "evidence": "<exact quote from body.md; required when found>"}],
+                          "status": "found|partial|missing", "location": "<where in body.md>",
+                          "evidence": "<exact quote from body.md; required when found or partial>",
+                          "gap": "<what is still absent; required when partial, omit otherwise>"}],
         "unmapped_paragraphs": ["<first words of a paragraph that answers no requirement>"],
         "findings": [],
         "prose_findings": [],
@@ -408,7 +419,8 @@ def verify_brief(folder: Path, since: Path | None = None) -> str:
     return ("You are an independent read-only verifier. Verify only from these inputs; "
             "do not use the drafting conversation or any other files. Do not edit any file.\n"
             "Never score or grade. For each rubric criterion list the requirements the guide and rubric "
-            "demand and mark each found or missing. Split a plural demand into one requirement per item "
+            "demand and mark each found, partial or missing (partial: covered in part; quote what is there and "
+            "write the gap, what is still absent). Split a plural demand into one requirement per item "
             "(one per part, link, table or question: \"Wokwi links\" for parts A-E is five requirements). "
             "Quote evidence exactly: it must be a verbatim "
             "substring of body.md. When you cannot quote it, mark the requirement missing; never write "
@@ -428,7 +440,7 @@ def verify_brief(folder: Path, since: Path | None = None) -> str:
             + _already_run_checks_section(folder, criteria, body_text)
             + "Allowed input paths (absolute):\n"
             + "\n".join(str(folder / name) for name in inputs)
-            + "\nReturn only verification YAML using this schema; allowed statuses: found|missing.\n"
+            + "\nReturn only verification YAML using this schema; allowed statuses: found|partial|missing.\n"
             + yaml.safe_dump(schema, sort_keys=False)
             + VERIFY_EXAMPLE_NOTE)
 
@@ -488,8 +500,12 @@ def parse_verification(path: Path) -> tuple[dict, list[str]]:
             allowed = ", ".join(REQUIREMENT_STATUSES)
             errors.append(f"{name} requirement {index} (criterion '{criterion}') status must be one of: {allowed}")
             continue
-        if status == "found" and (not isinstance(evidence, str) or not evidence.strip()):
-            errors.append(f"{name} requirement {index} (criterion '{criterion}') is found but has no evidence quote")
+        if status in ("found", "partial") and (not isinstance(evidence, str) or not evidence.strip()):
+            errors.append(f"{name} requirement {index} (criterion '{criterion}') is {status} but has no evidence quote")
+            continue
+        gap = record.get("gap")
+        if status == "partial" and (not isinstance(gap, str) or not gap.strip()):
+            errors.append(f"{name} requirement {index} (criterion '{criterion}') is partial but has no gap")
             continue
         requirements.append(
             {
@@ -498,6 +514,7 @@ def parse_verification(path: Path) -> tuple[dict, list[str]]:
                 "status": status,
                 "location": _text_or_none(record.get("location")) or "",
                 "evidence": _text_or_none(evidence) or "",
+                **({"gap": gap.strip()} if status == "partial" else {}),
             }
         )
 
@@ -531,9 +548,9 @@ def parse_verification(path: Path) -> tuple[dict, list[str]]:
 
 
 def downgrade_unquoted_evidence(requirements: list[dict], body_text: str) -> tuple[list[dict], list[str]]:
-    """The anti-hallucination rule: ``found`` needs a quote that body.md really holds.
+    """The anti-hallucination rule: ``found`` and ``partial`` need a quote that body.md really holds.
 
-    A ``found`` requirement whose evidence is absent from body.md
+    A ``found`` or ``partial`` requirement whose evidence is absent from body.md
     (whitespace-normalized, case-sensitive) becomes ``missing`` and yields a
     finding naming its criterion and the quote; nothing else changes.
     """
@@ -541,29 +558,33 @@ def downgrade_unquoted_evidence(requirements: list[dict], body_text: str) -> tup
     result: list[dict] = []
     findings: list[str] = []
     for record in requirements:
-        if record["status"] == "found" and " ".join(record["evidence"].split()) not in normalized_body:
+        if record["status"] in ("found", "partial") and " ".join(record["evidence"].split()) not in normalized_body:
             findings.append(
                 f"evidence not found in body.md: criterion '{record['criterion']}': requirement "
                 f"'{record['requirement']}' downgraded to missing; quote: '{record['evidence']}'"
             )
-            record = {**record, "status": "missing"}
+            record = {key: value for key, value in record.items() if key != "gap"} | {"status": "missing"}
         result.append(record)
     return result, findings
 
 
 def derive_criteria(criteria: list[dict], requirements: list[dict]) -> list[dict]:
-    """Per-criterion ``cumple`` (every requirement found) or ``falta``; never ``flojo``."""
+    """Per-criterion ``cumple`` (every requirement found) or ``falta``; never ``flojo``.
+
+    A ``partial`` requirement is not found: it keeps the criterion ``falta`` and
+    shows in the note; the 0.5 weight is the grade's, not the verdict's."""
     derived = []
     for criterion in criteria:
         cid = str(criterion.get("id"))
         own = [r for r in requirements if r["criterion"] == cid]
         found = sum(1 for r in own if r["status"] == "found")
+        partial = sum(1 for r in own if r["status"] == "partial")
         derived.append(
             {
                 "id": cid,
                 "status": "cumple" if own and found == len(own) else "falta",
                 "where": "; ".join(dict.fromkeys(r["location"] for r in own if r["location"])),
-                "note": f"{found}/{len(own)} requirements found",
+                "note": f"{found}/{len(own)} requirements found" + (f", {partial} partial" if partial else ""),
             }
         )
     return derived

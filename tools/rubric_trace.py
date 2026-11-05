@@ -268,6 +268,7 @@ def build_trace(folder: Path, body_text: str | None, *, body_name: str = BODY_NA
                 "requirement": str(requirement.get("requirement") or ""),
                 "evidence": quote,
                 "section": located,
+                "gap": str(requirement.get("gap") or ""),
             })
         if body_text is None:
             trace.reasons.append(f"{body_name} missing")
@@ -282,7 +283,7 @@ def build_trace(folder: Path, body_text: str | None, *, body_name: str = BODY_NA
                     trace.sections.append(requirement["section"])
             trace.reasons.extend(trace.failed_checks)
             trace.reasons.extend(
-                f"requirement {r['status']}: {r['requirement']}"
+                f"requirement {r['status']}: {r['requirement']}" + (f" (gap: {r['gap']})" if r["gap"] else "")
                 for r in trace.requirements if r["status"] != "found")
             if pdf is not None and pdf.available:
                 trace.reasons.extend(f"lost in the PDF: {loss}" for loss in pdf_losses(folder, criterion, pdf))

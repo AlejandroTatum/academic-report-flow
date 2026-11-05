@@ -88,8 +88,12 @@ def _verify_section(folder: Path) -> list[str]:
              "| Criterion | Status | Found |", "|---|---|---|"]
     lines += [f"| {criterion} | {'cumple' if f == t else 'falta'} | {f}/{t} |" for criterion, (f, t) in counts.items()]
     lines += ["", f"Full requirement matrix (for agents): {_link(marker_path)}"]
-    missing = [f"{r.get('criterion')}: {r.get('requirement')}" for r in requirements if r.get("status") != "found"]
+    missing = [f"{r.get('criterion')}: {r.get('requirement')}" for r in requirements
+               if r.get("status") not in ("found", "partial")]
+    partial = [f"{r.get('criterion')}: {r.get('requirement')} (gap: {r.get('gap')})" for r in requirements
+               if r.get("status") == "partial"]
     lines += _listing("Missing", missing)
+    lines += _listing("Partial", partial) if partial else []
     lines += _listing("Deletion candidates", [str(p) for p in marker.get("unmapped_paragraphs") or []])
     lines += _listing("Findings", [str(f) for f in marker.get("findings") or []])
     return lines

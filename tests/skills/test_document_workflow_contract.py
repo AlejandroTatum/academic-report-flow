@@ -129,7 +129,7 @@ def test_verify_requires_one_verifier_matrix_and_quoted_evidence() -> None:
     assert "ONE independent read-only verifier" in flat
     assert "verification.yml" in flat
     assert "--verification verification.yml" in flat
-    assert "requirement" in flat and "evidence" in flat and "found|missing" in flat
+    assert "requirement" in flat and "evidence" in flat and "found|partial|missing" in flat
     assert "exact quote" in flat and "downgraded to `missing`" in flat
     assert "links_resolve" in flat and "unmapped_paragraphs" in flat
     assert "never scores" in flat

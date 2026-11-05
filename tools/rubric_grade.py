@@ -45,7 +45,8 @@ def _score(criterion: rubric_trace.CriterionTrace) -> Fraction:
 
 
 def _gap(criterion: rubric_trace.CriterionTrace) -> str:
-    parts = [f"{r['status']}: {r['requirement']}" for r in criterion.requirements if r["status"] != "found"]
+    parts = [f"{r['status']}: {r['requirement']}" + (f" (gap: {r['gap']})" if r.get("gap") else "")
+             for r in criterion.requirements if r["status"] != "found"]
     parts += criterion.failed_checks
     if not criterion.requirements:
         parts.append("no requirements verified")

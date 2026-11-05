@@ -44,3 +44,23 @@ def test_skill_md_names_the_grade_table_in_the_contract_and_stays_concise() -> N
     skill = (SKILL_ROOT / "SKILL.md").read_text(encoding="utf-8")
     assert "rubric-grade.md" in skill
     assert len(skill.split()) < 1100
+
+
+def test_plan_maps_every_guide_inventory_item_or_waives_it_with_a_reason() -> None:
+    content = flat(REFS / "content.md")
+    for token in ("--inventory", "not_applicable:", "covers:", "guide_inventory_unmapped"):
+        assert token in content, token
+    data = flat(REFS / "data.md")
+    assert "--inventory" in data and "heuristic" in data
+
+
+def test_verification_has_a_partial_state_that_never_scores() -> None:
+    content = flat(REFS / "content.md")
+    assert "found|partial|missing" in content and "gap" in content
+    assert "0.5" in flat(REFS / "delivery.md")
+
+
+def test_approval_gate_blocks_on_unmapped_inventory_not_on_a_score() -> None:
+    approval = flat(REFS / "approval.md")
+    assert "guide_inventory_unmapped" in approval
+    assert "never a score" in approval
