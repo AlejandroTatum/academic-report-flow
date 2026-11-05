@@ -33,6 +33,8 @@ aso-computacion-admin), rewrites the README, and proposes skill improvements (pr
 - T3 (S3): `docs/portal/mejoras-skill.qmd` skill improvement proposal — worker B
 - T4 (S1-S3): render the site, verify, commit work units — parent
 
+Done: T1+T2 in a807a78, T3 in a4a0aad. Evidence: `quarto render` exit 0 with 0 warnings; full pytest 2857 passed.
+
 ## Log
 
 - L1: "quiero que hagas la docuemntacion del proeycto en quarto como los demas repos, mejores readme, y podemos ir planteando mejoras en la skill. aunque por ahora me va regular"
