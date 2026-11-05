@@ -12,7 +12,8 @@ missing (an existing one keeps its text) and records the binding plus a
 ``typeset-source.md`` snapshot of the bound ``body.md``; it refuses while
 ``body.md`` is not approved, and, after an edit of ``body.md``, while the words
 the edit inserted are missing from the typeset body or the text it removed is
-still there (issue #98). ``check`` reports, never edits: the binding
+still there (issue #98). ``check`` reports and never edits a body (it only appends
+its duration to ``timings.yml``): the binding
 matches the current ``body.md``, the typeset body passes the rendering rules
 and the format's fixed headings, and it cites exactly the keys ``body.md``
 cites. Builds render ``body.typeset.md`` while its binding is current
@@ -31,6 +32,7 @@ import sys
 from difflib import SequenceMatcher
 from pathlib import Path
 
+import timings
 from approval_marker import BODY_NAME, MARKER_NAME, approval_state, utc_now, write_files_atomically
 from content_check import body_format_problems
 from report_config import (
@@ -189,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     for name, text in (
         ("bind", "create body.typeset.md if missing and bind it to the current body.md (after approval)"),
-        ("check", "report the typeset checks; never edits"),
+        ("check", "report the typeset checks; never edits a body (records timings.yml)"),
     ):
         commands.add_parser(name, help=text).add_argument("folder", type=Path)
     args = parser.parse_args(argv)
@@ -201,7 +203,9 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"bound {target} to {BODY_NAME}; format it there, never in {BODY_NAME}")
     try:
-        results = check_results(args.folder)
+        # A refused bind wrote nothing and returned above; only a real check is timed.
+        with timings.timed(args.folder, "typeset", "typeset.py"):
+            results = check_results(args.folder)
     except (OSError, ValueError, TypeError) as exc:
         print(f"typeset check input error: {exc}", file=sys.stderr)
         return 2

@@ -11,6 +11,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import timings
 from report_config import ROOT as AUTOMATION_ROOT
 from report_config import (
     ACADEMIC_ONLY_METADATA,
@@ -1603,7 +1604,8 @@ def main() -> None:
     parser.add_argument("folder", type=Path, help="Carpeta del reporte con report.yml")
     args = parser.parse_args()
     config = load_report_config(args.folder)
-    result = validate(config)
+    with timings.timed(args.folder, "validate", "validate_report.py"):
+        result = validate(config)
     if result.errors:
         raise SystemExit("VALIDATION FAILED:\n- " + "\n- ".join(result.errors) + f"\n\nReporte: {config.quality_report_path}")
     if result.warnings:

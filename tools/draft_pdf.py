@@ -18,6 +18,7 @@ import sys
 from pathlib import Path
 
 import pdf_viewer
+import timings
 from approval_marker import (
     BODY_NAME,
     draft_preview_dir,
@@ -124,7 +125,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("folder", type=Path, help="report folder with body.md")
     parser.add_argument("--no-open", action="store_true", help="build only; do not open the viewer (tests, CI)")
     args = parser.parse_args(argv)
-    pdf = render_draft(args.folder)
+    with timings.timed(args.folder, "approval", "draft_pdf.py"):
+        pdf = render_draft(args.folder)
     print(f"Draft PDF: {pdf}")
     if not args.no_open:
         error = pdf_viewer.open_pdf(pdf)
