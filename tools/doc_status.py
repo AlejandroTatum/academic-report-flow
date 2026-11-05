@@ -870,6 +870,11 @@ def _guidance(
     if phase_name == "review":
         template += ("; open the PDF for the user (never screenshots): "
                      + _tool_command("pdf_viewer.py", config.pdf_path).replace("{", "{{").replace("}", "}}"))
+        if rubric_plan.rubric_state(folder) == "valid":
+            template += ("; with the PDF, run "
+                         + _tool_command("rubric_grade.py", folder).replace("{", "{{").replace("}", "}}")
+                         + " and present {rubric_grade} unchanged (a mechanical estimate, not the teacher's grade; "
+                         "the verifier never scores; it never blocks review)")
     if phase_name == "research" and _uncited_bibliography(config):
         template = (
             "write at least 1 entry (any type) to {sources}, the exact list to print "
@@ -887,6 +892,7 @@ def _guidance(
         validation=folder / "validation.yml",
         pdf=config.pdf_path,
         final_review=folder / "final-review.yml",
+        rubric_grade=folder / "rubric-grade.md",
         check_command=_tool_command("content_check.py", folder),
         packet_command=_tool_command("approval_packet.py", folder),
         express_approve_command=shlex.join(

@@ -24,6 +24,7 @@ Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `vali
 - Present the human block verbatim and every human gate losslessly; never proceed on silence.
 - Quality over quantity: no minimum length; preserve complete coverage. Cut redundancy or add necessary evidence or explanation when needed (`references/content.md`).
 - Require rubric TDD checks in the plan before drafting; the draft turns them green.
+- Keep the rubric visible: `tools/rubric_trace.py` at plan, per draft section, in the approval packet and in validate (final artifact); at review present `rubric-grade.md` from `tools/rubric_grade.py` with the PDF. Only that tool computes the estimated score; it is informational, never a gate, and no agent or verifier assigns one.
 - Use one independent verifier for semantic verification (requirement -> evidence matrix, unquotable evidence is `missing`); the drafter never verifies itself.
 - Require verified sources before research is finished.
 - Apply batched edit orders verbatim before seeking re-approval; a bounded edit (at most 40 changed words, no heading touched) keeps the approval and the final review without asking, and verify, rebuild and validation still run.
@@ -58,7 +59,7 @@ Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `vali
 
 ## Output Contract
 
-Return the verbatim human block, the `academic.doc-status/v1` block, the routed token, the executor, the single artifact produced, hashes and tool results. `READY_TO_SUBMIT` only after approval and final review.
+Return the verbatim human block, the `academic.doc-status/v1` block, the routed token, the executor, the single artifact produced, hashes and tool results; at `review`, also `rubric-grade.md`. `READY_TO_SUBMIT` only after approval and final review.
 
 ## References
 

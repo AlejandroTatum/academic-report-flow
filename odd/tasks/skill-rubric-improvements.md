@@ -35,7 +35,7 @@ and slice 8 (`typeset.py auto`, grouping phases).
 
 - T1 (S4): plain draft preview in a temporary PDF — writer A — commit: see git log "feat(approval): plain draft preview" (600 focused tests pass; one manual Docker texlive build)
 - T2 (S6): concision lint and prose_findings — writer C — commit: 354babd (242 focused tests pass; docs/portal/herramientas.qmd row update deferred to T1 surface)
-- T3 (S1-S3): rubric_trace, rubric_grade, review presentation, validate checks — writer B (after T1, T2) — commit: pending
+- T3 (S1-S3): rubric_trace, rubric_grade, review presentation, validate checks — writer B — commit: "feat(rubric): trace, informational grade and final-artifact checks" (842 focused tests pass)
 - T4 (S5): guide inventory and `partial` state — after T3 — commit: pending
 - T5: full suite, sync installed skill, PR — parent — commit: pending
 
@@ -44,4 +44,5 @@ and slice 8 (`typeset.py auto`, grouping phases).
 - L1: "quiero que hagas la docuemntacion del proeycto en quarto como los demas repos, mejores readme, y podemos ir planteando mejoras en la skill. aunque por ahora me va regular" (context: odd/tasks/quarto-docs-portal.md)
 - L2: "subelos en pages y agrega si. tambien pushea y actualiza la skill"
 - L3: Earlier user priorities: "en cuanto a la rubrica, me gustaria que este mas presente en cada punto y sobre todo al final, califique sobre eso."; "Muy lenta / demasiadas fases", "Calidad del texto", "No sigue la rúbrica/guía".
+- L5: "exacto solo es informativa" — the rubric grade is informational only: never a gate on review or delivery; `test_skill_tree_adds_no_detector_or_percentage_gate` stays unchanged.
 - L4: "tambien otro problema es que el borrador lo da en formato AA, para mayor eficiencia, un formato simple sin logos sin plantilla. que abra un pdf temporar con el contenido"

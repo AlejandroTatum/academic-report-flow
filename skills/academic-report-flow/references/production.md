@@ -44,9 +44,11 @@ When `deliver_bibliography: true`, the receipt also records the exact SHA-256 of
 Document validation never uses RDD: the work folder lives in the content root, outside the session's repository, so a native review would always stop to ask. Run the chain below regardless of the global review switch, without probing it and without asking; RDD stays for code changes in the automation repository. Older receipts may still say `mode: rdd`; they are read like any other receipt.
 
 Chain (`mode: fallback`, `evidence: backups/quality_report.md`), in order:
-1. `"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/validate_report.py" "$REPORT_CONTENT_ROOT/reports/<work-folder>/"`: `common` is mandatory and PDF output also needs `pdf_layout` (only `--tex-only` skips it).
+1. `"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/validate_report.py" "$REPORT_CONTENT_ROOT/reports/<work-folder>/"`: `common` is mandatory and PDF output also needs `pdf_layout` (only `--tex-only` skips it). Its `rubric` check (only with a `rubric.yml`) re-runs every rubric check on the body the build rendered (`body.typeset.md` while bound) and on the PDF text; a check that passes on `body.md` but fails there was lost in typeset, and checked text or headings missing from the PDF text were lost in the build. Each is a validation error; evidence quotes missing from `body.typeset.md` only warn (`rubric_trace.py <folder> --body body.typeset.md --pdf <final-pdf>` shows the same losses). A report without `rubric.yml` is not checked; there is no score threshold.
 2. `"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/visual_pdf_auditor.py" "$REPORT_CONTENT_ROOT/outputs/<materia-slug>/<final-pdf>.pdf"`: report and `contact_sheet.png` are `AUDITOR_PRECHECK` evidence only (manual unless `validators: {visual_pdf: true}`).
 3. Rendered readback and semantic inspection: headings, paragraphs, captions, bibliography, tables and figure labels present, legible and equivalent to the source.
+
+After the chain passes, run `"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/rubric_grade.py" "$REPORT_CONTENT_ROOT/reports/<work-folder>/"` on the final PDF: it writes `rubric-grade.md` and `rubric-grade.yml` in the work folder (`delivery.md`, Review). The verifier never scores; only this tool computes the estimate.
 
 Gates: `BUILD_PASS`, `VALIDATION_PASS`, `VISUAL_PASS`, `HUMAN_REVIEW`, `READY_TO_SUBMIT`; the chain never lowers, skips or renames one, or grants one it did not verify on the same immutable artifact. Validation is not approval.
 

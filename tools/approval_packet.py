@@ -4,7 +4,8 @@
 One compact Markdown message holds what the approver needs: clickable links to
 the plain draft PDF preview, ``body.md`` and the latest DOCX draft, the verify result,
 one row per criterion (cumple/falta, found/total), the missing items, the
-deletion candidates and the findings. The per-requirement evidence matrix is
+deletion candidates and the findings, then the rubric trace (weight, covering
+sections, checks and requirements per criterion). The per-requirement evidence matrix is
 for agents: it stays in ``content-check.yml`` and is linked, never pasted (#64). It is read-only: it never runs the verifier, builds or approves.
 A stale or absent verification shows no matrix, so an old verdict is never
 presented as current.
@@ -18,6 +19,8 @@ from pathlib import Path
 
 import content_check
 import pdf_viewer
+import rubric_plan
+import rubric_trace
 import yaml
 from approval_marker import BODY_NAME, draft_preview_is_fresh, draft_preview_path
 from draft_docx import DRAFT_DIR
@@ -92,10 +95,24 @@ def _verify_section(folder: Path) -> list[str]:
     return lines
 
 
+def _rubric_section(folder: Path) -> list[str]:
+    """Weight and trace per criterion (skill-rubric-improvements S1); nothing without a valid rubric."""
+    if rubric_plan.rubric_state(folder) != "valid":
+        return []
+    body = folder / BODY_NAME
+    try:
+        text = body.read_text(encoding="utf-8") if body.is_file() else None
+    except (OSError, UnicodeError):
+        text = None
+    trace = rubric_trace.build_trace(folder, text)
+    return ["", "## Rubric trace", "", *rubric_trace.table_lines(trace), "", rubric_trace.summary_line(trace),
+            *[f"Note: {note}" for note in trace.notes]]
+
+
 def render(folder: Path) -> str:
     folder = Path(folder)
     return "\n".join([f"# Approval packet: {folder.name}", "", *_files_section(folder), "",
-                      *_verify_section(folder)]) + "\n"
+                      *_verify_section(folder), *_rubric_section(folder)]) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
