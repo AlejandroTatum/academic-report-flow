@@ -12,7 +12,8 @@ missing (an existing one keeps its text) and records the binding plus a
 ``typeset-source.md`` snapshot of the bound ``body.md``; it refuses while
 ``body.md`` is not approved, and, after an edit of ``body.md``, while the words
 the edit inserted are missing from the typeset body or the text it removed is
-still there (issue #98). ``check`` reports, never edits: the binding
+still there (issue #98). ``check`` reports and never edits a body (it only appends
+its duration to ``timings.yml``): the binding
 matches the current ``body.md``, the typeset body passes the rendering rules
 and the format's fixed headings, and it cites exactly the keys ``body.md``
 cites. Builds render ``body.typeset.md`` while its binding is current
@@ -190,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     for name, text in (
         ("bind", "create body.typeset.md if missing and bind it to the current body.md (after approval)"),
-        ("check", "report the typeset checks; never edits"),
+        ("check", "report the typeset checks; never edits a body (records timings.yml)"),
     ):
         commands.add_parser(name, help=text).add_argument("folder", type=Path)
     args = parser.parse_args(argv)
