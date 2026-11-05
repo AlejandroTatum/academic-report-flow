@@ -1,0 +1,68 @@
+---
+title: "Instalación"
+---
+
+## Entorno Python
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+```
+
+`requirements.txt` incluye Markdown, WeasyPrint, python-docx, Pillow, Matplotlib, Altair, `vl-convert-python`, pandas,
+Plotly, BeautifulSoup4, lxml, PyYAML y `pypandoc-binary`. Para correr las pruebas añade `requirements-dev.txt`
+([Pruebas](pruebas.qmd)).
+
+## LaTeX
+
+El pipeline canónico compila con LaTeX. `tools/build_cover.py` usa `lualatex` o, si no está, la imagen Docker de
+TeX Live. Sin LaTeX sigues pudiendo usar la vista previa HTML de `build_report.py`
+([Pipelines](pipelines.qmd)).
+
+## Cadena de Node {#cadena-de-node}
+
+Solo el constructor de visuales (`tools/visual_builder.py`) necesita Node. Un checkout nuevo no trae `node_modules/`,
+así que nada de `visual_builder.py` funciona hasta instalarlo:
+
+```bash
+npm install                # @mermaid-js/mermaid-cli, playwright, echarts
+```
+
+Algunos subcomandos también necesitan un Chrome/Chromium local. `visual_builder.py` lo busca en
+`.cache/puppeteer/chrome/` dentro de la raíz de código y luego de la raíz de contenido, y propone instalarlo con:
+
+```bash
+npx @puppeteer/browsers install chrome@stable --path .cache/puppeteer
+```
+
+| Flujo | Necesita |
+|---|---|
+| Gráficos Vega-Lite | solo Python (`vl-convert-python`) |
+| Validación de recursos | solo Python |
+| Diagramas Mermaid | `npm install` + Chrome local |
+| Visuales ECharts | `npm install` |
+| Capturas HTML | `npm install` + Chrome local |
+
+`echarts` y `html-shot` generan un `.cjs` temporal y lo ejecutan con Node. Se escribe en `.cache/visual-renders/`
+**dentro de este repositorio**, porque Node resuelve `require(...)` subiendo desde el directorio del propio script: un
+script en el árbol de contenido nunca alcanzaría `node_modules/`. Ambos comandos comprueban la dependencia antes de lanzar
+Node e indican qué instalar si falta.
+
+Como navegador, `npx playwright install chromium` coincide con la devDependency declarada. Una instalación existente de
+`@puppeteer/browsers` bajo `.cache/puppeteer/` se sigue detectando y tiene prioridad.
+
+### Problema conocido
+
+**Dos gestores de navegador para un mismo binario.** `@mermaid-js/mermaid-cli` incluye Puppeteer y `playwright`
+administra su propio Chromium; ambos están declarados. Si los dos están instalados, gana la compilación de Puppeteer para
+todos los renderizadores, incluido `html-shot`, que entonces maneja un Chrome de Puppeteer a través de Playwright. Suele
+funcionar, pero Playwright fija sus compilaciones a su propia versión, así que el emparejamiento no está garantizado entre
+actualizaciones. La solución de fondo es elegir un solo gestor.
+
+## Verificar la instalación
+
+```bash
+python3 tools/visual_builder.py --help
+python3 -m pytest tools/ tests/
+```

@@ -1,0 +1,24 @@
+---
+title: "Cómo contribuir"
+---
+
+## Antes de abrir un cambio
+
+1. Prepara el entorno ([Instalación](instalacion.qmd)) e instala los hooks si vas a tocar skills
+   ([Sincronización](sincronizacion-skills.qmd)).
+2. Corre las pruebas: `python3 -m pytest tools/ tests/` ([Pruebas](pruebas.qmd)).
+3. Si cambias una skill, sigue la [guía de estilo de skills](../skill-style-guide.md) y edita siempre en `skills/`, nunca en
+   un directorio de runtime.
+4. Si cambias el flujo documental, actualiza `docs/diagrams/report-flow.es.mmd` y la copia embebida en
+   [Flujo del documento](flujo.qmd).
+
+## Defectos y mejoras
+
+El repositorio tiene una plantilla de reporte de defectos en `.github/ISSUE_TEMPLATE/bug_report.yml`. Las ideas para
+mejorar la skill se recogen en [Mejoras de la skill](mejoras-skill.qmd).
+
+## Documentación
+
+Las páginas del portal se escriben en español neutro en `docs/portal/*.qmd`; el README del repositorio está en inglés.
+Cómo previsualizar y qué se publica: [Portal de documentación](../portal.md). No incluyas datos reales de cursos
+(`skills/**/profiles/`, `outputs/`) en páginas del portal.

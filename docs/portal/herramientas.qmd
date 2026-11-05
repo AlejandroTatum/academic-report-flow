@@ -1,0 +1,94 @@
+---
+title: "Herramientas"
+---
+
+Catálogo de `tools/` agrupado por propósito. Cada descripción sale del docstring del módulo; para el detalle de uso,
+ejecuta `python3 tools/<herramienta>.py --help` o lee el módulo. Las pruebas viven en `tools/test_*.py`
+([Pruebas](pruebas.qmd)).
+
+## Construcción de documentos
+
+| Herramienta | Propósito |
+|---|---|
+| `build_report_auto.py` | Router de backends: elige LaTeX, visual o DOCX según `report.yml`. Punto de entrada canónico |
+| `build_latex_report.py` | Markdown/YAML/BibTeX → LaTeX → PDF con el estilo académico UNL |
+| `build_docx_report.py` | Markdown/YAML/BibTeX → DOCX |
+| `build_report.py` | Vista previa HTML (y PDF con WeasyPrint) de un solo archivo Markdown |
+| `build_cover.py` | Portada UNL de página completa a partir de un YAML pequeño |
+| `typeset.py` | Fase de formato: aplica el formato del backend al borrador de texto plano aprobado |
+| `draft_docx.py` | Ida y vuelta del borrador en DOCX: exporta `body.md` para parafrasear en Word e importa las ediciones |
+| `report_config.py` | Configuración compartida: raíz de código y raíz de contenido |
+| `course_profile.py` | Aplica los valores por defecto de `report.yml` de un perfil de curso cuando la materia coincide |
+
+## Estado del flujo y compuertas humanas
+
+| Herramienta | Propósito |
+|---|---|
+| `doc_status.py` | Deriva las fases del flujo a partir de los artefactos en disco (solo lectura) |
+| `approval_marker.py` | Contrato del marcador de aprobación del borrador |
+| `approval_packet.py` | Imprime el paquete único de aprobación de una carpeta de trabajo |
+| `bounded_edit.py` | Predicado de edición acotada compartido por las compuertas de aprobación y revisión final |
+| `final_review_marker.py` | Contrato del marcador de la revisión final humana |
+| `pdf_viewer.py` | Abre un PDF para quien revisa, separado de la sesión del agente |
+
+## Contenido y rúbrica
+
+| Herramienta | Propósito |
+|---|---|
+| `guide_facts.py` | Extrae solo los hechos que la guía del docente declara explícitamente |
+| `rubric_plan.py` | La rúbrica del docente como plan verificable por máquina |
+| `rubric_checks.py` | Aserciones deterministas de solo lectura sobre un plan de rúbrica y un borrador |
+| `content_check.py` | Verificación dura de contenido: registra la matriz del verificador y deriva el veredicto |
+| `concision.py` | Presupuestos de palabras y detección de relleno en un borrador |
+| `structure_contract.py` | Contrato de estructura confirmada del informe |
+| `evidence_contract.py` | Contrato de la matriz afirmación–evidencia |
+| `link_check.py` | Resolución mecánica de enlaces para la fase de verify |
+| `markdown_image.py` | El patrón único de imagen Markdown que comparten builders y verificaciones |
+
+## Fuentes y referencias
+
+| Herramienta | Propósito |
+|---|---|
+| `source_library.py` | Gestiona la biblioteca local de fuentes académicas UNL |
+| `source_count.py` | Compuerta de investigación: cuenta las entradas académicas elegibles de un BibTeX |
+| `source_quality.py` | Revisión y rechazo de fuentes por calidad |
+| `verify_sources.py` | Comprueba los identificadores de la bibliografía contra Crossref, DataCite y Open Library |
+| `validate_ieee_refs.py` | Validadores de bibliografía y citas IEEE sobre los informes renderizados |
+
+## Validación y entrega
+
+| Herramienta | Propósito |
+|---|---|
+| `validate_report.py` | Capa de validación común, consciente del backend, para los informes universitarios |
+| `visual_pdf_auditor.py` | Auditoría heurística de imágenes de página del PDF (solo evidencia previa, nunca otorga `VISUAL_PASS`) |
+| `verify_delivery.py` | Verifica la carpeta de entrega limpia de una corrida |
+| `deliver_report.py` | Entrega un PDF validado a la biblioteca versionada de Documentos |
+| `publish_pdf.py` | Publica PDF validados en la biblioteca versionada de Documentos |
+| `output_router.py` | Enruta los entregables finales a carpetas de salida por materia |
+
+## Recursos visuales
+
+| Herramienta | Propósito |
+|---|---|
+| `visual_builder.py` | Renderiza y valida visuales (subcomandos `mermaid`, `vegalite`, `echarts`, `html-shot`, `validate`) |
+| `visual_metadata.py` | Validación compartida de los manifiestos de visuales |
+| `bauhaus_maps.py` | Mapas conceptuales y de proceso en estilo Bauhaus técnico desde una especificación YAML |
+| `editorial_svg.py` | Figuras técnicas editoriales: tokens de estilo, dos disposiciones y revisión a tamaño de impresión |
+| `connector_geometry.py` | Análisis de conectores fiel al renderizador y auditoría de obstrucción por nodos |
+| `connector_pdf_stage.py` | Auditoría de conectores a tamaño final |
+
+## Estilos de tabla
+
+| Herramienta | Propósito |
+|---|---|
+| `table_directives.py` | Parser de directivas de estilo de tabla en Markdown |
+| `table_styles.py` | Catálogo versionado y selector determinista de estilos de tabla por contexto |
+| `table_model.py` | Precedencia de sobrescrituras y recibos de evidencia de los estilos |
+| `table_latex_tokens.py`, `table_html_tokens.py`, `table_docx_tokens.py` | Traducen los tokens de estilo a LaTeX, HTML/CSS inline y DOCX/OOXML |
+| `check_table_contexts.py` | Reporta la cobertura de directivas de estilo de tabla bajo un directorio |
+
+## Constructores puntuales
+
+Se conservan como referencia y no forman parte del pipeline general:
+`build_vm_contenedores_report.py`, `build_prompting_final_pdf.py`, `build_mapa_conceptual_investigacion.py` y
+`restyle_docx_aa1.py`.

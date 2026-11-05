@@ -1,0 +1,37 @@
+---
+title: "Decisiones del usuario"
+---
+
+El flujo documental tiene **tres decisiones humanas**. Todo lo demás lo exigen herramientas (`doc_status`,
+`content_check`, `validate_report.py`, auditoría visual, `deliver_report.py`) y la skill obedece sus bloqueos.
+La fuente de verdad es `skills/academic-report-flow/` (ver [Skills](skills.qmd)); el diagrama está en
+[Flujo del documento](flujo.qmd).
+
+| # | Decisión | Qué se decide | Referencia de la skill |
+|---|---|---|---|
+| 1 | Datos | título, estudiante y la guía, rúbrica y explicación del docente, en una sola tanda de preguntas | `references/data.md` |
+| 2 | Aprobación del borrador + formato | aprobar `body.md` (bytes exactos) y elegir formato (APE, AA, ACD o libre) y salida (PDF o DOCX), en una sola tanda | `references/approval.md` |
+| 3 | Revisión final | OK sobre el PDF exacto construido | `references/delivery.md` |
+
+## Reglas que cuidan al usuario
+
+- **Ruta:** un pedido académico (materia, docente, APE, AA, ejercicio, tarea) registra `route: academic` sin preguntar;
+  la ruta solo se pregunta cuando faltan señales o se contradicen. El tipo de documento nunca se infiere del formato.
+- **Identidad:** un nombre de estudiante que el usuario guardó como permanente cuenta como confirmado; en otro caso es
+  una sugerencia de opción única, nunca se rellena solo. Un título que contiene comentarios pide una confirmación de una línea.
+- **Intake no pregunta formato:** plantilla, portada, dirección visual y formato de entrega los decide la fase `format`
+  junto con la aprobación.
+- **Silencio no es aprobación:** `approval.yml` y `final-review.yml` se escriben solo con una respuesta explícita y con las
+  herramientas `approval_marker.py` y `final_review_marker.py`, nunca a mano.
+- **Ediciones del usuario:** las órdenes literales de edición se aplican tal cual, sin pulir el texto del usuario. Una
+  edición acotada (a lo sumo 40 palabras cambiadas y ningún encabezado tocado) conserva la aprobación sin preguntar; verify,
+  reconstrucción y validación siguen corriendo.
+- **Modo express:** `flow: express` (rutas B a E, nunca académica) deja una sola decisión: la revisión final.
+- **Publicar no es aprobar:** `deliver_report.py` solo publica con un marcador `APPROVAL_CURRENT` vigente.
+
+## Relación con las especificaciones
+
+Las especificaciones de [Flujo documental](../../openspec/specs/document-workflow/spec.md) y de
+[Orquestación del flujo documental](../../openspec/specs/document-workflow-orchestration/spec.md) fijan los requisitos
+(intake adaptable, estado derivado de artefactos, compuerta de aprobación que falla cerrada, distribución entre
+runtimes). Para el comportamiento operativo vigente, la referencia son los archivos de `skills/academic-report-flow/references/`.

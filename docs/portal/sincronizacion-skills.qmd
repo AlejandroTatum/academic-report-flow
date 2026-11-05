@@ -1,0 +1,45 @@
+---
+title: "Sincronización de skills"
+---
+
+`skills/` es la fuente de verdad; los runtimes del agente son espejos (ver [Skills](skills.qmd)). Un archivo editado
+directamente en un directorio de runtime se sobrescribe en la siguiente sincronización.
+
+## Sincronizar a mano
+
+```bash
+./scripts/sync_skills.sh          # simulacro: muestra qué cambiaría
+./scripts/sync_skills.sh --apply  # escribe los cambios
+```
+
+`scripts/sync_skills.sh` copia con `rsync --delete` las tres skills (`academic-report-flow`, `academic-visual-builder`,
+`research-workflow`) a `~/.config/opencode/skills`, `~/.claude/skills`, `~/.codex/skills` y `~/.pi/agent/skills`, y se
+salta los directorios de runtime que no existan. Antes de copiar corre las pruebas de contrato de `tests/skills/` si
+existe `.venv`: una skill que falla su propio contrato de enrutamiento nunca llega a un runtime. Con `--apply` refresca
+además el registro de skills de `gentle-ai`, si el binario está disponible.
+
+## Sincronizar automáticamente al hacer pull
+
+Instala los hooks versionados una vez por clon:
+
+```bash
+./scripts/install_hooks.sh
+```
+
+Esto fija `core.hooksPath` en `.githooks/`. Es necesario porque `.git/hooks/` no se versiona: los hooks viajan con el
+repositorio, pero cada clon debe saber dónde buscarlos.
+
+Después, `post-merge`, `post-rewrite` y `post-checkout` vuelven a sincronizar los runtimes cuando el repositorio cambia.
+Se cubren los tres porque un `git pull` normal dispara `post-merge`, mientras que `git pull --rebase` dispara
+`post-rewrite`, y un cambio de rama no dispara ninguno de los dos. La lógica común está en `.githooks/lib/sync-skills.sh`.
+
+Detalles de comportamiento:
+
+- Los hooks solo sincronizan con `main` en checkout. En una rama de feature o en HEAD desacoplado (por ejemplo un
+  worktree vinculado) no hacen nada, para que texto de skills sin revisar no llegue a los runtimes; si de verdad quieres
+  probar una rama en vivo, corre `./scripts/sync_skills.sh --apply` a mano.
+- El hook calcula una huella de los contenidos versionados de `skills/` y sale de inmediato si nada cambió; un pull
+  ordinario no cuesta nada.
+- Si la sincronización falla, lo dice y no escribe la huella, de modo que el siguiente pull reintenta en vez de omitir una
+  actualización pendiente.
+- Git ignora el código de salida de los hooks `post-*`, así que esto nunca puede bloquear un pull.
