@@ -105,8 +105,12 @@ def test_long_paragraphs_over_limit_are_flagged_with_their_start() -> None:
 
 def test_concision_results_pass_on_a_clean_body() -> None:
     results = concision.concision_results(BODY, [], total=None)
-    assert [r["check"] for r in results] == ["word_budget", "filler_phrases", "long_paragraphs"]
+    # The original three stay first and in order; prose-quality checks are appended.
+    assert [r["check"] for r in results] == [
+        "word_budget", "filler_phrases", "long_paragraphs", "formulaic_conclusion", "prose_findings",
+    ]
     assert all(r["ok"] for r in results)
+    assert results[-1]["detail"] == "no prose findings"
 
 
 def test_concision_results_fail_with_details() -> None:
@@ -161,3 +165,123 @@ def test_plain_text_table_caption_and_data_lines_are_not_prose() -> None:
         "- una lista normal\n"
     )
     assert concision.prose_words(body) == 4 + 4 + 3
+
+
+# ---------------------------------------------------------------------------
+# prose_findings (skill-rubric-improvements T2, S6): advisory text-quality lint
+# ---------------------------------------------------------------------------
+
+
+def _patterns(body: str) -> list[str]:
+    return [item["pattern"] for item in concision.prose_findings(body)]
+
+
+def test_prose_finding_has_the_verifier_schema_and_a_verbatim_quote() -> None:
+    body = "# Intro\n\nComo es sabido, el bus transmite datos a 10 Mbps.\n"
+    (item,) = concision.prose_findings(body)
+    assert set(item) == {"location", "kind", "quote", "fix", "pattern"}
+    assert item["kind"] in concision.PROSE_KINDS
+    assert item["quote"] in body
+    assert "Intro" in item["location"]
+
+
+def test_empty_opener_is_flagged() -> None:
+    assert "empty_opener" in _patterns("# A\n\nComo es sabido, el bus transmite datos a 10 Mbps.\n")
+    assert "empty_opener" in _patterns("# A\n\nDesde tiempos inmemoriales se miden distancias.\n")
+
+
+def test_empty_opener_ignores_technical_sentences_with_similar_words() -> None:
+    assert "empty_opener" not in _patterns("# A\n\nEl router sabe, por su tabla, que el destino es conocido.\n")
+
+
+def test_wordy_phrase_and_pleonasm_are_flagged() -> None:
+    assert "wordy_phrase" in _patterns("# A\n\nEl calculo se hizo en base a la tabla.\n")
+    assert "wordy_phrase" in _patterns("# A\n\nDebido al hecho de que falla, se reinicia.\n")
+    assert "wordy_phrase" in _patterns("# A\n\nEl cursor debe subir arriba del marco.\n")
+
+
+def test_wordy_phrase_ignores_technical_base_notation() -> None:
+    body = "# A\n\nEl valor se escribe en base 2 y la clase a la que pertenece la base a usar es B.\n"
+    assert "wordy_phrase" not in _patterns(body)
+
+
+def test_stacked_connectors_are_flagged() -> None:
+    assert "stacked_connector" in _patterns("# A\n\nLa red cae. Por lo tanto, en consecuencia, se reinicia.\n")
+    assert "stacked_connector" in _patterns("# A\n\nLa red cae. Ademas, asimismo, se reinicia.\n")
+
+
+def test_single_connector_and_technical_sequences_are_not_stacked() -> None:
+    assert "stacked_connector" not in _patterns("# A\n\nLa red cae. Por lo tanto, se reinicia el enlace.\n")
+
+
+def test_three_sentences_with_the_same_start_are_flagged() -> None:
+    body = "# A\n\nEl sistema lee datos. El sistema filtra datos. El sistema guarda datos.\n"
+    assert "repeated_start" in _patterns(body)
+
+
+def test_repeated_paragraph_start_is_flagged() -> None:
+    body = ("# A\n\nEl sistema lee datos del sensor.\n\nEl sistema filtra los datos.\n\n"
+            "El sistema guarda el resultado.\n")
+    assert "repeated_start" in _patterns(body)
+
+
+def test_enumerating_different_devices_is_not_a_repeated_start() -> None:
+    body = "# A\n\nEl router enruta. El switch reenvia. El host responde. El servidor registra.\n"
+    assert "repeated_start" not in _patterns(body)
+
+
+def test_repeated_ngram_across_paragraphs_is_flagged() -> None:
+    body = ("# A\n\nLa trama se envia al medio compartido con el enlace de datos.\n\n"
+            "# B\n\nOtra vez la trama se envia al medio compartido con el enlace de datos del vecino.\n")
+    items = [i for i in concision.prose_findings(body) if i["pattern"] == "repeated_ngram"]
+    assert items and items[0]["kind"] == "repeticion"
+    assert items[0]["quote"].startswith("la trama se envia al medio compartido")
+
+
+def test_short_repeated_technical_terms_are_not_repeated_ngrams() -> None:
+    body = ("# A\n\nEl protocolo de control de transmision abre la sesion.\n\n"
+            "# B\n\nEl protocolo de control de transmision cierra la sesion.\n")
+    assert "repeated_ngram" not in _patterns(body)
+
+
+def test_long_sentence_is_flagged_over_35_words() -> None:
+    sentence = " ".join(["palabra"] * 36) + "."
+    assert "long_sentence" in _patterns(f"# A\n\n{sentence}\n")
+    assert "long_sentence" not in _patterns("# A\n\n" + " ".join(["palabra"] * 35) + ".\n")
+
+
+def test_decimals_and_abbreviations_do_not_split_into_long_sentences() -> None:
+    body = "# A\n\nEl enlace mide 3.5 ms (p. ej. con 1.2 m de cable) y la tasa llega a 10 Mbps. Fin.\n"
+    assert _patterns(body) == []
+
+
+def test_formulaic_conclusion_opener_only_counts_in_the_conclusions_section() -> None:
+    conclusion = "# Resultados\n\nSe concluye el handshake de tres vias.\n\n# Conclusiones\n\nSe concluye que el enlace funciona.\n"
+    items = [i for i in concision.prose_findings(conclusion) if i["pattern"] == "formulaic_conclusion"]
+    assert len(items) == 1
+    assert "Conclusiones" in items[0]["location"]
+    assert items[0]["kind"] == "registro"
+
+
+def test_formulaic_conclusion_blocks_the_check_but_prose_findings_only_warn() -> None:
+    bad = "# Conclusiones\n\nEn conclusion, el enlace funciona.\n"
+    results = {r["check"]: r for r in concision.concision_results(bad, [], None)}
+    assert results["formulaic_conclusion"]["ok"] is False
+    good = "# Conclusiones\n\nEl enlace funciona con 3 ms de retardo.\n"
+    results = {r["check"]: r for r in concision.concision_results(good, [], None)}
+    assert results["formulaic_conclusion"]["ok"] is True
+
+
+def test_prose_findings_check_is_advisory_and_existing_checks_are_unchanged() -> None:
+    body = "# A\n\nComo es sabido, el bus transmite datos a 10 Mbps.\n"
+    results = {r["check"]: r for r in concision.concision_results(body, [], None)}
+    assert {"word_budget", "filler_phrases", "long_paragraphs"} <= set(results)
+    assert results["prose_findings"]["ok"] is True
+    assert results["prose_findings"]["detail"].startswith("warning:")
+    clean = {r["check"]: r for r in concision.concision_results("# A\n\nEl bus mide 3 ms.\n", [], None)}
+    assert clean["prose_findings"]["ok"] is True and "no prose findings" in clean["prose_findings"]["detail"]
+
+
+def test_prose_findings_are_capped() -> None:
+    body = "# A\n\n" + "\n\n".join("Como es sabido, el bus %d falla." % n for n in range(40)) + "\n"
+    assert len(concision.prose_findings(body)) == concision.MAX_PROSE_FINDINGS

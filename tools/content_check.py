@@ -258,6 +258,43 @@ VERIFY_EXAMPLE_NOTE = (
     "```\n"
 )
 
+def _parse_prose_findings(name: str, raw: object) -> tuple[list[dict], list[str]]:
+    """The verifier's optional ``prose_findings``: mappings with location, kind, quote and fix.
+
+    Absent or empty is legal (every verification written before this key exists).
+    A malformed entry is a usage error; entries beyond the cap are ignored.
+    """
+    if raw in (None, []):
+        return [], []
+    if not isinstance(raw, list):
+        return [], [f"{name} prose_findings must be a list of mappings"]
+    items: list[dict] = []
+    for index, record in enumerate(raw[: concision.MAX_PROSE_FINDINGS], start=1):
+        if not isinstance(record, dict):
+            return [], [f"{name} prose_findings entry {index} must be a mapping"]
+        kind, quote = record.get("kind"), record.get("quote")
+        if kind not in concision.PROSE_KINDS:
+            return [], [f"{name} prose_findings entry {index} kind must be one of: {', '.join(concision.PROSE_KINDS)}"]
+        if not isinstance(quote, str) or not quote.strip():
+            return [], [f"{name} prose_findings entry {index} needs a quote from body.md"]
+        items.append({"location": _text_or_none(record.get("location")) or "", "kind": kind,
+                      "quote": " ".join(quote.split()), "fix": _text_or_none(record.get("fix")) or ""})
+    return items, []
+
+
+def merge_prose_findings(body_text: str, lint: list[dict], verifier: list[dict]) -> tuple[list[dict], list[str]]:
+    """Lint findings plus the verifier's whose quote really is in body.md (others become findings)."""
+    normalized_body = " ".join(body_text.split())
+    merged = [{**item, "source": "lint"} for item in lint]
+    dropped: list[str] = []
+    for item in verifier:
+        if item["quote"] in normalized_body:
+            merged.append({**{k: item[k] for k in ("location", "kind", "quote", "fix")}, "source": "verifier"})
+        else:
+            dropped.append(f"prose finding dropped, quote not in body.md: '{item['quote']}'")
+    return merged[: concision.MAX_PROSE_FINDINGS * 2], dropped
+
+
 _FINDING_SEVERITY_KEYS = ("severity", "level")
 _FINDING_TEXT_KEYS = ("text", "message", "detail")
 
@@ -364,6 +401,7 @@ def verify_brief(folder: Path, since: Path | None = None) -> str:
                           "evidence": "<exact quote from body.md; required when found>"}],
         "unmapped_paragraphs": ["<first words of a paragraph that answers no requirement>"],
         "findings": [],
+        "prose_findings": [],
     }
     incremental = (_incremental_section(since, criteria, schema["section_sha256"], schema["rubric_sha256"])
                    if since is not None else "")
@@ -380,7 +418,10 @@ def verify_brief(folder: Path, since: Path | None = None) -> str:
             "semantic repetition, circular explanations, ambiguity and missing necessary context; "
             "report specific locations and suggested corrections in findings, without rewriting. "
             "Length and filler checks cannot establish semantic concision. Repeat this whole-draft "
-            "review even during incremental verification; findings are advisory, not a score.\n"
+            "review even during incremental verification; findings are advisory, not a score. Also list each "
+            "text-quality problem you find as a prose_findings entry (location, kind "
+            "repeticion|circular|ambiguo|relleno|registro, an exact quote from body.md, fix); at most "
+            f"{concision.MAX_PROSE_FINDINGS}, none when the prose is clean.\n"
             f"Citations [@key] in body.md render in {config.citation_style.upper()} format at build time from sources.bib; citation keys are expected, not a formatting defect. Check that cited keys exist in sources.bib instead.\n"
             + _criteria_section(criteria)
             + incremental
@@ -470,6 +511,8 @@ def parse_verification(path: Path) -> tuple[dict, list[str]]:
     if any(f is None for f in flattened):
         errors.append(f"{name} findings must be a list of strings")
         flattened = []
+    prose, prose_errors = _parse_prose_findings(name, data.get("prose_findings"))
+    errors.extend(prose_errors)
     return (
         {
             "verifier": data.get("verifier"),
@@ -481,6 +524,7 @@ def parse_verification(path: Path) -> tuple[dict, list[str]]:
             "requirements": requirements,
             "unmapped_paragraphs": list(unmapped),
             "findings": flattened,
+            "prose_findings": prose,
         },
         errors,
     )
@@ -861,7 +905,9 @@ def run_check(
         [*verification["requirements"], *carried], body_text)
     derived = derive_criteria(criteria, requirements)
     link_entry, link_warnings = links_resolve_check(body_text, fetcher)
-    findings = list(dict.fromkeys([*verification["findings"], *downgrade_findings, *link_warnings]))
+    prose, prose_dropped = merge_prose_findings(
+        body_text, concision.prose_findings(body_text), verification["prose_findings"])
+    findings = list(dict.fromkeys([*verification["findings"], *downgrade_findings, *link_warnings, *prose_dropped]))
     checks = mechanical_checks(body_text, _read_bib(config), criteria, requirements, min_sources, uncited)
     if reused and checks[-1]["ok"]:
         checks[-1]["detail"] += "; verification reused: markup-only change"
@@ -907,6 +953,8 @@ def run_check(
         "findings": findings
         + [f"{check['check']}: {check['detail']}" for check in checks if not check["ok"]],
         "mechanical": checks,
+        # Advisory (never a verdict input): deterministic lint plus the verifier's own, quote-checked.
+        "prose_findings": prose,
         "rubric_check_results": rubric_results,
         "result": "pass" if mechanical_ok and criteria_ok else "fail",
     }

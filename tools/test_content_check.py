@@ -1932,3 +1932,75 @@ def test_body_check_passes_a_draft_with_currency_and_a_windows_path(
     assert content_check.main([str(folder), "--body-check"]) == 0
     assert "[FAIL]" not in capsys.readouterr().out
     assert not (folder / "content-check.yml").exists()
+
+
+# ---------------------------------------------------------------------------
+# prose_findings in the marker (skill-rubric-improvements T2, S6)
+# ---------------------------------------------------------------------------
+
+
+def test_marker_carries_prose_findings_from_the_lint(tmp_path: Path) -> None:
+    folder = _verify_folder(tmp_path / "wf")
+    _body(folder, DEFAULT_CITED_BODY + "\nComo es sabido, el bus transmite datos a 10 Mbps.\n")
+    assert _run(folder, _verification(folder)) in (0, 1)
+    marker = _marker(folder)
+    quotes = [item["quote"] for item in marker["prose_findings"]]
+    assert any("Como es sabido" in quote for quote in quotes)
+    assert all({"location", "kind", "quote", "fix"} <= set(item) for item in marker["prose_findings"])
+    # Advisory: never a mechanical failure or a finding string by themselves.
+    assert all(check["ok"] for check in marker["mechanical"] if check["check"] != "rubric_checks")
+
+
+def test_marker_prose_findings_is_an_empty_list_for_clean_prose(tmp_path: Path) -> None:
+    folder = _verify_folder(tmp_path / "wf")
+    assert _run(folder) == 0
+    assert _marker(folder)["prose_findings"] == []
+
+
+def test_verifier_prose_findings_are_recorded_and_unquoted_ones_dropped(tmp_path: Path) -> None:
+    folder = _verify_folder(tmp_path / "wf")
+    first = " ".join(next(line for line in (folder / "body.md").read_text(encoding="utf-8").splitlines()
+                          if line.strip() and not line.startswith("#")).split()[:3])
+    matrix = _verification(folder, prose_findings=[
+        {"location": "Cuerpo", "kind": "repeticion", "quote": first, "fix": "cut the repeat"},
+        {"location": "Cuerpo", "kind": "ambiguo", "quote": "frase que no existe en el cuerpo", "fix": "x"},
+    ])
+    assert _run(folder, matrix) == 0
+    marker = _marker(folder)
+    kept = [item for item in marker["prose_findings"] if item["quote"] == first]
+    assert len(kept) == 1 and kept[0]["kind"] == "repeticion"
+    assert all(item["quote"] != "frase que no existe en el cuerpo" for item in marker["prose_findings"])
+    assert any("frase que no existe" in finding for finding in marker["findings"])
+
+
+@pytest.mark.parametrize("bad", ["just text", [{"location": "a", "kind": "otro", "quote": "q", "fix": "f"}],
+                                 [{"location": "a", "kind": "relleno", "fix": "f"}]])
+def test_malformed_verifier_prose_findings_are_a_usage_error(tmp_path: Path, bad: object, capsys) -> None:
+    folder = _verify_folder(tmp_path / "wf")
+    assert _run(folder, _verification(folder, prose_findings=bad)) == 2
+    assert "prose_findings" in capsys.readouterr().err
+
+
+def test_old_marker_without_prose_findings_still_loads(tmp_path: Path) -> None:
+    folder = _verify_folder(tmp_path / "wf")
+    assert _run(folder) == 0
+    import yaml
+
+    path = folder / "content-check.yml"
+    marker = yaml.safe_load(path.read_text(encoding="utf-8"))
+    del marker["prose_findings"]
+    path.write_text(yaml.safe_dump(marker, sort_keys=False), encoding="utf-8")
+    assert content_check.content_check_state(folder) == "pass"
+
+
+def test_old_verification_without_prose_findings_still_parses(tmp_path: Path) -> None:
+    parsed, errors = content_check.parse_verification(_findings_file(tmp_path, "  - plain\n"))
+    assert errors == [] and parsed["prose_findings"] == []
+
+
+def test_body_check_lists_prose_findings_as_a_warning(tmp_path: Path) -> None:
+    folder = _verify_folder(tmp_path / "wf")
+    _body(folder, DEFAULT_CITED_BODY + "\nComo es sabido, el bus transmite datos a 10 Mbps.\n")
+    results = {item["check"]: item for item in content_check.body_check_results(folder)}
+    assert results["prose_findings"]["ok"] is True
+    assert "Como es sabido" in results["prose_findings"]["detail"]
