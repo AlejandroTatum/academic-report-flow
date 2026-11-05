@@ -1,0 +1,51 @@
+name: Docs
+
+# Pull request: render the portal only (fails on render errors).
+# Push to main: render and publish to GitHub Pages (Settings → Pages → Source: GitHub Actions).
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Render Quarto
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: quarto-dev/quarto-actions/setup@v2
+        with:
+          version: 1.11.9
+      - uses: quarto-dev/quarto-actions/render@v2
+      # Quarto copies linked files into the site. Course data and PDFs are not part of the portal.
+      - name: Exclude course data and PDFs from the site
+        if: github.event_name == 'push'
+        run: |
+          rm -rf _site/skills/*/references/profiles _site/outputs _site/odd
+          find _site -name '*.pdf' -delete
+      - uses: actions/upload-pages-artifact@v3
+        if: github.event_name == 'push'
+        with:
+          path: _site
+
+  deploy:
+    name: Publish to GitHub Pages
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

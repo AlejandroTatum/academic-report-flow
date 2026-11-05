@@ -1,5 +1,5 @@
-# Documentation portal (docs/portal.md). Private: rendered locally with `quarto render` / `quarto preview`.
-# There is no CI job and no GitHub Pages deploy.
+# Documentation portal (docs/portal.md). Rendered locally with `quarto render` / `quarto preview`;
+# .github/workflows/docs.yml renders it on pull requests and publishes it to GitHub Pages on push to main.
 project:
   type: website
   output-dir: _site
@@ -24,6 +24,9 @@ execute:
 
 website:
   title: "Academic Report Automation"
+  site-url: https://alejandrotatum.github.io/academic-report-flow/
+  repo-url: https://github.com/AlejandroTatum/academic-report-flow
+  repo-actions: [issue]
   search:
     location: sidebar
   page-navigation: true
@@ -39,6 +42,9 @@ website:
         text: Herramientas
       - href: docs/portal/instalacion.qmd
         text: Operación
+    tools:
+      - icon: github
+        href: https://github.com/AlejandroTatum/academic-report-flow
   sidebar:
     style: docked
     contents:

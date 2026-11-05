@@ -1,7 +1,8 @@
 # Portal de documentación
 
-La documentación del repositorio se publica como un sitio web de [Quarto](https://quarto.org). El sitio es privado:
-no hay GitHub Pages ni job de CI. Se lee en local.
+La documentación del repositorio se publica como un sitio web de [Quarto](https://quarto.org) en
+[GitHub Pages](https://alejandrotatum.github.io/academic-report-flow/). El workflow `.github/workflows/docs.yml`
+renderiza el portal en cada pull request y lo publica en cada push a `main`.
 
 ## Cómo leerlo
 

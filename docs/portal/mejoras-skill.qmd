@@ -161,7 +161,7 @@ Las rebanadas 1-4 cubren la prioridad principal; 5-8 pueden reordenarse según l
 
 ## 4. Preguntas abiertas para el usuario
 
-1. **Puntaje y la decisión previa.** Antes se eligió que el verificador "no puntúa" (`verify-concise-drafts`, S1). ¿Se acepta que la herramienta calcule un puntaje estimado a partir de la matriz, con el verificador sin puntuar?
+1. **Puntaje y la decisión previa.** Antes se eligió que el verificador "no puntúa" (`verify-concise-drafts`, S1). ¿Se acepta que la herramienta calcule un puntaje estimado a partir de la matriz, con el verificador sin puntuar? **Respuesta (2026-11-05): sí.**
 2. **Pesos.** ¿La rúbrica de los docentes trae puntajes por criterio? Si no, ¿se prefieren pesos iguales o preguntarlos en `plan`?
 3. **Escala y redondeo.** ¿Sobre 10, sobre el total de la rúbrica o en porcentaje?
 4. **Estado `partial`.** ¿Contarlo como 0,5, o mostrarlo como brecha sin puntuar?
