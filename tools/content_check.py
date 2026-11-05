@@ -1225,8 +1225,7 @@ def main(argv: list[str] | None = None, fetcher: link_check.Fetcher | None = Non
         return 0
 
     if args.body_check:
-        with timings.timed(args.folder, "draft", "content_check.py"):
-            return run_body_check(args.folder)
+        return run_body_check(args.folder)  # read-only by contract: never writes timings.yml
 
     if len(args.verification) != 1:
         print("content check input error: exactly one verification file required: pass one --verification",

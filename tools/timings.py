@@ -15,6 +15,7 @@ ignored with a warning on stderr, and the tool's exit code and stdout stay uncha
 """
 from __future__ import annotations
 
+import argparse
 import sys
 import time
 from contextlib import contextmanager
@@ -118,11 +119,13 @@ def render_summary(rows: list[tuple[str, int, float, float]]) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) != 1:
-        print("usage: timings.py <work-folder>", file=sys.stderr)
-        return 2
-    folder = Path(args[0])
+    parser = argparse.ArgumentParser(
+        prog="timings.py",
+        description="Print the per-phase totals recorded in timings.yml of a report work folder, slowest first.",
+    )
+    parser.add_argument("folder", metavar="work-folder", help="report work folder holding timings.yml")
+    args = parser.parse_args(argv)
+    folder = Path(args.folder)
     if not folder.is_dir():
         print(f"work folder missing or not a directory: {folder}", file=sys.stderr)
         return 2

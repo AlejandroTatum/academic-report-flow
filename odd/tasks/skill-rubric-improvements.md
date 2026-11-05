@@ -41,7 +41,7 @@ Out of scope until the user decides with timing data: slice 8 (`typeset.py auto`
 - T3 (S1-S3): rubric_trace, rubric_grade, review presentation, validate checks — writer B — commit: "feat(rubric): trace, informational grade and final-artifact checks" (842 focused tests pass)
 - T4 (S5): guide inventory and `partial` state — commit: "feat(rubric): guide inventory mapping and partial requirement state" (804 focused tests + tests/skills 417 pass; added `covers:` list for semantic inventory items)
 - T5: full suite, sync installed skill, PR — parent — done: PR #109 merged (a95d1be), skills synced, 2978 passed, independent verify PASS
-- T6 (S7): phase timings and parallel verify — branch `feat/flow-timings` — PAUSED by user ("frenamos, me cambio de cuenta"): writer cancelled mid-GREEN; WIP committed unverified, not pushed. Resume: rerun focused tests, finish instrumentation, full suite, PR.
+- T6 (S7): phase timings and parallel verify — branch `feat/flow-timings` — commit: "feat(timings): phase timings and parallel verify" (32 focused tests pass: 30 in tools/test_timings.py + tests/skills/test_parallel_verify_contract.py after the finish; full suite `tools/ tests/` 3011 passed; old-vs-new differential on 12 invocations of the 5 instrumented CLIs: identical rc/stdout/stderr/files; `content_check --body-check` is not timed because it is read-only by contract)
 
 ## Log
 

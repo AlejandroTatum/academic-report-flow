@@ -177,15 +177,39 @@ def test_draft_pdf_output_and_exit_code_ignore_malformed_timings(
     assert "timings" in captured.err
 
 
-def test_content_check_body_check_records_the_draft_phase(tmp_path: Path) -> None:
+def test_content_check_body_check_stays_read_only(tmp_path: Path) -> None:
     folder = tmp_path / "wf"
     _report(folder)
     _sources_bib(folder)
     _body(folder, AA_BODY)
 
+    before = sorted(p.name for p in folder.iterdir())
+
     content_check.main([str(folder), "--body-check"])
 
-    assert [(e["phase"], e["tool"]) for e in _entries(folder)] == [("draft", "content_check.py")]
+    assert sorted(p.name for p in folder.iterdir()) == before
+
+
+@pytest.mark.parametrize("command", [
+    lambda folder: content_check.main([str(folder), "--verification", str(folder / "verification.yml")]),
+    lambda folder: typeset.main(["check", str(folder)]),
+])
+def test_tool_stdout_and_exit_code_are_identical_with_unusable_timings(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], command
+) -> None:
+    folder = tmp_path / "wf"
+    _report(folder)
+    _sources_bib(folder)
+    _body(folder, AA_BODY)
+    clean_code = command(folder)
+    clean = capsys.readouterr().out
+    (folder / timings.TIMINGS_NAME).write_text("- [oops", encoding="utf-8")
+
+    code = command(folder)
+
+    captured = capsys.readouterr()
+    assert (code, captured.out) == (clean_code, clean)
+    assert "timings" in captured.err
 
 
 def test_content_check_verification_records_the_verify_phase(tmp_path: Path) -> None:
@@ -329,6 +353,23 @@ def test_timings_cli_runs_as_a_script(tmp_path: Path) -> None:
     )
 
     assert done.returncode == 0 and "verify" in done.stdout
+
+
+def test_timings_help_describes_the_tool_and_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as stop:
+        timings.main(["--help"])
+
+    out = capsys.readouterr().out
+    assert stop.value.code == 0
+    assert "timings.yml" in out and "work-folder" in out
+
+
+def test_timings_without_a_folder_prints_usage_and_exits_two(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as stop:
+        timings.main([])
+
+    assert stop.value.code == 2
+    assert "usage: timings.py" in capsys.readouterr().err
 
 
 # -- doc_status is unchanged by timings --------------------------------------

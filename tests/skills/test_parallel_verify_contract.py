@@ -51,3 +51,9 @@ def test_skill_mentions_timings_without_a_score_gate() -> None:
     assert "timings.yml" in flat and "timings.py" in flat
     for name in ("SKILL.md", "references/approval.md", "references/production.md"):
         assert "percent" not in (SKILL_ROOT / name).read_text(encoding="utf-8").lower()
+
+
+def test_portal_tool_table_lists_timings() -> None:
+    table = (ROOT / "docs" / "portal" / "herramientas.qmd").read_text(encoding="utf-8")
+    row = next((line for line in table.splitlines() if line.startswith("| `timings.py`")), "")
+    assert "timings.yml" in row
