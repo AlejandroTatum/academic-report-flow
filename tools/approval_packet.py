@@ -2,7 +2,7 @@
 """Print the single approval packet for a report folder (verify-concise-drafts T8, S2).
 
 One compact Markdown message holds what the approver needs: clickable links to
-the draft PDF preview, ``body.md`` and the latest DOCX draft, the verify result,
+the plain draft PDF preview, ``body.md`` and the latest DOCX draft, the verify result,
 one row per criterion (cumple/falta, found/total), the missing items, the
 deletion candidates and the findings. The per-requirement evidence matrix is
 for agents: it stays in ``content-check.yml`` and is linked, never pasted (#64). It is read-only: it never runs the verifier, builds or approves.
@@ -19,15 +19,15 @@ from pathlib import Path
 import content_check
 import pdf_viewer
 import yaml
-from approval_marker import BODY_NAME, draft_is_fresh
+from approval_marker import BODY_NAME, draft_preview_is_fresh, draft_preview_path
 from draft_docx import DRAFT_DIR
-from report_config import ReportConfig, read_yaml
 
 _DOCX_VERSION = re.compile(r"-borrador-v(\d+)\.docx$")
 
 
 def preview_pdf(folder: Path) -> Path:
-    return ReportConfig(folder=folder, raw=read_yaml(folder / "report.yml")).pdf_path
+    """The plain temporary draft (``draft_pdf.py``), never the course-template PDF."""
+    return draft_preview_path(folder)
 
 
 def _link(path: Path) -> str:
@@ -46,11 +46,11 @@ def _cell(value: object) -> str:
 
 def _files_section(folder: Path) -> list[str]:
     pdf, body = preview_pdf(folder), folder / BODY_NAME
-    rebuild = "build_report_auto.py --no-approval-check"
+    rebuild = "draft_pdf.py"
     if not pdf.is_file():
-        pdf_line = f"- Draft PDF: missing: build the preview with {rebuild}"
-    elif not draft_is_fresh(pdf, body):
-        pdf_line = f"- Draft PDF: {_link(pdf)} STALE: rebuild the preview with {rebuild}"
+        pdf_line = f"- Draft PDF: missing: build the draft with {rebuild}"
+    elif not draft_preview_is_fresh(folder):
+        pdf_line = f"- Draft PDF: {_link(pdf)} STALE: rebuild the draft with {rebuild}"
     else:
         pdf_line = f"- Draft PDF: {_link(pdf)}"
     lines = [pdf_line, f"- {BODY_NAME}: {_link(body)}"]
@@ -121,8 +121,8 @@ def main(argv: list[str] | None = None) -> int:
 
 def _open_preview(folder: Path) -> None:
     pdf = preview_pdf(folder)
-    if not pdf.is_file() or not draft_is_fresh(pdf, folder / BODY_NAME):
-        print("preview not opened: rebuild the preview first", file=sys.stderr)
+    if not pdf.is_file() or not draft_preview_is_fresh(folder):
+        print("preview not opened: rebuild the preview first (draft_pdf.py)", file=sys.stderr)
         return
     error = pdf_viewer.open_pdf(pdf)
     print(f"preview not opened: {error}" if error else f"opened {pdf.resolve()}", file=sys.stderr)

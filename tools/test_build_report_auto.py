@@ -639,6 +639,21 @@ class TestApprovalGuard:
         _approval(tmp_path)
         self._run(tmp_path).assert_called_once()
 
+    def test_final_build_still_records_next_to_its_pdf_and_skips_the_plain_draft(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """S4: the plain draft is a separate temp preview; the final build keeps its own record."""
+        from approval_marker import DRAFT_DIR_ENV, draft_preview_path, draft_record_path, sha256_file
+        from conftest import _approval
+
+        monkeypatch.setenv(DRAFT_DIR_ENV, str(tmp_path / "system-tmp"))
+        _approval(tmp_path)
+        self._run(tmp_path).assert_called_once()
+        record = draft_record_path(tmp_path / "outputs" / "report.pdf")
+        assert record.read_text(encoding="utf-8").strip() == sha256_file(tmp_path / "body.md")
+        assert not draft_preview_path(tmp_path).exists()
+        assert not (tmp_path / "system-tmp").exists()
+
     def test_no_approval_check_flag_skips_the_guard(self, tmp_path: Path) -> None:
         self._run(tmp_path, ["--no-approval-check"]).assert_called_once()
 

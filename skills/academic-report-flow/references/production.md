@@ -29,7 +29,7 @@ Legacy: an `approval.yml` without `typeset: required` predates this phase; its r
 
 ## Generate (artifact: the final PDF under `outputs/<materia>/`)
 
-Runs only when `approval: done` (the `body_sha256` binds approved `body.md` bytes, current or carried under the bounded-edit rule in `approval.md`) and `typeset: done`. Never build before approval is done for final generation; the separate preapproval draft preview in `approval.md` is review-only, never the final artifact. The final build prints `TYPESET REQUIRED` while a required typeset is not current.
+Runs only when `approval: done` (the `body_sha256` binds approved `body.md` bytes, current or carried under the bounded-edit rule in `approval.md`) and `typeset: done`. Never build before approval is done for final generation; the separate preapproval draft preview (`draft_pdf.py`, plain, no course template; `approval.md`) is review-only, never the final artifact. The final build prints `TYPESET REQUIRED` while a required typeset is not current.
 
 `"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/build_report_auto.py" "$REPORT_CONTENT_ROOT/reports/<work-folder>/"` builds from `report.yml` (including `format:`) plus `body.typeset.md` while its binding is current (otherwise the approved `body.md`), runs the configured technical validation, and reports the artifact hash and page count. A final PDF older than `body.typeset.md` is stale (generate pending). It does not publish, copy or version, and never writes `approval.yml` or claims `VISUAL_PASS`, `HUMAN_REVIEW` or `READY_TO_SUBMIT`. Final PDF/DOCX stay under `outputs/<materia-slug>/`, intermediates in `build/` or `backups/`.
 

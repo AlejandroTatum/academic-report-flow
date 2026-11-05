@@ -28,7 +28,7 @@ Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `vali
 - Require verified sources before research is finished.
 - Apply batched edit orders verbatim before seeking re-approval; a bounded edit (at most 40 changed words, no heading touched) keeps the approval and the final review without asking, and verify, rebuild and validation still run.
 - The draft is plain text: `# Title` headings and `[@key]` citations only, no math, tables, images or bold (`references/content.md`); backend formatting goes in `body.typeset.md` after approval, never in `body.md`.
-- A preapproval draft preview is permitted only for review (`approval.md`); never build the final artifact before approval is `done` and `typeset` passes. Never present the approval gate before `draft` and `verify` are `done`.
+- A preapproval draft preview is permitted only for review (`approval.md`): the plain PDF from `tools/draft_pdf.py`, no cover, logos or course template, in a temp folder; never build the final artifact before approval is `done` and `typeset` passes. Never present the approval gate before `draft` and `verify` are `done`.
 - Stop at the earliest failed gate; never substitute an unsupported backend or executor.
 - Publish only through `deliver_report.py` with a current `APPROVAL_CURRENT` marker; publication is not approval.
 - No script, validator, or auditor ever grants `VISUAL_PASS`; `visual_pdf_auditor.py` PASS is only `AUDITOR_PRECHECK` evidence. Only independent semantic inspection of the assembled report grants it; `HUMAN_REVIEW` against immutable hashes precedes `READY_TO_SUBMIT`.

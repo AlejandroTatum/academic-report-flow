@@ -16,6 +16,7 @@ ejecuta `python3 tools/<herramienta>.py --help` o lee el módulo. Las pruebas vi
 | `build_report.py` | Vista previa HTML (y PDF con WeasyPrint) de un solo archivo Markdown |
 | `build_cover.py` | Portada UNL de página completa a partir de un YAML pequeño |
 | `typeset.py` | Fase de formato: aplica el formato del backend al borrador de texto plano aprobado |
+| `draft_pdf.py` | Borrador simple en PDF temporal (sin portada, logos ni plantilla del curso) para la aprobación; registra el sha256 de `body.md` y abre el visor |
 | `draft_docx.py` | Ida y vuelta del borrador en DOCX: exporta `body.md` para parafrasear en Word e importa las ediciones |
 | `report_config.py` | Configuración compartida: raíz de código y raíz de contenido |
 | `course_profile.py` | Aplica los valores por defecto de `report.yml` de un perfil de curso cuando la materia coincide |
@@ -26,7 +27,7 @@ ejecuta `python3 tools/<herramienta>.py --help` o lee el módulo. Las pruebas vi
 |---|---|
 | `doc_status.py` | Deriva las fases del flujo a partir de los artefactos en disco (solo lectura) |
 | `approval_marker.py` | Contrato del marcador de aprobación del borrador |
-| `approval_packet.py` | Imprime el paquete único de aprobación de una carpeta de trabajo |
+| `approval_packet.py` | Imprime el paquete único de aprobación de una carpeta de trabajo (enlaza y abre el borrador simple) |
 | `bounded_edit.py` | Predicado de edición acotada compartido por las compuertas de aprobación y revisión final |
 | `final_review_marker.py` | Contrato del marcador de la revisión final humana |
 | `pdf_viewer.py` | Abre un PDF para quien revisa, separado de la sesión del agente |
@@ -38,8 +39,8 @@ ejecuta `python3 tools/<herramienta>.py --help` o lee el módulo. Las pruebas vi
 | `guide_facts.py` | Extrae solo los hechos que la guía del docente declara explícitamente |
 | `rubric_plan.py` | La rúbrica del docente como plan verificable por máquina |
 | `rubric_checks.py` | Aserciones deterministas de solo lectura sobre un plan de rúbrica y un borrador |
-| `content_check.py` | Verificación dura de contenido: registra la matriz del verificador y deriva el veredicto |
-| `concision.py` | Presupuestos de palabras y detección de relleno en un borrador |
+| `content_check.py` | Verificación dura de contenido: registra la matriz del verificador y deriva el veredicto; guarda `prose_findings` en `content-check.yml` |
+| `concision.py` | Presupuestos de palabras, detección de relleno y lint de prosa consultivo (`prose_findings`) en un borrador |
 | `structure_contract.py` | Contrato de estructura confirmada del informe |
 | `evidence_contract.py` | Contrato de la matriz afirmación–evidencia |
 | `link_check.py` | Resolución mecánica de enlaces para la fase de verify |

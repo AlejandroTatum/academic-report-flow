@@ -77,7 +77,10 @@ def test_failed_verify_guidance_requires_user_orders_and_reapproval(tmp_path: Pa
     assert "run the check" not in status.gate
 
 
+import pytest
+
 import doc_status
+from approval_marker import DRAFT_DIR_ENV, draft_preview_path
 from conftest import (
     _approval,
     _body,
@@ -88,11 +91,17 @@ from conftest import (
 )
 
 
+@pytest.fixture(autouse=True)
+def isolated_drafts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The plain draft lives in a temp dir (S4); keep each test's out of the real one."""
+    monkeypatch.setenv(DRAFT_DIR_ENV, str(tmp_path / "system-tmp"))
+
+
 def _fresh_draft(folder: Path) -> Path:
-    """Write a draft PDF plus the record of the body.md bytes it rendered."""
+    """Write the plain draft PDF plus the record of the body.md bytes it rendered."""
     from approval_marker import draft_record_path, sha256_file
 
-    pdf = _config(folder).pdf_path
+    pdf = draft_preview_path(folder)
     pdf.parent.mkdir(parents=True, exist_ok=True)
     pdf.write_bytes(b"%PDF-draft")
     draft_record_path(pdf).write_text(sha256_file(folder / "body.md") + "\n", encoding="utf-8")
@@ -335,7 +344,7 @@ def test_approval_guidance_asks_only_approval_once_the_format_is_recorded(tmp_pa
     assert "ask only whether the user approves" in guidance
     assert "APE, AA, ACD or libre" not in guidance
     assert "PDF or DOCX" not in guidance
-    assert "--no-approval-check" in guidance
+    assert "draft_pdf.py" in guidance
 
 
 def test_approval_guidance_names_only_the_format_fields_still_missing(tmp_path: Path) -> None:
@@ -434,7 +443,7 @@ def test_approval_guidance_previews_the_pdf_before_asking(tmp_path: Path) -> Non
 
     guidance = doc_status._guidance("approval", folder)
 
-    for token in ("--no-approval-check", "preview", "content review", "before asking", "file://"):
+    for token in ("draft_pdf.py", "preview", "content review", "before asking", "file://", "no cover"):
         assert token in guidance
     assert "never the final" in guidance
     assert str(folder) in guidance
@@ -463,7 +472,7 @@ def test_approval_gate_demands_a_rebuild_when_no_draft_record_exists(tmp_path: P
     guidance = doc_status._guidance("approval", folder)
 
     assert "rebuild the draft PDF" in guidance
-    assert "--no-approval-check" in guidance
+    assert "draft_pdf.py" in guidance
     assert "ask_user_choice" not in guidance
 
 

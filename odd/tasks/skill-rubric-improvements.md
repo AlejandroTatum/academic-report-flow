@@ -33,8 +33,8 @@ and slice 8 (`typeset.py auto`, grouping phases).
 
 ## Tasks
 
-- T1 (S4): plain draft preview in a temporary PDF — writer A — commit: pending
-- T2 (S6): concision lint and prose_findings — writer C — commit: pending
+- T1 (S4): plain draft preview in a temporary PDF — writer A — commit: see git log "feat(approval): plain draft preview" (600 focused tests pass; one manual Docker texlive build)
+- T2 (S6): concision lint and prose_findings — writer C — commit: 354babd (242 focused tests pass; docs/portal/herramientas.qmd row update deferred to T1 surface)
 - T3 (S1-S3): rubric_trace, rubric_grade, review presentation, validate checks — writer B (after T1, T2) — commit: pending
 - T4 (S5): guide inventory and `partial` state — after T3 — commit: pending
 - T5: full suite, sync installed skill, PR — parent — commit: pending

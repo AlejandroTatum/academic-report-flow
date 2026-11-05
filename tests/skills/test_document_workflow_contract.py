@@ -1074,7 +1074,8 @@ def test_approval_previews_the_pdf_and_asks_format_spec_for_libre() -> None:
     """Task 11(a)(b): preview + inspection before the batch; libre adds format_spec as a choice."""
     approval = _flat(APPROVAL_MD)
     # issue #96: the preview is for content review; layout is audited after typeset/generate.
-    for token in ("--no-approval-check", "preview", "preview findings", "body.typeset.md", "before asking", "never the final", "format_spec", "sin portada", "con portada"):
+    # S4: the preview is the plain temporary draft (no cover, logos or course template).
+    for token in ("draft_pdf.py", "preview", "no cover", "temporary", "body.typeset.md", "before asking", "never the final", "format_spec", "sin portada", "con portada"):
         assert token in approval, f"approval.md must describe the preview and libre format_spec: {token}"
 
 

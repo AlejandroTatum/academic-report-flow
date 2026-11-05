@@ -5,8 +5,15 @@ from pathlib import Path
 
 import approval_packet
 import content_check
-from approval_marker import write_draft_record
-from conftest import _config, _cited_body, _pdf, _report, _rubric, _sources_bib, _verification
+import pytest
+from approval_marker import DRAFT_DIR_ENV, draft_preview_path, write_draft_record
+from conftest import _cited_body, _report, _rubric, _sources_bib, _verification
+
+
+@pytest.fixture(autouse=True)
+def isolated_drafts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The preview lives in a temp dir (S4); keep each test's out of the real one."""
+    monkeypatch.setenv(DRAFT_DIR_ENV, str(tmp_path / "system-tmp"))
 
 
 def _folder(tmp_path: Path) -> Path:
@@ -24,7 +31,9 @@ def _verify(folder: Path, requirements: list[dict] | None = None, **extra: objec
 
 
 def _fresh_preview(folder: Path) -> Path:
-    pdf = _pdf(folder)
+    pdf = draft_preview_path(folder)
+    pdf.parent.mkdir(parents=True, exist_ok=True)
+    pdf.write_bytes(b"%PDF-draft")
     write_draft_record(pdf, folder / "body.md")
     return pdf
 
@@ -44,12 +53,12 @@ def test_packet_flags_a_preview_older_than_the_body(tmp_path: Path) -> None:
     _fresh_preview(folder)
     _cited_body(folder, "# Informe\n\nOtro cuerpo [@key1], [@key2], [@key3], [@key4] y [@key5].\n")
     text = approval_packet.render(folder)
-    assert "STALE: rebuild the preview with build_report_auto.py --no-approval-check" in text
+    assert "STALE: rebuild the draft with draft_pdf.py" in text
 
 
 def test_packet_without_a_preview_says_so(tmp_path: Path) -> None:
     folder = _folder(tmp_path)
-    assert "- Draft PDF: missing: build the preview with build_report_auto.py --no-approval-check" in (
+    assert "- Draft PDF: missing: build the draft with draft_pdf.py" in (
         approval_packet.render(folder))
 
 
@@ -118,9 +127,9 @@ def test_cli_prints_the_packet_and_rejects_a_missing_folder(tmp_path: Path, caps
     assert "approval packet input error: report folder not found" in capsys.readouterr().err
 
 
-def test_config_pdf_path_is_the_preview(tmp_path: Path) -> None:
+def test_the_temporary_draft_is_the_preview(tmp_path: Path) -> None:
     folder = _folder(tmp_path)
-    assert approval_packet.preview_pdf(folder) == _config(folder).pdf_path
+    assert approval_packet.preview_pdf(folder) == draft_preview_path(folder)
 
 
 def test_open_flag_opens_a_fresh_preview(tmp_path: Path, capsys, monkeypatch) -> None:

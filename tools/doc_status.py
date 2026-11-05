@@ -35,7 +35,7 @@ import rubric_plan
 import typeset
 from guide_facts import load_guide_facts
 from course_profile import COURSE_LAYOUT, PRACTICE_FORMATS, course_repo
-from approval_marker import approval_state, bound_file_names, draft_is_fresh, render_settings_unchanged, sha256_file
+from approval_marker import approval_state, bound_file_names, draft_preview_is_fresh, draft_preview_path, render_settings_unchanged, sha256_file
 from publish_pdf import PublicationError, matching_delivered_version, scan_delivery_versions
 from report_config import (
     ROOT,
@@ -90,12 +90,13 @@ _GUIDANCE = {
     "plan": "record the teacher's rubric in {rubric}, then re-run doc_status",
     "draft": "draft {body}, then re-run doc_status",
     "approval": (
-        "before asking, build a preview PDF with {build_command} --no-approval-check for content "
-        "review: the draft is plain text, so layout findings it prints are not fixed in {body}; "
+        "before asking, build the plain draft PDF with {draft_command} for content "
+        "review (no cover, logos or course template, in a temporary folder, opened for the user): "
+        "the draft is plain text, so no layout is judged and none is fixed in {body}; "
         "formatting is applied in body.typeset.md after approval and the layout is audited after "
         "typeset and generate, in validate; the message right before "
         "the prompt lists clickable Markdown links with absolute file:// URLs to the draft PDF "
-        "({pdf}) and {body}: print it with {packet_command} --open (it also opens the fresh draft PDF "
+        "({draft_pdf}) and {body}: print it with {packet_command} --open (it also opens the fresh draft PDF "
         "for the user) and paste that approval packet "
         "(links, per-criterion summary, missing items) unchanged; "
         "the preview is never the final artifact; "
@@ -825,9 +826,9 @@ def _guidance(
             "run {express_approve_command}, then re-run doc_status; "
             "the user sees the document once, at review"
         )
-    elif phase_name == "approval" and not draft_is_fresh(config.pdf_path, folder / "body.md"):
+    elif phase_name == "approval" and not draft_preview_is_fresh(folder):
         template = (
-            "rebuild the draft PDF: {build_command} --no-approval-check (the draft PDF is missing "
+            "rebuild the draft PDF: {draft_command} (the draft PDF is missing "
             "or does not match the current {body}); do not present the approval prompt until it "
             "is rebuilt, then re-run doc_status; generation runs only after you approve {body}"
         )
@@ -892,6 +893,8 @@ def _guidance(
             [sys.executable, str(ROOT / "tools" / "approval_marker.py"), "approve", str(folder), "--express"]
         ),
         build_command=_tool_command("build_report_auto.py", folder),
+        draft_command=_tool_command("draft_pdf.py", folder),
+        draft_pdf=draft_preview_path(folder),
         deliver_command=_tool_command("deliver_report.py", folder),
         typeset_bind_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "bind", str(folder)]),
         typeset_check_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "check", str(folder)]),

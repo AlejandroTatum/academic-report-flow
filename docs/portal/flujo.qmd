@@ -28,7 +28,7 @@ flowchart TD
     DRAFT --> G1{"CONTROL del borrador<br/>secciones con #, subíndices en fórmula,<br/>citas, chequeos de la rúbrica"}
     G1 -->|falla| DRAFT
 
-    G1 -->|pasa| D2[/"DECISIÓN 2 - una sola tanda<br/>aprobar body.md + formato AA/APE/libre<br/>+ PDF/DOCX + datos faltantes"/]
+    G1 -->|pasa| D2[/"DECISIÓN 2 - una sola tanda<br/>aprobar body.md (borrador PDF simple, sin plantilla)<br/>+ formato AA/APE/libre + PDF/DOCX + datos faltantes"/]
     D2 -->|pedido de cambios| DRAFT
 
     D2 -->|aprobado| G2{"CONTROL de verificación<br/>2 jueces independientes<br/>(los lanza el orquestador)"}
