@@ -13,8 +13,10 @@ python3 tools/build_report_auto.py <carpeta-del-reporte>/
 python3 tools/validate_report.py <carpeta-del-reporte>/
 ```
 
-El build exige un `approval.yml` vigente; para un preview usa `--no-approval-check` y para solo validar,
-`--validate-only` ([Pipelines](pipelines.qmd)). En el flujo con agente, `doc_status.py` indica qué fase toca y las
+El build exige un `approval.yml` vigente; para solo validar usa `--validate-only` y para un build completo de
+prueba con la plantilla del curso, `--no-approval-check` ([Pipelines](pipelines.qmd)). Esa prueba ya no es la vista
+previa de la aprobación: el borrador que se revisa antes de aprobar es el PDF simple de `draft_pdf.py`
+(ver abajo). En el flujo con agente, `doc_status.py` indica qué fase toca y las
 herramientas de entrega publican el PDF final ([Flujo del documento](flujo.qmd)).
 
 El ejemplo incluido cumple todas las reglas del validador sin excepciones y `tools/test_shipped_example.py` lo mantiene
@@ -26,6 +28,20 @@ así. Muestra además dos decisiones a propósito:
 
 Una carpeta con prefijo `_` es borrador y no se copia a `outputs/<materia>/`; ese prefijo solo se refiere a la
 publicación (`publish_global:` lo dice de forma explícita).
+
+## Borrador simple para aprobar
+
+```bash
+python3 tools/draft_pdf.py <carpeta-del-reporte>/            # construye y abre el PDF
+python3 tools/draft_pdf.py <carpeta-del-reporte>/ --no-open  # solo construye (pruebas, CI)
+```
+
+Convierte `body.md` (y `sources.bib` para las referencias) en un PDF sin portada, sin logos y sin plantilla del curso,
+con la plantilla simple `templates/plain-report.tex` y sin validadores. Se escribe en un directorio temporal fuera de
+la carpeta del informe y de la entrega (`$REPORT_DRAFT_DIR`, o `academic-report-drafts/` dentro del directorio
+temporal del sistema) y se abre en el visor. Junto al PDF queda el sha256 del `body.md` que renderizó: `doc_status.py`
+y `approval_packet.py` lo comparan con el `body.md` actual y marcan como vieja una vista previa que ya no coincide. La
+plantilla institucional se compila una sola vez, en la construcción final después de `typeset`.
 
 ## Vista previa de un Markdown
 

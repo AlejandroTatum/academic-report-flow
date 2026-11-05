@@ -35,7 +35,7 @@ import rubric_plan
 import typeset
 from guide_facts import load_guide_facts
 from course_profile import COURSE_LAYOUT, PRACTICE_FORMATS, course_repo
-from approval_marker import approval_state, bound_file_names, draft_is_fresh, render_settings_unchanged, sha256_file
+from approval_marker import approval_state, bound_file_names, draft_preview_is_fresh, draft_preview_path, render_settings_unchanged, sha256_file
 from publish_pdf import PublicationError, matching_delivered_version, scan_delivery_versions
 from report_config import (
     ROOT,
@@ -90,12 +90,13 @@ _GUIDANCE = {
     "plan": "record the teacher's rubric in {rubric}, then re-run doc_status",
     "draft": "draft {body}, then re-run doc_status",
     "approval": (
-        "before asking, build a preview PDF with {build_command} --no-approval-check for content "
-        "review: the draft is plain text, so layout findings it prints are not fixed in {body}; "
+        "before asking, build the plain draft PDF with {draft_command} for content "
+        "review (no cover, logos or course template, in a temporary folder, opened for the user): "
+        "the draft is plain text, so no layout is judged and none is fixed in {body}; "
         "formatting is applied in body.typeset.md after approval and the layout is audited after "
         "typeset and generate, in validate; the message right before "
         "the prompt lists clickable Markdown links with absolute file:// URLs to the draft PDF "
-        "({pdf}) and {body}: print it with {packet_command} --open (it also opens the fresh draft PDF "
+        "({draft_pdf}) and {body}: print it with {packet_command} --open (it also opens the fresh draft PDF "
         "for the user) and paste that approval packet "
         "(links, per-criterion summary, missing items) unchanged; "
         "the preview is never the final artifact; "
@@ -295,6 +296,11 @@ def _phase_approval(folder: Path, _config: ReportConfig, _documents_root: Path |
     also returns to ``pending``, because editing after approval is the normal
     review loop, not a deadlock. Only a malformed marker is ``blocked``, with the
     predicate's own bounded reason. The marker is never written here.
+
+    Approval is not offered (``blocked``, ``guide_inventory_unmapped``) while a
+    guide inventory item has no criterion and no ``not_applicable:`` entry: evidence
+    coverage of the guide, never a score threshold and never about ``missing``
+    requirements (the verify gate owns those).
     """
     state = approval_state(folder)
     if state.state == "current":
@@ -302,6 +308,16 @@ def _phase_approval(folder: Path, _config: ReportConfig, _documents_root: Path |
         return PhaseState("approval", DONE, f"approval.yml matches {bound}")
     if state.state == "carried":
         return PhaseState("approval", DONE, state.detail)
+    if state.state in ("absent", "stale"):
+        unmapped = rubric_plan.inventory_problems(folder)
+        if unmapped:
+            ids = ", ".join(problem.split(":", 1)[0] for problem in unmapped)
+            return PhaseState(
+                "approval",
+                BLOCKED,
+                f"guide inventory items without a criterion or not_applicable entry: {ids}",
+                "guide_inventory_unmapped",
+            )
     if state.state == "absent":
         return PhaseState("approval", PENDING, state.detail)
     if state.state == "stale":
@@ -825,9 +841,19 @@ def _guidance(
             "run {express_approve_command}, then re-run doc_status; "
             "the user sees the document once, at review"
         )
-    elif phase_name == "approval" and not draft_is_fresh(config.pdf_path, folder / "body.md"):
+    elif phase_name == "approval" and blocked_reason == "guide_inventory_unmapped":
         template = (
-            "rebuild the draft PDF: {build_command} --no-approval-check (the draft PDF is missing "
+            "do not offer approval yet: list the guide inventory with "
+            + _tool_command("guide_facts.py", folder).replace("{", "{{").replace("}", "}}")
+            + " --inventory, then in {rubric} name every unmapped item (G1, G2...) under a criterion's "
+            "deliverables: or covers:, or under a top-level not_applicable: entry {{item, reason}} "
+            "with the reason (an over-detected line, never a demand you skipped); run "
+            + _tool_command("rubric_plan.py", folder).replace("{", "{{").replace("}", "}}")
+            + ", re-verify if the rubric changed, then re-run doc_status"
+        )
+    elif phase_name == "approval" and not draft_preview_is_fresh(folder):
+        template = (
+            "rebuild the draft PDF: {draft_command} (the draft PDF is missing "
             "or does not match the current {body}); do not present the approval prompt until it "
             "is rebuilt, then re-run doc_status; generation runs only after you approve {body}"
         )
@@ -869,6 +895,11 @@ def _guidance(
     if phase_name == "review":
         template += ("; open the PDF for the user (never screenshots): "
                      + _tool_command("pdf_viewer.py", config.pdf_path).replace("{", "{{").replace("}", "}}"))
+        if rubric_plan.rubric_state(folder) == "valid":
+            template += ("; with the PDF, run "
+                         + _tool_command("rubric_grade.py", folder).replace("{", "{{").replace("}", "}}")
+                         + " and present {rubric_grade} unchanged (a mechanical estimate, not the teacher's grade; "
+                         "the verifier never scores; it never blocks review)")
     if phase_name == "research" and _uncited_bibliography(config):
         template = (
             "write at least 1 entry (any type) to {sources}, the exact list to print "
@@ -886,12 +917,15 @@ def _guidance(
         validation=folder / "validation.yml",
         pdf=config.pdf_path,
         final_review=folder / "final-review.yml",
+        rubric_grade=folder / "rubric-grade.md",
         check_command=_tool_command("content_check.py", folder),
         packet_command=_tool_command("approval_packet.py", folder),
         express_approve_command=shlex.join(
             [sys.executable, str(ROOT / "tools" / "approval_marker.py"), "approve", str(folder), "--express"]
         ),
         build_command=_tool_command("build_report_auto.py", folder),
+        draft_command=_tool_command("draft_pdf.py", folder),
+        draft_pdf=draft_preview_path(folder),
         deliver_command=_tool_command("deliver_report.py", folder),
         typeset_bind_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "bind", str(folder)]),
         typeset_check_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "check", str(folder)]),

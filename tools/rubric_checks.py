@@ -61,6 +61,11 @@ def _section(body: str, title: str) -> str | None:
     return "\n".join(lines[start:]) if start is not None else None
 
 
+def has_section(body: str, title: str) -> bool:
+    """True when ``body`` has a heading matching ``title`` (case- and accent-insensitive)."""
+    return _section(body, title) is not None
+
+
 def _words(text: str) -> set[str]:
     stop = {"sobre", "entre", "desde", "hasta", "these", "those", "their", "there", "which", "where", "para", "como", "todos", "todas", "through"}
     return {word for word in re.findall(r"[^\W\d_]+", _fold(text)) if len(word) >= 5 and word not in stop}

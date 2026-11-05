@@ -129,7 +129,7 @@ def test_verify_requires_one_verifier_matrix_and_quoted_evidence() -> None:
     assert "ONE independent read-only verifier" in flat
     assert "verification.yml" in flat
     assert "--verification verification.yml" in flat
-    assert "requirement" in flat and "evidence" in flat and "found|missing" in flat
+    assert "requirement" in flat and "evidence" in flat and "found|partial|missing" in flat
     assert "exact quote" in flat and "downgraded to `missing`" in flat
     assert "links_resolve" in flat and "unmapped_paragraphs" in flat
     assert "never scores" in flat
@@ -1074,7 +1074,8 @@ def test_approval_previews_the_pdf_and_asks_format_spec_for_libre() -> None:
     """Task 11(a)(b): preview + inspection before the batch; libre adds format_spec as a choice."""
     approval = _flat(APPROVAL_MD)
     # issue #96: the preview is for content review; layout is audited after typeset/generate.
-    for token in ("--no-approval-check", "preview", "preview findings", "body.typeset.md", "before asking", "never the final", "format_spec", "sin portada", "con portada"):
+    # S4: the preview is the plain temporary draft (no cover, logos or course template).
+    for token in ("draft_pdf.py", "preview", "no cover", "temporary", "body.typeset.md", "before asking", "never the final", "format_spec", "sin portada", "con portada"):
         assert token in approval, f"approval.md must describe the preview and libre format_spec: {token}"
 
 

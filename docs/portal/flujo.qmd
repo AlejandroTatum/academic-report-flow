@@ -28,17 +28,17 @@ flowchart TD
     DRAFT --> G1{"CONTROL del borrador<br/>secciones con #, subíndices en fórmula,<br/>citas, chequeos de la rúbrica"}
     G1 -->|falla| DRAFT
 
-    G1 -->|pasa| D2[/"DECISIÓN 2 - una sola tanda<br/>aprobar body.md + formato AA/APE/libre<br/>+ PDF/DOCX + datos faltantes"/]
+    G1 -->|pasa| D2[/"DECISIÓN 2 - una sola tanda<br/>aprobar body.md (borrador PDF simple, sin plantilla)<br/>+ formato AA/APE/libre + PDF/DOCX + datos faltantes"/]
     D2 -->|pedido de cambios| DRAFT
 
     D2 -->|aprobado| G2{"CONTROL de verificación<br/>2 jueces independientes<br/>(los lanza el orquestador)"}
     G2 -->|flojo/falta| DRAFT
     G2 -->|cumple| GEN["Generar PDF/DOCX"]
-    GEN --> G3{"CONTROL de validación<br/>validate_report + auditoría visual<br/>+ revisión página por página = VISUAL_PASS"}
+    GEN --> G3{"CONTROL de validación<br/>validate_report (incluye los chequeos de la rúbrica sobre el typeset y el texto del PDF)<br/>+ auditoría visual<br/>+ revisión página por página = VISUAL_PASS"}
     G3 -->|defecto del contenido| DRAFT
     G3 -->|defecto de herramienta| STOP(["Detenerse y reportar<br/>(se arregla la herramienta, nunca el borrador aprobado a escondidas)"])
 
-    G3 -->|pasa| D3[/"DECISIÓN 3 - OK final sobre el PDF exacto"/]
+    G3 -->|pasa| D3[/"DECISIÓN 3 - OK final sobre el PDF exacto<br/>+ tabla de calificación de la rúbrica (estimación mecánica)"/]
     D3 -->|cambios| DRAFT
     D3 -->|OK| DEL["Publicar vNNN<br/>~/Documents/&lt;categoría&gt;/&lt;materia&gt;/&lt;slug&gt;/<br/>READY_TO_SUBMIT"]
     DEL --> DONE([fin])
@@ -67,7 +67,7 @@ Cada fase produce un único artefacto en la carpeta de trabajo; `doc_status` los
 | `typeset` | `body.typeset.md` | la skill |
 | `generate` | PDF o DOCX bajo `outputs/<materia>/` | la skill |
 | `validate` | `validation.yml` | la skill o `gentle-ai review` |
-| `review` | `final-review.yml` | compuerta humana (Decisión 3) |
+| `review` | `final-review.yml` (con `rubric-grade.md` presentada junto al PDF) | compuerta humana (Decisión 3) |
 | `deliver` | `<slug>-vNNN.pdf` en la biblioteca de Documentos | la skill |
 
 Las decisiones humanas se describen en [Decisiones del usuario](decisiones-usuario.qmd).

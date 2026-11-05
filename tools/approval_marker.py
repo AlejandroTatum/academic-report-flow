@@ -15,6 +15,12 @@ A bounded edit made after the approval keeps it: ``record_approval`` writes
 snapshot hashes to ``body_sha256`` and the diff to the current ``body.md`` is
 bounded (see ``bounded_edit``). Anything else is ``stale``, as before.
 
+The approval preview is the plain draft of ``draft_pdf.py`` (no cover, logos or course
+template), kept in a temporary directory outside the report and delivery folders:
+``draft_preview_path`` names it and ``draft_preview_is_fresh`` applies the same
+``body.md`` sha256 record as any draft. The final build keeps its own record
+next to the final PDF, which the publisher checks.
+
 A marker that still carries a legacy ``preview_sha256`` key stays valid: keys
 outside ``REQUIRED_KEYS`` are ignored data, and only ``body_sha256`` is checked.
 
@@ -30,6 +36,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -95,6 +102,34 @@ def draft_record_path(pdf_path: Path) -> Path:
     """Sidecar of a draft PDF holding the sha256 of the ``body.md`` it rendered."""
     pdf = Path(pdf_path)
     return pdf.with_name(f"{pdf.stem}.body.sha256")
+
+
+# Where the plain approval draft lives; overridable so tests and CI stay out of the system tmp.
+DRAFT_DIR_ENV = "REPORT_DRAFT_DIR"
+DRAFT_PDF_NAME = "draft.pdf"
+
+
+def draft_preview_dir(work_folder: Path) -> Path:
+    """Temporary directory of the plain draft of ``work_folder``.
+
+    Keyed by the resolved folder, so two reports with the same name never share a
+    draft; never inside the work folder or the delivery folder.
+    """
+    folder = Path(work_folder).resolve()
+    base = os.environ.get(DRAFT_DIR_ENV, "").strip()
+    root = Path(base) if base else Path(tempfile.gettempdir()) / "academic-report-drafts"
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", folder.name).strip("-") or "report"
+    return root / f"{slug}-{hashlib.sha256(str(folder).encode('utf-8')).hexdigest()[:10]}"
+
+
+def draft_preview_path(work_folder: Path) -> Path:
+    """The plain draft PDF that stands as the approval preview of ``work_folder``."""
+    return draft_preview_dir(work_folder) / DRAFT_PDF_NAME
+
+
+def draft_preview_is_fresh(work_folder: Path) -> bool:
+    """True when the plain draft exists and records the current ``body.md`` bytes."""
+    return draft_is_fresh(draft_preview_path(work_folder), Path(work_folder) / BODY_NAME)
 
 
 def write_draft_record(pdf_path: Path, body_path: Path, digest: str | None = None) -> Path:

@@ -905,6 +905,66 @@ def common_validation(config: ReportConfig) -> ValidationResult:
     return result
 
 
+def rubric_state_present(config: ReportConfig) -> bool:
+    """True when the folder has a ``rubric.yml`` to re-check (reports without one validate as before)."""
+    return (config.folder / "rubric.yml").is_file()
+
+
+def rubric_validation(config: ReportConfig) -> ValidationResult:
+    """Re-run the rubric checks on the body the build rendered and on the final PDF text.
+
+    A deterministic check that passed on ``body.md`` but fails on ``body.typeset.md``
+    was lost in typeset; checked text that is absent from the PDF text was lost in the
+    build. Only losses fail; nothing here scores or compares a threshold. A report
+    without a valid ``rubric.yml`` is not checked (a malformed one warns).
+    """
+    import rubric_checks
+    import rubric_plan
+    import rubric_trace
+
+    result = ValidationResult()
+    state = rubric_plan.rubric_state(config.folder)
+    if state == "absent":
+        return result
+    if state != "valid":
+        result.warnings.append("rubric.yml is malformed: rubric checks not run on the final artifact")
+        return result
+    criteria = rubric_plan.load_rubric(config.folder)
+    body_path = config.body_path
+    source = config.folder / "body.md"
+    try:
+        body = body_path.read_text(encoding="utf-8")
+        original = source.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        result.warnings.append(f"rubric checks not run: {exc}")
+        return result
+    passed_in_source = {(r.criterion_id, r.check_index) for r in rubric_checks.run_checks(config.folder, criteria, original) if r.ok}
+    for item in rubric_checks.run_checks(config.folder, criteria, body):
+        if not item.ok:
+            lost = " (lost in typeset: it passes in body.md)" if body_path != source and (item.criterion_id, item.check_index) in passed_in_source else ""
+            result.errors.append(
+                f"rubric: criterion '{item.criterion_id}' check {item.check_index} ({item.type}) "
+                f"fails in {body_path.name}{lost}: {item.detail}"
+            )
+    records, _note = rubric_trace._verification(config.folder)
+    if body_path != source:
+        for record in records or []:
+            quote = str(record.get("evidence") or "")
+            if record.get("status") == "found" and quote and not rubric_trace.quote_in_text(quote, body):
+                result.warnings.append(
+                    f"rubric: criterion '{record.get('criterion')}' evidence not found in {body_path.name}: «{quote}»"
+                )
+    if config.output_format == "pdf" and config.pdf_path.is_file():
+        pdf = rubric_trace.PdfText(rubric_trace.pdf_pages(config.pdf_path))
+        if not pdf.available:
+            result.warnings.append("rubric: PDF text unavailable; rubric checks not run on the PDF")
+        else:
+            for criterion in criteria:
+                for loss in rubric_trace.pdf_losses(config.folder, criterion, pdf):
+                    result.errors.append(f"rubric: criterion '{criterion['id']}' {loss} lost in the PDF text")
+    return result
+
+
 def asset_validation(_config: ReportConfig) -> ValidationResult:
     """Validate that system-level build assets (logo, background) exist.
 
@@ -1502,6 +1562,8 @@ def validate(config: ReportConfig) -> ReportValidation:
         validation.add("pdf_layout", pdf_layout_validation(config))
     if validators.get("ieee", True):
         validation.add("ieee", validate_ieee(config))
+    if rubric_state_present(config):
+        validation.add("rubric", rubric_validation(config))
     if validators.get("latex", False):
         validation.add("source_layout", source_layout_validation(config))
     if validators.get("latex_log", False):
