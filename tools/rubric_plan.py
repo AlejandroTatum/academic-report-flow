@@ -59,6 +59,39 @@ CHECK_PARAMS = {
 _INT_KEYS = ("count", "min_items", "min")
 
 
+# A literal ``text`` runs on three texts with opposite rules: the plain-text
+# ``body.md``, the backend ``body.typeset.md`` and the PDF text. A formula, a
+# Unicode superscript or a figure path cannot read the same in all three, so a
+# check that names one is red in at least one of them whatever the draft says.
+# A ``pattern`` never runs on the PDF text and can accept every notation, so it
+# is the tolerant way to check one. These mirror the detectors in
+# ``content_check.py`` (which imports this module, so it cannot be imported back).
+_SCRIPT_CHARS_RE = re.compile("[\u2070-\u209f\u00b9\u00b2\u00b3]")
+_MATH_RE = re.compile(r"\$\$|\$(?=\S)[^$\n]*(?<=\S)\$(?!\d)|\\\(|\\\[|\\[A-Za-z]+|\^")
+_WINDOWS_PATH_RE = re.compile(
+    r"(?<!\S)(?:"
+    r"(?:[A-Za-z]:|\.{1,2}|\\)\\\S*"
+    r"|[\w.-]+\\[\w.-]+\\\S*"
+    r"|[\w.-]+\\[\w-]+\.[A-Za-z0-9]{1,5}\b"
+    r")"
+)
+_FIGURE_RE = re.compile(r"!\[|\.(?:png|jpe?g|svg|gif|webp)\b", re.IGNORECASE)
+_TYPESET_HINTS = {
+    "formula": "check the words around the formula, or a matches pattern that accepts every notation",
+    "Unicode superscript/subscript": "check the text without the superscript or subscript",
+    "figure path": "use a figure_referenced check instead",
+}
+
+
+def _typeset_breaking(text: str) -> str | None:
+    """Name what in a literal ``text`` cannot survive typeset, or None when it can."""
+    if _SCRIPT_CHARS_RE.search(text):
+        return "Unicode superscript/subscript"
+    if _FIGURE_RE.search(text):
+        return "figure path"
+    return "formula" if _MATH_RE.search(_WINDOWS_PATH_RE.sub("", text)) else None
+
+
 def count_checked_criteria(criteria: list[dict]) -> int:
     """Count criteria that carry at least one deterministic check."""
     return sum(bool(c.get("checks")) for c in criteria)
@@ -91,6 +124,12 @@ def _check_errors(check: object, label: str) -> list[str]:
             re.compile(check["pattern"])
         except re.error as exc:
             errors.append(f"{label} invalid regex: {exc}")
+    reason = _typeset_breaking(check["text"]) if _is_text(check.get("text")) else None
+    if reason:
+        errors.append(
+            f"{label} text cannot pass after typeset ({reason}): a text check runs on "
+            f"body.md, body.typeset.md and the PDF text; {_TYPESET_HINTS[reason]}"
+        )
     return errors
 
 

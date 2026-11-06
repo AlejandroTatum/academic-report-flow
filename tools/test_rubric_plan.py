@@ -165,6 +165,48 @@ def test_well_formed_numeric_checks_validate(check: dict) -> None:
     assert rubric_plan.validate_rubric(data) == []
 
 
+def _check_errors_for(check: dict) -> list[str]:
+    data = {"schema": RUBRIC_SCHEMA, "source": "guide", "criteria": [
+        dict(DEFAULT_RUBRIC_CRITERIA[0], checks=[check])
+    ]}
+    return rubric_plan.validate_rubric(data)
+
+
+@pytest.mark.parametrize(("check", "reason"), [
+    ({"type": "contains", "text": r"\ln(x^2) = 0.7"}, "formula"),
+    ({"type": "contains", "text": "$x = 2$"}, "formula"),
+    ({"type": "contains", "text": "x^2 + 1"}, "formula"),
+    ({"type": "verbatim_from_guide", "section": "S", "source": "guide", "text": r"\frac{a}{b}"}, "formula"),
+    ({"type": "contains", "text": "9.8 m/s²"}, "Unicode superscript/subscript"),
+    ({"type": "contains", "text": "x₁ = 3"}, "Unicode superscript/subscript"),
+    ({"type": "contains", "text": "figuras/circuito.png"}, "figure path"),
+    ({"type": "contains", "text": "![Circuito](figuras/c.svg)"}, "figure path"),
+])
+def test_checks_typeset_would_break_are_rejected(check: dict, reason: str) -> None:
+    errors = _check_errors_for(check)
+    assert len(errors) == 1
+    assert "criterion 1 check 1" in errors[0]
+    assert f"({reason})" in errors[0]
+    assert "text cannot pass after typeset" in errors[0]
+    assert "body.md, body.typeset.md and the PDF text" in errors[0]
+
+
+@pytest.mark.parametrize("check", [
+    {"type": "contains", "text": "logaritmo natural"},
+    {"type": "contains", "text": "costo de $5"},
+    {"type": "contains", "text": r"C:\Users\alumno\proyecto"},
+    {"type": "contains", "text": "informe.pdf"},
+    {"type": "matches", "pattern": r"(?i)\d+ ramas[\s\S]*\|"},
+    {"type": "link_present", "pattern": r"pull/\d+"},
+    # A pattern never runs on the PDF text and may accept every notation.
+    {"type": "matches", "pattern": r"(USD|US\$|\$) ?\d"},
+    {"type": "matches", "pattern": r"m = 2(³²|\^\{32\})"},
+    {"type": "matches", "pattern": r"figures/secuencia\.png"},
+])
+def test_plain_text_and_ordinary_regex_checks_stay_valid(check: dict) -> None:
+    assert _check_errors_for(check) == []
+
+
 def test_checked_criteria_count_and_semantic_backwards_compatibility() -> None:
     criteria = [dict(DEFAULT_RUBRIC_CRITERIA[0], checks=[{"type": "heading_present", "section": "Objetivos"}]),
                 dict(DEFAULT_RUBRIC_CRITERIA[1])]
