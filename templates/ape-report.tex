@@ -26,14 +26,22 @@
 \usepackage[fontsize=10.5pt]{fontsize}
 \usepackage[a4paper,top=3.75cm,bottom=2.5cm,left=3.0cm,right=3.0cm,headheight=2.05cm,headsep=0.45cm]{geometry}
 \usepackage{fontspec}
+% Glyph fallback: Montserrat and Play have no Greek, so a text alpha, chi, pi
+% or lambda would be dropped ("Missing character"). Libertinus Sans ships with
+% TeX Live, is sans and carries Greek; luaotfload takes a glyph from it only
+% when the main face lacks it. Without it the faces are used as they are.
+\IfFontExistsTF{Libertinus Sans}{%
+  \directlua{luaotfload.add_fallback("apefallback", {"Libertinus Sans:mode=node"})}%
+  \newcommand{\apefallbackfeature}{RawFeature={fallback=apefallback},}%
+}{\newcommand{\apefallbackfeature}{}}
 % Body face: the teacher's template uses Montserrat, a free Google font that
 % is not part of TeX Live and often missing from the system. When it is not
 % installed we fall back to TeX Gyre Heros, the same sans fallback the other
 % templates already rely on.
-\IfFontExistsTF{Montserrat}{\setmainfont{Montserrat}[Ligatures=TeX]}{\setmainfont{TeX Gyre Heros}[Ligatures=TeX]}
+\IfFontExistsTF{Montserrat}{\setmainfont{Montserrat}[\apefallbackfeature Ligatures=TeX]}{\setmainfont{TeX Gyre Heros}[\apefallbackfeature Ligatures=TeX]}
 % Title face: the DOCX asks for "Play"; the same sans fallback applies when it
 % is not installed.
-\IfFontExistsTF{Play}{\newfontfamily\apetitlefont{Play}[Ligatures=TeX]}{\newfontfamily\apetitlefont{TeX Gyre Heros}[Ligatures=TeX]}
+\IfFontExistsTF{Play}{\newfontfamily\apetitlefont{Play}[\apefallbackfeature Ligatures=TeX]}{\newfontfamily\apetitlefont{TeX Gyre Heros}[\apefallbackfeature Ligatures=TeX]}
 % Spanish hyphenation patterns (without a language package LuaLaTeX breaks
 % Spanish words with English rules: "it-eración"). es-noshorthands keeps the
 % active characters (", <, >, ~) literal and es-tabla keeps "Tabla" rather
