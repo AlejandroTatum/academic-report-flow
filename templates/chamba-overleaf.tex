@@ -3,6 +3,11 @@
 \usepackage[a4paper,left=3cm,right=2.5cm,top=3cm,bottom=2.5cm]{geometry}
 \usepackage{fontspec}
 \IfFontExistsTF{Times New Roman}{\setmainfont{Times New Roman}[Ligatures=TeX]}{\setmainfont{TeX Gyre Termes}[Ligatures=TeX]}
+% Spanish hyphenation and labels: without a language package LuaLaTeX breaks
+% Spanish words with English rules ("it-eración") and names tables "Table".
+% es-noshorthands keeps ", <, >, ~ literal; es-tabla reads "Tabla", not
+% "Cuadro"; es-noindentfirst and es-nolayout keep the headings and lists as they were.
+\usepackage[spanish,es-noshorthands,es-tabla,es-noindentfirst,es-nolayout]{babel}
 \usepackage{graphicx}
 \usepackage{amssymb}
 \usepackage{setspace}
@@ -48,10 +53,11 @@
 \emergencystretch=3em
 \setlist[itemize]{label=\tiny$\blacksquare$,topsep=4pt,itemsep=6pt,leftmargin=0.75cm}
 \captionsetup{font=small,labelfont=bf,justification=centering}
-\renewcommand{\figurename}{Figura}
-\renewcommand{\contentsname}{Índice General}
-\renewcommand{\listfigurename}{Índice de Figuras}
-\renewcommand{\refname}{Referencias bibliográficas}
+% babel resets the caption names when the document starts; set ours through its hook
+% so the template's labels still win.
+\addto\captionsspanish{\renewcommand{\figurename}{Figura}\renewcommand{\contentsname}{Índice General}\renewcommand{\listfigurename}{Índice de Figuras}\renewcommand{\refname}{Referencias bibliográficas}}
+% babel's Spanish label for a reference URL is "dirección".
+\DefineBibliographyStrings{spanish}{url={Disponible en}}
 
 \titleformat{\section}{\normalfont\bfseries\large}{\thesection.}{0.6em}{}
 \titleformat{\subsection}{\normalfont\bfseries\normalsize}{\thesubsection.}{0.6em}{}
