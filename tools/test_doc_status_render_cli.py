@@ -27,7 +27,6 @@ from conftest import (
     _body,
     _bibliography,
     _cited_body,
-    _choose_format,
     _content_check,
     _declare_bibliography_delivery,
     _final_review,
@@ -41,6 +40,13 @@ from conftest import (
     _sources_bib,
     _validation,
 )
+from conftest import _choose_format as _record_format
+
+
+def _declared_format(folder: Path, chosen: str = "aa", **metadata: object) -> Path:
+    """Record a format choice with the AI declaration opt-out, so these tests keep their subject."""
+    metadata.setdefault("ai_declaration", "false")
+    return _record_format(folder, chosen, **metadata)
 
 CATEGORY = "Academicos"
 SLUG = "informe-de-laboratorio"
@@ -77,7 +83,7 @@ def _reviewed_build(folder: Path) -> Path:
     _cited_body(folder)
     marker = _approval(folder)
     _content_check(folder)
-    _choose_format(folder, "aa")
+    _declared_format(folder, "aa")
     pdf = _pdf(folder)
     _mtime(folder / "report.yml", 1_000_000)
     _mtime(marker, 1_000_000)
@@ -95,7 +101,7 @@ def _build_ready(folder: Path) -> Path:
     _cited_body(folder)
     _approval(folder)
     _content_check(folder)
-    _choose_format(folder, "aa")
+    _declared_format(folder, "aa")
     return folder
 
 
@@ -595,7 +601,7 @@ def test_all_done_route_reads_the_subject_scoped_delivery_folder(tmp_path: Path,
     _cited_body(folder)
     marker = _approval(folder)
     _content_check(folder)
-    _choose_format(folder, "aa")
+    _declared_format(folder, "aa")
     pdf = _pdf(folder)
     _mtime(folder / "report.yml", 1_000_000)
     _mtime(marker, 1_000_000)
@@ -640,7 +646,7 @@ def test_all_done_route_with_requested_bibliography(tmp_path: Path) -> None:
     _cited_body(folder)
     marker = _approval(folder)
     _content_check(folder)
-    _choose_format(folder, "aa")
+    _declared_format(folder, "aa")
     pdf = _pdf(folder)
     _mtime(folder / "report.yml", 1_000_000)
     _mtime(marker, 1_000_000)

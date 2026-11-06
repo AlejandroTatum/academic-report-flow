@@ -915,6 +915,28 @@ class DocxRenderer:
             entry = self.document.add_paragraph(style=REFERENCE_STYLE)
             set_run_font(entry.add_run(format_reference(number, key, fields)), self.serif, 11)
 
+    def render_ai_declaration(self) -> None:
+        """Render ``ai_declaration`` after the bibliography, as LaTeX does.
+
+        A dict gives ``title``/``text`` (``format: markdown`` runs the text
+        through the body renderer so tables come out as tables); a string is
+        one paragraph. ``false`` or an absent key renders nothing.
+        """
+        declaration = self.config.raw.get("ai_declaration") or self.config.raw.get("declaracion_ia")
+        if not declaration:
+            return
+        title, text, markdown = "Declaración de uso de IA generativa", str(declaration), False
+        if isinstance(declaration, dict):
+            title = str(declaration.get("title") or title)
+            text = str(declaration.get("text") or "")
+            markdown = str(declaration.get("format") or "").strip().lower() == "markdown"
+        paragraph = self.document.add_paragraph(style="Heading 1")
+        set_run_font(paragraph.add_run(title), self.serif)
+        if markdown:
+            self.render_body(text)
+        elif text.strip():
+            self._paragraph(text.strip())
+
     def warn(self, message: str) -> None:
         self.warnings.append(message)
 
@@ -1135,6 +1157,7 @@ def render_document(config: ReportConfig) -> tuple[Document, list[str]]:
     renderer.render_front_matter()
     renderer.render_body(markdown)
     renderer.render_bibliography()
+    renderer.render_ai_declaration()
     return renderer.document, renderer.warnings
 
 

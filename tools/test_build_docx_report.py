@@ -684,3 +684,62 @@ def test_apa_citation_style_is_rejected_in_docx_output(tmp_path: Path) -> None:
 def test_explicit_ieee_citation_style_still_builds_docx(tmp_path: Path) -> None:
     folder = make_report(tmp_path, "# T\n\nTexto.\n", extra="citation_style: ieee")
     assert build_and_open(folder) is not None
+
+
+# ---------------------------------------------------------------------------
+# AI declaration
+# ---------------------------------------------------------------------------
+
+DECLARATION_BODY = "# Introducción\n\nTexto del informe.\n\n# Conclusiones\n\nCierre.\n"
+DECLARATION_YAML = (
+    "ai_declaration:\n"
+    "  title: Declaración de uso de IA generativa\n"
+    "  format: markdown\n"
+    "  text: |\n"
+    "    Se usó asistencia de IA.\n"
+    "\n"
+    "    Tabla A. Herramientas utilizadas\n"
+    "\n"
+    "    | Herramienta | Uso |\n"
+    "    | --- | --- |\n"
+    "    | Claude | Redacción asistida |\n"
+    "ai_declaration_position: after_bibliography"
+)
+
+
+def test_ai_declaration_renders_after_the_bibliography_with_a_table(tmp_path: Path) -> None:
+    bib = "@book{k1,\n  author = {Perez, Ana},\n  title = {Un libro},\n  year = {2020},\n  publisher = {Ed}\n}\n"
+    body = DECLARATION_BODY.replace("Cierre.", "Cierre [@k1].")
+    document = build_and_open(
+        make_report(tmp_path, body, route="technical", bib=bib, extra=DECLARATION_YAML)
+    )
+
+    texts = paragraph_texts(document)
+    heading = next(p for p in document.paragraphs if p.text == "Declaración de uso de IA generativa")
+    assert heading.style.name == "Heading 1"
+    assert "Se usó asistencia de IA." in texts
+    assert texts.index(heading.text) > max(i for i, t in enumerate(texts) if "Un libro" in t)
+    assert len(document.tables) == 1
+    assert [cell.text for cell in document.tables[0].rows[1].cells] == ["Claude", "Redacción asistida"]
+
+
+def test_ai_declaration_as_plain_string_renders_one_paragraph(tmp_path: Path) -> None:
+    document = build_and_open(
+        make_report(tmp_path, DECLARATION_BODY, route="technical", extra='ai_declaration: "Se usó Claude."')
+    )
+
+    texts = paragraph_texts(document)
+    assert texts[-2:] == ["Declaración de uso de IA generativa", "Se usó Claude."]
+
+
+def test_docx_without_ai_declaration_is_unchanged(tmp_path: Path) -> None:
+    plain = build_and_open(make_report(tmp_path / "a", DECLARATION_BODY, route="technical"))
+    opted_out = build_and_open(
+        make_report(tmp_path / "b", DECLARATION_BODY, route="technical", extra="ai_declaration: false")
+    )
+
+    expected = ["Introducción", "Texto del informe.", "Conclusiones", "Cierre."]
+    assert paragraph_texts(plain)[-4:] == expected
+    assert paragraph_texts(opted_out) == paragraph_texts(plain)
+    assert not any("IA generativa" in text for text in paragraph_texts(plain))
+    assert len(plain.tables) == 0 and len(opted_out.tables) == 0

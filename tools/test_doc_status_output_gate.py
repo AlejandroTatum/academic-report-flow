@@ -7,7 +7,6 @@ import doc_status
 from conftest import (
     _approval,
     _body,
-    _choose_format,
     _config,
     _final_review,
     _pdf,
@@ -18,6 +17,13 @@ from conftest import (
     _validation,
     _mtime,
 )
+from conftest import _choose_format as _record_format
+
+
+def _declared_format(folder: Path, chosen: str = "aa", **metadata: object) -> Path:
+    """Record a format choice with the AI declaration opt-out, so these tests keep their subject."""
+    metadata.setdefault("ai_declaration", "false")
+    return _record_format(folder, chosen, **metadata)
 
 SLUG = "informe-de-laboratorio"
 
@@ -29,7 +35,7 @@ def _format_phase(folder: Path, root: Path | None = None) -> doc_status.PhaseSta
 def _legacy_folder(folder: Path) -> Path:
     """Format chosen, no ``output:`` recorded (reports from before task 9.1)."""
     _report(folder)
-    _choose_format(folder, "aa", output=None)
+    _declared_format(folder, "aa", output=None)
     return folder
 
 
@@ -92,7 +98,7 @@ def test_valid_output_values_stay_done(tmp_path: Path) -> None:
     for value in ("pdf", "DOCX"):
         folder = tmp_path / value
         _report(folder)
-        _choose_format(folder, "aa", output=value)
+        _declared_format(folder, "aa", output=value)
         assert _format_phase(folder).state == doc_status.DONE
 
 
@@ -204,7 +210,7 @@ def _course_repo(documents: Path, subject: str = "redes") -> Path:
 
 def _course_report(folder: Path) -> Path:
     _report(folder, subject="Redes")
-    _choose_format(folder, "aa")
+    _declared_format(folder, "aa")
     return folder
 
 
@@ -331,7 +337,7 @@ def test_libre_report_is_not_held_for_a_course_folder(tmp_path: Path) -> None:
     _course_repo(documents)
     folder = tmp_path / "wf"
     _report(folder, subject="Redes")
-    _choose_format(folder, "libre", format_spec="documento sobrio")
+    _declared_format(folder, "libre", format_spec="documento sobrio")
 
     assert _format_phase(folder, documents).state == doc_status.DONE
 
