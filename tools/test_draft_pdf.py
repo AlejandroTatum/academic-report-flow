@@ -212,3 +212,45 @@ def test_draft_refuses_a_folder_without_body(tmp_path: Path, compiled: dict[str,
 
     with pytest.raises(SystemExit):
         draft_pdf.render_draft(folder)
+
+
+def _uncited_folder(tmp_path: Path, *, uncited: bool) -> Path:
+    """An academic report whose body cites nothing and whose .bib holds one @misc entry."""
+    folder = tmp_path / "wf"
+    _report(folder)
+    with (folder / "report.yml").open("a", encoding="utf-8") as stream:
+        stream.write("metadata:\n  title: Informe Simulacion\n  student: Alejandro Padilla\n  date: 2026-11-05\n")
+        if uncited:
+            stream.write("uncited_bibliography: true\n")
+    (folder / "sources.bib").write_text('@misc{slides5, title = "Diapositivas semana 5"}\n', encoding="utf-8")
+    _body(folder, "# Informe\n\nTexto sin ninguna cita.\n")
+    return folder
+
+
+def test_draft_prints_the_whole_bibliography_of_an_uncited_bibliography_report(
+    tmp_path: Path, compiled: dict[str, str]
+) -> None:
+    folder = _uncited_folder(tmp_path, uncited=True)
+
+    pdf = draft_pdf.render_draft(folder)
+
+    assert pdf.is_file()
+    assert r"\nocite{*}" in compiled["tex"] and r"\printbibliography" in compiled["tex"]
+    assert "Non-institutional (plain) report template" in compiled["tex"]
+    assert "slides5" in (pdf.parent / "sources.bib").read_text(encoding="utf-8")
+    # The report itself stays strict: the draft's leniency must not leak into its config.
+    assert _config(folder).uncited_bibliography is True
+
+
+def test_draft_without_uncited_bibliography_omits_the_bibliography_when_nothing_is_cited(
+    tmp_path: Path, compiled: dict[str, str]
+) -> None:
+    folder = _uncited_folder(tmp_path, uncited=False)
+
+    draft_pdf.render_draft(folder)
+
+    assert r"\nocite" not in compiled["tex"]
+    assert "Bibliography omitted" in compiled["tex"]
+    assert r"\printbibliography" not in "\n".join(
+        line for line in compiled["tex"].splitlines() if not line.lstrip().startswith("%")
+    )
