@@ -754,6 +754,30 @@ def ieee_abstract_block(abstract: str | None, keywords: str | None) -> str:
     return "\n\n".join(parts)
 
 
+def item_command(text: str) -> str:
+    r"""``\item`` prefix for a list item; a leading ``[`` must not read as its label."""
+    return r"\item{}" if text.startswith("[") else r"\item "
+
+
+def table_column_weights(rows: list[list[str]], columns: int) -> list[float]:
+    r"""``\hsize`` factors that share a tabularx width by content.
+
+    Each column weighs its longest body cell (clamped, so a long sentence
+    cannot starve a short column). The factors add up to ``columns``, which
+    tabularx requires.
+    """
+    lengths = [
+        min(max(max(
+            (len(re.sub(r"[*`$_]", "", row[index])) for row in rows[1:] if index < len(row)),
+            default=0,
+        ), 8), 48)
+        for index in range(columns)
+    ]
+    weights = [round(columns * length / sum(lengths), 3) for length in lengths]
+    weights[-1] = round(columns - sum(weights[:-1]), 3)
+    return weights
+
+
 def markdown_to_latex(
     markdown: str,
     suppress_bibliography_heading: bool = False,
@@ -830,19 +854,9 @@ def markdown_to_latex(
         # Horizontal rules only, as in the approved AA-B and ACD-B mockups. Still
         # one page-breakable xltabular: long cell text wraps (#26) at any column
         # count.
-        # Column widths follow the content: X columns share the width in
-        # proportion to their longest cell (clamped, so a long sentence cannot
-        # starve a short column), instead of equal thirds. The \hsize factors
-        # must add up to the number of columns, which tabularx requires.
-        lengths = [
-            min(max(max(
-                (len(re.sub(r"[*`$_]", "", row[index])) for row in rows[1:] if index < len(row)),
-                default=0,
-            ), 8), 48)
-            for index in range(columns)
-        ]
-        weights = [round(columns * length / sum(lengths), 3) for length in lengths]
-        weights[-1] = round(columns - sum(weights[:-1]), 3)
+        # Column widths follow the content (table_column_weights), instead of
+        # equal thirds.
+        weights = table_column_weights(rows, columns)
         colspec = " ".join(
             rf">{{\hsize={weight}\hsize\{name}\arraybackslash}}X"
             for weight, name in zip(weights, booktabs_alignments(rows, columns, markers))
@@ -907,7 +921,11 @@ def markdown_to_latex(
             font_size = r"\small"
         else:
             # Centered grid columns with automatic text wrapping via xltabular
-            colspec = " | ".join([r">{\centering\arraybackslash}X"] * columns)
+            # Widths follow the content, as in the booktabs tables.
+            colspec = " | ".join(
+                rf">{{\hsize={weight}\hsize\centering\arraybackslash}}X"
+                for weight in table_column_weights(rows, columns)
+            )
             env = "xltabular"
             table_open = rf"\begin{{{env}}}{{\textwidth}}{{| {colspec} |}}"
             font_size = r"\footnotesize"
@@ -1307,7 +1325,7 @@ def markdown_to_latex(
         if bullet:
             flush_paragraph()
             open_list("itemize", len(line) - len(line.lstrip()))
-            output.append(r"\item " + convert_inline(bullet.group(1)))
+            output.append(item_command(bullet.group(1)) + convert_inline(bullet.group(1)))
             i += 1
             continue
 
@@ -1325,7 +1343,7 @@ def markdown_to_latex(
             if output[-1] == r"\begin{enumerate}" and start > 1 and depth <= 4:
                 level = ("i", "ii", "iii", "iv")[depth - 1]
                 output.append(rf"\setcounter{{enum{level}}}{{{start - 1}}}")
-            output.append(r"\item " + convert_inline(ordered.group(2)))
+            output.append(item_command(ordered.group(2)) + convert_inline(ordered.group(2)))
             i += 1
             continue
 

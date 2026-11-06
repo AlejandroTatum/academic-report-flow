@@ -70,6 +70,8 @@ def _matches(profile: dict[str, Any], metadata: dict[str, Any]) -> bool:
 def _missing(defaults: dict[str, Any], raw: dict[str, Any]) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     """Split defaults into absent top-level keys and absent keys of existing blocks."""
     top = {k: v for k, v in defaults.items() if k not in raw}
+    if "min_sources" in raw:
+        top.pop("uncited_bibliography", None)  # mutually exclusive: the report asked for citations
     nested = {}
     for key, value in defaults.items():
         if key in raw and isinstance(value, dict) and isinstance(raw[key], dict):

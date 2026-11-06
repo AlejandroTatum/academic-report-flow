@@ -188,6 +188,17 @@ def test_ape_template_uses_play_or_the_same_fallback_for_the_title(ape_template:
     assert r"\IfFontExistsTF{Play}" in ape_template
 
 
+def test_ape_template_falls_back_to_a_greek_font_for_missing_glyphs(ape_template: str) -> None:
+    """Montserrat has no Greek: both text faces fall back to a TeX Live font that does (ape6 S1)."""
+    assert 'luaotfload.add_fallback("apefallback"' in ape_template
+    assert "Libertinus Sans" in ape_template, "sans font shipped with TeX Live that carries Greek"
+    for face in (r"\setmainfont{Montserrat}", r"\newfontfamily\apetitlefont{Play}"):
+        line = next(line for line in ape_template.splitlines() if face in line)
+        assert r"\apefallbackfeature" in line, f"{face} must request the glyph fallback"
+    fallback_at = ape_template.index("luaotfload.add_fallback")
+    assert fallback_at < ape_template.index(r"\setmainfont"), "the fallback is declared before the faces use it"
+
+
 def test_ape_template_heading_color_and_size(ape_template: str) -> None:
     assert "0F4761" in ape_template, "level-1 headings use the teacher's petrol blue"
     assert "14" in ape_template, "level-1 headings are 14pt"
@@ -586,10 +597,11 @@ def test_aa_template_ficha_label_stays_singular_for_one_student(tmp_path):
 # sha256 of render_tex() for the fixed reports below, taken on the commit
 # before templates/aa-report.tex existed. Any change to ape-report.tex, to the
 # shared placeholder machinery or to the markdown converter as APE sees it
-# shows up here. Re-pinned when babel (Spanish hyphenation) joined the preamble.
+# shows up here. Re-pinned when babel (Spanish hyphenation) joined the preamble and
+# when the Greek glyph fallback joined the font setup.
 APE_RENDER_SHA256 = {
-    "individual": "38a686cc182a1ead71519b8407b8064f070bbde43d11588dc03002c1a305f682",
-    "group": "61465256d5d9dc5676192055c4ecf2e08572e802876c440daa6e7d082d3af891",
+    "individual": "7172932f767c688acf959be0af28d7a98bcffd22be0cc6b54fcf5032117366c4",
+    "group": "f36012bc301d25c8ef104b513c2114aa20b211b500bcefbf106a0eb69947ad45",
 }
 
 

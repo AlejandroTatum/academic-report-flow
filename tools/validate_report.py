@@ -270,6 +270,36 @@ def pdf_text_pages(pdf: Path) -> list[str]:
     return result.stdout.split("\f")
 
 
+_CONCLUSIONS_HEADING = re.compile(r"(?:\d+(?:\.\d+)*\.?\s+)?conclusi[oó]nes?", re.IGNORECASE)
+_AFTER_CONCLUSIONS_HEADING = re.compile(
+    r"(?:\d+(?:\.\d+)*\.?\s+)?(?:recomendaciones|anexos?|ap[eé]ndices?|bibliograf[ií]a|referencias)(?:\s.*)?",
+    re.IGNORECASE,
+)
+
+
+def conclusions_section_text(text: str) -> str:
+    """Text from the last "Conclusiones" heading line to the next top-level heading.
+
+    The whole text when there is no such heading: if the section cannot be
+    located, the check stays as strict as it was before it was scoped.
+    """
+    lines = text.splitlines()
+    starts = [i for i, line in enumerate(lines) if _CONCLUSIONS_HEADING.fullmatch(line.strip())]
+    if not starts:
+        return text
+    section = lines[starts[-1] + 1:]
+    for offset, line in enumerate(section):
+        if _AFTER_CONCLUSIONS_HEADING.fullmatch(line.strip()):
+            section = section[:offset]
+            break
+    return "\n".join(section)
+
+
+def banned_conclusion_openers(text: str, banned: list[str]) -> list[str]:
+    section = conclusions_section_text(text).lower()
+    return [item for item in banned if item.lower() in section]
+
+
 def pdfinfo(pdf: Path) -> dict[str, str]:
     if not pdf.exists():
         return {}
@@ -847,7 +877,7 @@ def common_validation(config: ReportConfig) -> ValidationResult:
 
     text = "\n".join(pdf_text_pages(config.pdf_path)) if config.pdf_path.exists() else ""
     banned = config.academic_value("conclusions", "banned_openers", default=["Se concluye", "En conclusión", "En conclusion"])
-    found = [item for item in banned if item.lower() in text.lower()]
+    found = banned_conclusion_openers(text, banned)
     if found:
         result.errors.append("Conclusión inicia/usa fórmulas prohibidas: " + ", ".join(found))
 
