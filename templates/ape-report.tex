@@ -34,6 +34,11 @@
 % Title face: the DOCX asks for "Play"; the same sans fallback applies when it
 % is not installed.
 \IfFontExistsTF{Play}{\newfontfamily\apetitlefont{Play}[Ligatures=TeX]}{\newfontfamily\apetitlefont{TeX Gyre Heros}[Ligatures=TeX]}
+% Spanish hyphenation patterns (without a language package LuaLaTeX breaks
+% Spanish words with English rules: "it-eración"). es-noshorthands keeps the
+% active characters (", <, >, ~) literal and es-tabla keeps "Tabla" rather
+% than babel's default "Cuadro".
+\usepackage[spanish,es-noshorthands,es-tabla]{babel}
 \usepackage{amsmath}
 \usepackage{graphicx}
 \usepackage{setspace}
@@ -74,7 +79,9 @@
 \emergencystretch=3em
 \setlist[itemize]{topsep=3pt,itemsep=2pt,leftmargin=1.1cm}
 \captionsetup{font=small,labelfont=bf,justification=centering}
-\renewcommand{\figurename}{Figura}
+% babel resets the caption names at \begin{document}; set ours through its hook
+% so the template's labels still win.
+\addto\captionsspanish{\renewcommand{\figurename}{Figura}\renewcommand{\tablename}{Tabla}}
 
 % Level-1 headings: 14pt bold in the faculty's petrol blue, numbered "1. ..."
 % (LaTeX numbering renders exactly the numbers the teacher types in Word).

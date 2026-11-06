@@ -201,6 +201,15 @@ def test_ape_template_keeps_ieee_citations(ape_template: str, tmp_path: Path) ->
     assert "style=ieee" in rendered, "every format cites IEEE by default"
 
 
+def test_ape_render_hyphenates_with_spanish_patterns(tmp_path: Path) -> None:
+    # Without a language package LuaLaTeX hyphenates Spanish with English
+    # patterns ("it-eración", "parámet-ros").
+    rendered = build_latex_report.render_tex(
+        make_render_config(tmp_path, metadata=full_ape_metadata())
+    )
+    assert r"\usepackage[spanish,es-noshorthands,es-tabla]{babel}" in rendered
+
+
 # ---------------------------------------------------------------------------
 # The faculty logo asset
 # ---------------------------------------------------------------------------
@@ -537,10 +546,10 @@ def test_aa_template_ficha_label_stays_singular_for_one_student(tmp_path):
 # sha256 of render_tex() for the fixed reports below, taken on the commit
 # before templates/aa-report.tex existed. Any change to ape-report.tex, to the
 # shared placeholder machinery or to the markdown converter as APE sees it
-# shows up here.
+# shows up here. Re-pinned when babel (Spanish hyphenation) joined the preamble.
 APE_RENDER_SHA256 = {
-    "individual": "211372baeb59afd22d8a570dcdd4764cf5f029768709aee13e808354f7c072ce",
-    "group": "f1fb004bbc577f6d15c86bab470345cdb621be8fb522cf19da9b1170f8e8a8bd",
+    "individual": "38a686cc182a1ead71519b8407b8064f070bbde43d11588dc03002c1a305f682",
+    "group": "61465256d5d9dc5676192055c4ecf2e08572e802876c440daa6e7d082d3af891",
 }
 
 
