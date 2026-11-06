@@ -210,6 +210,46 @@ def test_ape_render_hyphenates_with_spanish_patterns(tmp_path: Path) -> None:
     assert r"\usepackage[spanish,es-noshorthands,es-tabla]{babel}" in rendered
 
 
+def test_ape_markdown_ai_declaration_renders_tables(tmp_path: Path) -> None:
+    declaration = {
+        "title": "Declaración de uso de IA Generativa",
+        "format": "markdown",
+        "text": "Herramientas:\n\n| Herramienta | Uso |\n|---|---|\n| Python | Pruebas |\n",
+    }
+    rendered = build_latex_report.render_tex(make_render_config(
+        tmp_path,
+        raw={"ai_declaration": declaration, "ai_declaration_position": "after_bibliography"},
+        metadata=full_ape_metadata(),
+    ))
+    assert "Python & Pruebas" in rendered
+    assert "| Python | Pruebas |" not in rendered
+
+
+def test_trailing_backslash_is_a_hard_line_break() -> None:
+    # CommonMark hard break: a bold question, then its answer on the next line.
+    latex = build_latex_report.markdown_to_latex(
+        "**1. ¿Qué es?**\\\nUna respuesta\ncontinuada.\n"
+    )
+    assert "\\textbf{1. ¿Qué es?}\\\\\nUna respuesta continuada." in latex
+    assert "textbackslash" not in latex
+
+
+def test_paragraph_without_trailing_backslash_still_joins_lines() -> None:
+    latex = build_latex_report.markdown_to_latex("Una línea\ny otra.\n")
+    assert "Una línea y otra." in latex
+
+
+def test_ape_plain_ai_declaration_stays_inline_text(tmp_path: Path) -> None:
+    text = "Uso de IA para *redactar* y revisar."
+    rendered = build_latex_report.render_tex(make_render_config(
+        tmp_path,
+        raw={"ai_declaration": {"title": "Declaración", "text": text},
+             "ai_declaration_position": "after_bibliography"},
+        metadata=full_ape_metadata(),
+    ))
+    assert "\n" + build_latex_report.convert_inline(text) + "\n" in rendered
+
+
 # ---------------------------------------------------------------------------
 # The faculty logo asset
 # ---------------------------------------------------------------------------
