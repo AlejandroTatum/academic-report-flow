@@ -950,7 +950,18 @@ def markdown_to_latex(
             # stranded at a page foot apart from its table or listing.
             if re.match(r"^(Tabla|Table)\s+\d+\.|^\*\*(Código|Listing)\s+\S+?\.\*\*", text):
                 output.append(r"\Needspace{8\baselineskip}")
-            output.append(convert_inline(text))
+            # CommonMark hard break: a line ending in one backslash ends a
+            # visual line inside the paragraph ("**Pregunta**\" + answer).
+            segments: list[list[str]] = [[]]
+            last = len(paragraph) - 1
+            for index, item in enumerate(paragraph):
+                line = item.strip()
+                if line.endswith("\\") and not line.endswith("\\\\") and index < last:
+                    segments[-1].append(line[:-1].rstrip())
+                    segments.append([])
+                else:
+                    segments[-1].append(line)
+            output.append("\\\\\n".join(convert_inline(" ".join(segment)) for segment in segments))
             output.append("")
             paragraph = []
 
@@ -1541,18 +1552,29 @@ def render_tex(config: ReportConfig) -> str:
         "",
     ])
     if ai_declaration:
+        declaration_markdown = False
         if isinstance(ai_declaration, dict):
             declaration_title = str(ai_declaration.get("title") or "Declaración de uso de IA generativa")
             declaration_text = str(ai_declaration.get("text") or "")
+            # `format: markdown` opts in to block Markdown (tables, lists);
+            # without it the text keeps rendering as one inline paragraph.
+            declaration_markdown = str(ai_declaration.get("format") or "").strip().lower() == "markdown"
         else:
             declaration_title = "Declaración de uso de IA generativa"
             declaration_text = str(ai_declaration)
+        if declaration_markdown:
+            declaration_body = markdown_to_latex(
+                declaration_text, build_dir=build_dir, table_styles=table_styles,
+                figure_placement=figure_spec, **table_layout,
+            ).strip()
+        else:
+            declaration_body = convert_inline(declaration_text)
         declaration_latex = "\n".join([
             r"\Needspace{5\baselineskip}",
             rf"\section*{{{convert_inline(declaration_title)}}}",
             rf"\addcontentsline{{toc}}{{section}}{{{convert_inline(declaration_title)}}}",
             "",
-            convert_inline(declaration_text),
+            declaration_body,
             "",
         ])
         if str(config.raw.get("ai_declaration_position") or "").strip().lower() in {
