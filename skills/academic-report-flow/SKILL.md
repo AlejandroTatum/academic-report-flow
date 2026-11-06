@@ -52,7 +52,7 @@ Tools record per-phase durations in `timings.yml` in the work folder (informatio
 
 ## Execution Steps
 
-1. Run `doc_status.py`; present the human block verbatim; read `next`.
+1. Run `doc_status.py`; present the human block verbatim; read `next`. On resume ("continue", "retomá"), this is always the first step: `doc_status` decides the phase, so never restart from zero and never hand a phase to another session or to the user when `doc_status` names its command.
 2. Load that reference; run its executor and tools.
 3. Apply the correction policy in `approval.md`, preserve user-authored wording, then rerun the affected gates.
 4. Re-run `doc_status`; report the new phase.

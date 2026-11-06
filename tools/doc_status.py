@@ -49,6 +49,16 @@ from evidence_contract import evidence_gate_engaged, load_evidence_package, vali
 from source_count import MIN_ACADEMIC_SOURCES, effective_min_sources, source_gate
 from structure_contract import structure_confirmation_state, structure_gate_engaged
 
+
+# The Gentle runtime admits an independent verifier only with a declared risk
+# item; prose checked against the guide has no automated test, so item 6 is genuine.
+VERIFIER_LAUNCH = (
+    "launch ONE independent verifier (declare `Risk: item 6 (no automated test catches a "
+    "requirement missing from the prose)` in its launch context; a refused launch is corrected "
+    "here, never handed to another session or to the user)"
+)
+
+
 # new-report-flow T5: the content-first route. The preview phase is gone (the
 # draft is the only thing the user reviews); plan, verify, format and review
 # sit between the phases that existed before.
@@ -104,7 +114,7 @@ _GUIDANCE = {
         "generation runs only after you approve {body}"
     ),
     "verify": (
-        "launch ONE independent verifier for {rubric} with the brief from {check_command} "
+        VERIFIER_LAUNCH + " for {rubric} with the brief from {check_command} "
         "--verify-brief (add --verify-brief --since verification.yml when it exists, so only "
         "changed sections are re-checked), save its matrix as verification.yml; run {check_command} "
         "--verification verification.yml, then re-run doc_status; the verifier and {draft_command} "
@@ -863,11 +873,11 @@ def _guidance(
     elif phase_name == "approval":
         template += _approval_format_suffix(folder, config, documents_root)
     if phase_name == "verify" and blocked_reason == "content_check_stale":
-        template = ("launch ONE independent verifier for {body} with the brief from {check_command} "
+        template = (VERIFIER_LAUNCH + " for {body} with the brief from {check_command} "
                     "--verify-brief --since verification.yml, then run {check_command} "
                     "--verification verification.yml")
     if phase_name == "verify" and blocked_reason == "content_check_malformed":
-        template = "launch ONE independent verifier for {body}, then run the content check: {check_command} --verification verification.yml"
+        template = VERIFIER_LAUNCH + " for {body}, then run the content check: {check_command} --verification verification.yml"
     if phase_name == "verify" and blocked_reason == "content_check_failed":
         template = ("show the user the approval packet from {packet_command} --open (draft PDF, criterion summary, "
                     "missing items) and fix {body} only through the user's literal edit orders; "

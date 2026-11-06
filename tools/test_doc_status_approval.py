@@ -619,3 +619,24 @@ def test_generate_rebuilds_after_a_carried_edit_but_not_for_an_untouched_body(tm
     phase = doc_status._phase_generate(folder, _config(folder), None)
     assert phase.state == doc_status.PENDING
     assert "body.md" in phase.detail
+
+
+@pytest.mark.parametrize("marker", ["none", "malformed"])
+def test_verify_guidance_declares_the_launch_risk_and_forbids_handoff(tmp_path: Path, marker: str) -> None:
+    # The Gentle runtime admits an independent verifier only with a declared risk
+    # item; a refused launch must be corrected in place, never handed elsewhere.
+    import doc_status
+    from conftest import _report, _body, _sources_bib, _rubric, _approval, _content_check
+
+    folder = tmp_path / "wf"
+    _report(folder)
+    _sources_bib(folder)
+    _rubric(folder)
+    _body(folder)
+    if marker == "malformed":
+        _approval(folder)
+        _content_check(folder, mechanical=[])
+    status = doc_status.derive(folder)
+    assert status.next_token == "verify"
+    assert "Risk: item 6" in status.gate
+    assert "never hand" in status.gate
