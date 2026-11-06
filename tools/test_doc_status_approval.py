@@ -89,13 +89,7 @@ from conftest import (
     _report,
     _sources_bib,
 )
-from conftest import _choose_format as _record_format
-
-
-def _declared_format(folder: Path, chosen: str = "aa", **metadata: object) -> Path:
-    """Record a format choice with the AI declaration opt-out, so these tests keep their subject."""
-    metadata.setdefault("ai_declaration", "false")
-    return _record_format(folder, chosen, **metadata)
+from conftest import _declared_format
 
 
 @pytest.fixture(autouse=True)

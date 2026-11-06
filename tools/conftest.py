@@ -489,6 +489,12 @@ def _choose_format(folder: Path, chosen: str = "aa", **metadata: object) -> Path
     return report
 
 
+def _declared_format(folder: Path, chosen: str = "aa", **metadata: object) -> Path:
+    """Record a format choice with the AI declaration opt-out, so tests keep their subject."""
+    metadata.setdefault("ai_declaration", "false")
+    return _choose_format(folder, chosen, **metadata)
+
+
 def _mtime(path: Path, value: float) -> Path:
     """Pin ``path``'s modification time, so mtime ordering is explicit.
 
