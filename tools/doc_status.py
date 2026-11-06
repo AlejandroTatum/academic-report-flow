@@ -49,6 +49,16 @@ from evidence_contract import evidence_gate_engaged, load_evidence_package, vali
 from source_count import MIN_ACADEMIC_SOURCES, effective_min_sources, source_gate
 from structure_contract import structure_confirmation_state, structure_gate_engaged
 
+
+# The Gentle runtime admits an independent verifier only with a declared risk
+# item; prose checked against the guide has no automated test, so item 6 is genuine.
+VERIFIER_LAUNCH = (
+    "launch ONE independent verifier (declare `Risk: item 6 (no automated test catches a "
+    "requirement missing from the prose)` in its launch context; a refused launch is corrected "
+    "here, never handed to another session or to the user)"
+)
+
+
 # new-report-flow T5: the content-first route. The preview phase is gone (the
 # draft is the only thing the user reviews); plan, verify, format and review
 # sit between the phases that existed before.
@@ -104,7 +114,7 @@ _GUIDANCE = {
         "generation runs only after you approve {body}"
     ),
     "verify": (
-        "launch ONE independent verifier for {rubric} with the brief from {check_command} "
+        VERIFIER_LAUNCH + " for {rubric} with the brief from {check_command} "
         "--verify-brief (add --verify-brief --since verification.yml when it exists, so only "
         "changed sections are re-checked), save its matrix as verification.yml; run {check_command} "
         "--verification verification.yml, then re-run doc_status; the verifier and {draft_command} "
@@ -116,7 +126,13 @@ _GUIDANCE = {
         "fields named by doc_status, never re-ask what {report_yml} records: use ask_user_choice "
         "for APE, AA, ACD or libre, PDF or DOCX, and each remaining metadata gap with suggested "
         "options (never free text); decide group work and members here; "
-        "record the answer in {report_yml}, then re-run doc_status"
+        "record the answer in {report_yml}, then re-run doc_status; when ai_declaration is missing "
+        "it is not a question: write it yourself in {report_yml} for every work, as "
+        "`ai_declaration: {{format: markdown, text: ...}}` (title optional: the default heading is used) "
+        "plus `ai_declaration_position: after_bibliography`, with Tabla A (herramientas: tool | use) and "
+        "Tabla B (prompts per iteration: the prompt verbatim when available, otherwise explicitly labeled "
+        "as a summary, never invented as literal); write `ai_declaration: false` only when the user "
+        "explicitly orders removing it"
     ),
     "typeset": (
         "run {typeset_bind_command} (it copies the approved {body} to {typeset_body} when missing "
@@ -413,8 +429,22 @@ _APPROVAL_FORMAT_RECORDED = (
 )
 
 
+_AI_DECLARATION_NOTE = (
+    "; ai_declaration is not a question: after approval the format phase tells you to write it "
+    "yourself (no question to the user, and never ask whether to include it)"
+)
+
+
 def _approval_format_suffix(folder: Path, config: ReportConfig, documents_root: Path | None) -> str:
     """What the approval batch still asks about the format, from ``report.yml`` alone."""
+    suffix = _approval_format_questions(folder, config, documents_root)
+    if config.format_is_known and "ai_declaration" in _missing_format_fields(folder, config, documents_root):
+        suffix += _AI_DECLARATION_NOTE
+    return suffix
+
+
+def _approval_format_questions(folder: Path, config: ReportConfig, documents_root: Path | None) -> str:
+    """The user-facing format questions of the approval batch (the declaration is never one)."""
     if config.format is None:
         return _APPROVAL_FORMAT_BATCH + _APPROVAL_RECORD_ANSWERS
     state = _phase_format(folder, config, documents_root)
@@ -422,7 +452,7 @@ def _approval_format_suffix(folder: Path, config: ReportConfig, documents_root: 
         return _approval_only_with(state.detail)
     # The gate always precedes approval, so whatever PDF exists is a preview:
     # the folder checks run as before a build.
-    gaps = _missing_format_fields(folder, config, documents_root)
+    gaps = [key for key in _missing_format_fields(folder, config, documents_root) if key != "ai_declaration"]
     if not gaps and _course_folder_missing(config, documents_root, before_build=True):
         gaps = ["delivery folder (record metadata.unit, metadata.practice_number and metadata.topic, "
                 "then run course_profile.py)"]
@@ -454,7 +484,32 @@ def _missing_format_fields(folder: Path, config: ReportConfig, documents_root: P
     output = str(config.raw.get("output") or "").strip()
     if not output and not _has_legacy_pdf(folder, config, documents_root):
         missing.append("output")
+    if not _ai_declaration_decided(config) and not _past_format(folder, config):
+        missing.append("ai_declaration")
     return missing
+
+
+def _ai_declaration_decided(config: ReportConfig) -> bool:
+    """True when ``report.yml`` carries a declaration or the explicit ``false`` opt-out."""
+    for key in ("ai_declaration", "declaracion_ia"):
+        value = config.raw.get(key)
+        if value is False or (value is not None and value is not True and value):
+            return True
+    return False
+
+
+def _past_format(folder: Path, config: ReportConfig) -> bool:
+    """True when the report already built, validated or reviewed its final PDF.
+
+    Such a report passed format before the AI declaration became mandatory and
+    is never sent back to it; only reports that have not reached generate are
+    asked for the declaration.
+    """
+    return (
+        (folder / "validation.yml").is_file()
+        or (folder / "final-review.yml").is_file()
+        or _has_final_build(folder, config)
+    )
 
 
 def _phase_format(folder: Path, config: ReportConfig, documents_root: Path | None) -> PhaseState:
@@ -863,11 +918,11 @@ def _guidance(
     elif phase_name == "approval":
         template += _approval_format_suffix(folder, config, documents_root)
     if phase_name == "verify" and blocked_reason == "content_check_stale":
-        template = ("launch ONE independent verifier for {body} with the brief from {check_command} "
+        template = (VERIFIER_LAUNCH + " for {body} with the brief from {check_command} "
                     "--verify-brief --since verification.yml, then run {check_command} "
                     "--verification verification.yml")
     if phase_name == "verify" and blocked_reason == "content_check_malformed":
-        template = "launch ONE independent verifier for {body}, then run the content check: {check_command} --verification verification.yml"
+        template = VERIFIER_LAUNCH + " for {body}, then run the content check: {check_command} --verification verification.yml"
     if phase_name == "verify" and blocked_reason == "content_check_failed":
         template = ("show the user the approval packet from {packet_command} --open (draft PDF, criterion summary, "
                     "missing items) and fix {body} only through the user's literal edit orders; "

@@ -89,6 +89,13 @@ from conftest import (
     _report,
     _sources_bib,
 )
+from conftest import _choose_format as _record_format
+
+
+def _declared_format(folder: Path, chosen: str = "aa", **metadata: object) -> Path:
+    """Record a format choice with the AI declaration opt-out, so these tests keep their subject."""
+    metadata.setdefault("ai_declaration", "false")
+    return _record_format(folder, chosen, **metadata)
 
 
 @pytest.fixture(autouse=True)
@@ -248,7 +255,7 @@ def test_approval_derivation_never_repairs_the_marker(tmp_path: Path) -> None:
 
 def _verified_folder(folder: Path, **report_extra: object) -> None:
     """A folder past approval and verify, with the format answers recorded."""
-    from conftest import _content_check, _choose_format, _cited_body, _rubric, _skip_research, _sources_bib
+    from conftest import _content_check, _cited_body, _rubric, _skip_research, _sources_bib
 
     _report(folder)
     _skip_research(folder)
@@ -257,7 +264,7 @@ def _verified_folder(folder: Path, **report_extra: object) -> None:
     _cited_body(folder)
     _approval(folder)
     _content_check(folder)
-    _choose_format(folder, "aa", **report_extra)
+    _declared_format(folder, "aa", **report_extra)
 
 
 def test_format_recorded_with_approval_goes_straight_to_generate(tmp_path: Path) -> None:
@@ -331,13 +338,11 @@ def test_unchosen_format_offers_ape_aa_acd_or_libre(tmp_path: Path) -> None:
 
 def test_approval_guidance_asks_only_approval_once_the_format_is_recorded(tmp_path: Path) -> None:
     """#80: after a change request the gate asks only to approve body.md."""
-    from conftest import _choose_format
-
     folder = tmp_path / "wf"
     _report(folder)
     _body(folder)
     _fresh_draft(folder)
-    _choose_format(folder, "aa")
+    _declared_format(folder, "aa")
 
     guidance = doc_status._guidance("approval", folder, documents_root=tmp_path / "Documents")
 
@@ -349,13 +354,11 @@ def test_approval_guidance_asks_only_approval_once_the_format_is_recorded(tmp_pa
 
 def test_approval_guidance_names_only_the_format_fields_still_missing(tmp_path: Path) -> None:
     """#80: a recorded format without ``output:`` reopens only ``output``."""
-    from conftest import _choose_format
-
     folder = tmp_path / "wf"
     _report(folder)
     _body(folder)
     _fresh_draft(folder)
-    _choose_format(folder, "aa", output=None)
+    _declared_format(folder, "aa", output=None)
 
     guidance = doc_status._guidance("approval", folder, documents_root=tmp_path / "Documents")
 
@@ -373,14 +376,12 @@ def _course_documents(tmp_path: Path) -> Path:
 
 def test_approval_guidance_names_a_missing_course_folder_as_a_field(tmp_path: Path) -> None:
     """Review R2-approval-gaps-string-parse: no message text spliced in as a field list."""
-    from conftest import _choose_format
-
     documents = _course_documents(tmp_path)
     folder = tmp_path / "wf"
     _report(folder, subject="Redes")
     _body(folder)
     _fresh_draft(folder)
-    _choose_format(folder, "aa")
+    _declared_format(folder, "aa")
 
     guidance = doc_status._guidance("approval", folder, documents_root=documents)
 
@@ -391,8 +392,6 @@ def test_approval_guidance_names_a_missing_course_folder_as_a_field(tmp_path: Pa
 
 def test_approval_guidance_with_an_unusable_folder_asks_only_approval(tmp_path: Path) -> None:
     """A folder problem is not a format field: approve, and the format phase reports it."""
-    from conftest import _choose_format
-
     delivery = tmp_path / "entrega"
     delivery.mkdir()
     (delivery / "vieja.html").write_text("<html></html>", encoding="utf-8")
@@ -400,7 +399,7 @@ def test_approval_guidance_with_an_unusable_folder_asks_only_approval(tmp_path: 
     _report(folder)
     _body(folder)
     _fresh_draft(folder)
-    _choose_format(folder, "aa", delivery_dir=f'"{delivery}"')
+    _declared_format(folder, "aa", delivery_dir=f'"{delivery}"')
 
     guidance = doc_status._guidance("approval", folder, documents_root=tmp_path / "Documents")
 
@@ -411,13 +410,11 @@ def test_approval_guidance_with_an_unusable_folder_asks_only_approval(tmp_path: 
 
 def test_approval_guidance_with_a_blocked_format_asks_only_approval(tmp_path: Path) -> None:
     """Review R3-blocked-approval-untested: a blocked format is reported, never re-asked."""
-    from conftest import _choose_format
-
     folder = tmp_path / "wf"
     _report(folder)
     _body(folder)
     _fresh_draft(folder)
-    _choose_format(folder, "zz")
+    _declared_format(folder, "zz")
 
     guidance = doc_status._guidance("approval", folder, documents_root=tmp_path / "Documents")
 
@@ -619,3 +616,24 @@ def test_generate_rebuilds_after_a_carried_edit_but_not_for_an_untouched_body(tm
     phase = doc_status._phase_generate(folder, _config(folder), None)
     assert phase.state == doc_status.PENDING
     assert "body.md" in phase.detail
+
+
+@pytest.mark.parametrize("marker", ["none", "malformed"])
+def test_verify_guidance_declares_the_launch_risk_and_forbids_handoff(tmp_path: Path, marker: str) -> None:
+    # The Gentle runtime admits an independent verifier only with a declared risk
+    # item; a refused launch must be corrected in place, never handed elsewhere.
+    import doc_status
+    from conftest import _report, _body, _sources_bib, _rubric, _approval, _content_check
+
+    folder = tmp_path / "wf"
+    _report(folder)
+    _sources_bib(folder)
+    _rubric(folder)
+    _body(folder)
+    if marker == "malformed":
+        _approval(folder)
+        _content_check(folder, mechanical=[])
+    status = doc_status.derive(folder)
+    assert status.next_token == "verify"
+    assert "Risk: item 6" in status.gate
+    assert "never hand" in status.gate
