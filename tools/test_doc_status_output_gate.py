@@ -279,6 +279,29 @@ def test_delivery_folder_with_only_versioned_finals_completes_format(tmp_path: P
     assert _format_phase(folder, tmp_path / "Documents").state == doc_status.DONE
 
 
+def test_readme_beside_the_versioned_final_completes_format(tmp_path: Path) -> None:
+    delivery = tmp_path / "entrega"
+    delivery.mkdir()
+    folder = _with_delivery_dir(_course_report(tmp_path / "wf"), delivery)
+    (delivery / f"{_config(folder).document_slug}-v001.pdf").write_bytes(b"%PDF-1.4\n")
+    (delivery / "README.md").write_text("Aquí va el informe entregado en PDF.\n", encoding="utf-8")
+
+    assert _format_phase(folder, tmp_path / "Documents").state == doc_status.DONE
+
+
+def test_readme_plus_another_foreign_file_still_blocks_format(tmp_path: Path) -> None:
+    delivery = tmp_path / "entrega"
+    delivery.mkdir()
+    folder = _with_delivery_dir(_course_report(tmp_path / "wf"), delivery)
+    (delivery / "README.md").write_text("x", encoding="utf-8")
+    (delivery / "borrador.docx").write_bytes(b"x")
+
+    phase = _format_phase(folder, tmp_path / "Documents")
+
+    assert phase.state == doc_status.PENDING
+    assert phase.detail.startswith("delivery folder unusable: La carpeta de entrega solo puede contener")
+
+
 def test_missing_delivery_folder_completes_format(tmp_path: Path) -> None:
     folder = _with_delivery_dir(_course_report(tmp_path / "wf"), tmp_path / "todavia-no-existe")
 

@@ -457,6 +457,55 @@ def test_subject_scoped_reuse_and_next_version_stay_in_the_subject_folder(
     assert {p.name for p in second.path.parent.iterdir()} == {"informe-v001.pdf", "informe-v002.pdf"}
 
 
+def test_readme_in_the_delivery_folder_is_allowed_and_left_untouched(
+    tmp_path: Path, _approved_work_folder: Path
+) -> None:
+    """The course-repo template ships documento/README.md; delivery keeps it as is."""
+    source = _validated_pdf(tmp_path)
+    destination = tmp_path / "curso" / "documento"
+    destination.mkdir(parents=True)
+    readme = destination / "README.md"
+    readme.write_text("Aquí va el informe entregado en PDF.\n", encoding="utf-8")
+
+    first = publish_pdf.publish_validated_pdf(
+        source, "Academicos", "informe", None,
+        work_folder=_approved_work_folder, destination=destination,
+    )
+    source.write_bytes(b"%PDF-1.7\nsecond\n")
+    _final_review(_approved_work_folder, pdf=source)
+    second = publish_pdf.publish_validated_pdf(
+        source, "Academicos", "informe", None,
+        work_folder=_approved_work_folder, destination=destination,
+    )
+
+    assert (first.path.name, second.path.name) == ("informe-v001.pdf", "informe-v002.pdf")
+    assert readme.read_text(encoding="utf-8") == "Aquí va el informe entregado en PDF.\n"
+    assert publish_pdf.scan_delivery_versions(destination, "informe")[0][0] == 1
+
+
+def test_readme_does_not_excuse_another_foreign_file(tmp_path: Path) -> None:
+    folder = tmp_path / "documento"
+    folder.mkdir()
+    (folder / "README.md").write_text("x", encoding="utf-8")
+    (folder / "notas.txt").write_text("x", encoding="utf-8")
+
+    with pytest.raises(publish_pdf.PublicationError, match="solo puede contener"):
+        publish_pdf.scan_delivery_versions(folder, "informe")
+
+
+def test_only_an_exact_regular_readme_md_is_allowed(tmp_path: Path) -> None:
+    for name in ("readme.md", "README.MD", "README.md.bak"):
+        folder = tmp_path / name.replace(".", "_")
+        folder.mkdir()
+        (folder / name).write_text("x", encoding="utf-8")
+        with pytest.raises(publish_pdf.PublicationError, match="solo puede contener"):
+            publish_pdf.scan_delivery_versions(folder, "informe")
+    as_directory = tmp_path / "dir"
+    (as_directory / "README.md").mkdir(parents=True)
+    with pytest.raises(publish_pdf.PublicationError, match="solo puede contener"):
+        publish_pdf.scan_delivery_versions(as_directory, "informe")
+
+
 def test_gate_refusal_creates_nothing_not_even_the_subject_folder(
     tmp_path: Path,
 ) -> None:

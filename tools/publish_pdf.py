@@ -82,6 +82,10 @@ def _final_review_refusal(state: FinalReviewState, work_folder: Path, source: Pa
     )
 
 
+# The course-repo template ships documento/README.md; delivery allows and ignores it.
+DELIVERY_README = "README.md"
+
+
 def scan_delivery_versions(folder: Path, slug: str) -> list[tuple[int, Path, Path | None]]:
     """Read-only scan of a delivery folder: ``(version, pdf, paired bib | None)``.
 
@@ -89,7 +93,9 @@ def scan_delivery_versions(folder: Path, slug: str) -> list[tuple[int, Path, Pat
     artifacts: ``<slug>-vNNN.pdf`` and — for a delivery that declared its
     bibliography — the same-version ``<slug>-vNNN.bib``. Anything else (work
     files, stray artifacts) or a ``.bib`` whose paired PDF is missing is a
-    ``PublicationError``, never silently ignored. Sorted by version.
+    ``PublicationError``, never silently ignored. The one exception is a
+    regular file named exactly ``README.md`` (the course-repo template ships
+    one): it is allowed, never listed and never touched. Sorted by version.
     """
     folder = Path(folder)
     if not folder.exists():
@@ -105,6 +111,8 @@ def scan_delivery_versions(folder: Path, slug: str) -> list[tuple[int, Path, Pat
             pdfs[int(pdf_match.group(1))] = path
         elif bib_match:
             bibs[int(bib_match.group(1))] = path
+        elif path.name == DELIVERY_README and path.is_file() and not path.is_symlink():
+            continue
         else:
             raise PublicationError(
                 f"La carpeta de entrega solo puede contener {slug}-vNNN.pdf "
