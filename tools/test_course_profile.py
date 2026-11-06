@@ -333,3 +333,22 @@ def test_an_acd_report_is_never_moved_into_an_aa_folder_of_the_same_number(tmp_p
     assert _run_docs(folder, _profiles(tmp_path), documents) == 0
 
     assert _proposed(folder).endswith("/unidad-1/acd-4-actores-sdd/documento/")
+
+
+def test_min_sources_in_report_yml_keeps_uncited_bibliography_out(tmp_path):
+    folder = _folder(tmp_path, REPORT.replace("simulacion", "Simulación") + "min_sources: 3\n")
+    assert course_profile.main([str(folder)]) == 0
+    text = (folder / "report.yml").read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    assert "uncited_bibliography" not in data and data["min_sources"] == 3
+    assert data["format"] == "ape" and data["figure_placement"] == "here"
+    assert data["cover"] == {"required": False}
+    assert "delivery_dir" in data
+    config = load_report_config(folder)
+    assert config.min_sources == 3 and config.uncited_bibliography is False
+
+
+def test_without_min_sources_the_profile_still_adds_uncited_bibliography(tmp_path):
+    folder = _folder(tmp_path)
+    assert _run(folder, _profiles(tmp_path, PROFILE)) == 0
+    assert yaml.safe_load((folder / "report.yml").read_text(encoding="utf-8"))["uncited_bibliography"] is True
