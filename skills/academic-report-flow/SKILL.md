@@ -26,6 +26,7 @@ Tools record per-phase durations in `timings.yml` in the work folder (informatio
 - Require rubric TDD checks in the plan before drafting; the draft turns them green.
 - Keep the rubric visible: `tools/rubric_trace.py` at plan, per draft section, in the approval packet and in validate (final artifact); at review present `rubric-grade.md` from `tools/rubric_grade.py` with the PDF. Only that tool computes the estimated score; it is informational, never a gate, and no agent or verifier assigns one.
 - Use one independent verifier for semantic verification (requirement -> evidence matrix, unquotable evidence is `missing`); the drafter never verifies itself.
+- A `partial` requirement only a person can close may be accepted by the human alone: `tools/accepted_gaps.py accept` records their name, the exact requirement and reason in `accepted-gaps.yml`. Never for `missing` or mechanical failures, never on your own initiative, never by hand (`references/production.md`).
 - Require verified sources before research is finished.
 - Apply batched edit orders verbatim before seeking re-approval; a bounded edit (at most 40 changed words, no heading touched) keeps the approval and the final review without asking, and verify, rebuild and validation still run.
 - The draft is plain text: `# Title` headings and `[@key]` citations only, no math, tables, images or bold (`references/content.md`); backend formatting goes in `body.typeset.md` after approval, never in `body.md`.
@@ -45,6 +46,7 @@ Tools record per-phase durations in `timings.yml` in the work folder (informatio
 | `next` names a phase | Load its reference and run its executor (this skill, `research-workflow`, or the verifier). |
 | Intake data missing or ambiguous | Stop and ask; recording the contract is never approval. |
 | `next: approval` / `next: review` | Present the gate; write `approval.yml` / `final-review.yml` only on an explicit answer; record them with `approval_marker.py approve` / `final_review_marker.py record`, never `printf`. |
+| `verify` blocked only by `partial` requirements | Offer `accepted_gaps.py`; run it only after the user names requirement and reason. |
 | Type ambiguous or non-academic | Recommend or resolve a route; never fall back to Route A. |
 | Script PASS contradicts visible evidence | Record `VISUAL_FAIL`, correct, rebuild, repeat all gates. |
 | Inspection incomplete | Return `REVIEW_REQUIRED`, without `VISUAL_PASS`. |
