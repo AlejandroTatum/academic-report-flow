@@ -1616,6 +1616,11 @@ def render_tex(config: ReportConfig) -> str:
         r"\newpage",
         "",
     ])
+    # Strip the trailing \newpage from signature when placed
+    # after bibliography — avoids a blank end-page
+    sig_no_newpage = signature_latex.rstrip()
+    if sig_no_newpage.endswith(r"\newpage"):
+        sig_no_newpage = sig_no_newpage[: -len(r"\newpage")].rstrip()
     if ai_declaration:
         declaration_markdown = False
         if isinstance(ai_declaration, dict):
@@ -1647,11 +1652,6 @@ def render_tex(config: ReportConfig) -> str:
             "after-bibliography",
             "after_bib",
         }:
-            # Strip the trailing \newpage from signature when placed
-            # after bibliography — avoids a blank end-page
-            sig_no_newpage = signature_latex.rstrip()
-            if sig_no_newpage.endswith(r"\newpage"):
-                sig_no_newpage = sig_no_newpage[: -len(r"\newpage")].rstrip()
             after_bibliography_latex = declaration_latex + "\n" + sig_no_newpage
         else:
             front_matter = declaration_latex
@@ -1686,6 +1686,20 @@ def render_tex(config: ReportConfig) -> str:
             "",
         ])
         ai_signature_latex = signature_latex
+    # `ai_declaration: false` opts out of the declaration, not of the signature:
+    # the author still signs, so only the signature closes the document. A report
+    # that never mentions the key is left as it was. The chamba fallback above
+    # already set its own declaration and signature.
+    declaration_opted_out = any(
+        key in config.raw and not config.raw[key] for key in ("ai_declaration", "declaracion_ia")
+    )
+    if (
+        declaration_opted_out
+        and not ai_declaration
+        and not ai_signature_latex
+        and (group_names or student)
+    ):
+        after_bibliography_latex = sig_no_newpage
     # Annexes land after the bibliography, BEFORE any after-bibliography
     # declaration block: Anexos is the last fixed section of these formats, and
     # the declaration is automation baggage that always goes last.

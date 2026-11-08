@@ -135,3 +135,125 @@ def test_group_names_are_latex_escaped(tmp_path: Path) -> None:
     )
     block = signature_block(tex)
     assert r"A \& B" in block and r"C\_D" in block
+
+
+# --- The signature does not depend on the AI declaration -------------------
+#
+# `ai_declaration: false` is the explicit opt-out of the declaration, not of
+# the signature: the author still signs the report. The signature lands at the
+# end of the document, after the body and the bibliography.
+
+DECLARATION = {
+    "title": "Declaración",
+    "format": "markdown",
+    "text": "Herramientas:\n\n| Herramienta | Uso |\n|---|---|\n| Python | Pruebas |\n",
+}
+
+
+def render_ape(tmp_path: Path, raw: dict, **metadata: object) -> str:
+    from test_ape_template import full_ape_metadata, make_render_config
+
+    return build_latex_report.render_tex(make_render_config(
+        tmp_path, raw=raw, metadata={**full_ape_metadata(), **metadata},
+    ))
+
+
+def test_ape_group_signs_without_ai_declaration(tmp_path: Path) -> None:
+    tex = render_ape(
+        tmp_path, {"ai_declaration": False}, student=", ".join(GROUP), members=GROUP,
+    )
+    cells = signature_cells(tex)
+    assert len(cells) == len(GROUP)
+    assert all(cell.count(r"\rule") == 1 for cell in cells)
+    assert tex.count("Autores") == 1
+    # End of the document: after the last body section, and no declaration.
+    assert tex.index("Autores") > tex.index("Contenido de Recomendaciones.")
+    assert "Declaración de uso de IA" not in tex
+    assert r"\section*" not in tex
+
+
+def test_ape_single_author_signs_without_ai_declaration(tmp_path: Path) -> None:
+    tex = render_ape(tmp_path, {"ai_declaration": False})
+    assert (
+        "\\vspace*{1.15cm}\n"
+        "\\begin{flushright}\n"
+        "\\rule{7.3cm}{0.4pt}\\\\[-0.1cm]\n"
+        "{\\bfseries Alejandro Padilla}\\\\\n"
+        "Autor\n"
+        "\\end{flushright}\n"
+    ) in tex
+    assert tex.index(r"\rule{7.3cm}") > tex.index("Contenido de Recomendaciones.")
+    assert r"\section*" not in tex
+
+
+def test_signature_is_not_duplicated_at_the_front_without_declaration(tmp_path: Path) -> None:
+    tex = render_ape(tmp_path, {"ai_declaration": False}, student=", ".join(GROUP), members=GROUP)
+    assert tex.count(r"\vspace*{1.15cm}") == 1
+
+
+def test_ape_declaration_output_is_unchanged(tmp_path: Path) -> None:
+    raw = {"ai_declaration": DECLARATION, "ai_declaration_position": "after_bibliography"}
+    tex = render_ape(tmp_path, raw)
+    assert tex[tex.index(r"\Needspace{5"):] == (
+        "\\Needspace{5\\baselineskip}\n"
+        "\\section*{Declaración}\n"
+        "\\addcontentsline{toc}{section}{Declaración}\n"
+        "\n"
+        "Herramientas:\n"
+        "\n"
+        "\\Needspace{4\\baselineskip}\n"
+        "\\begingroup\n"
+        "\\small\n"
+        "\\renewcommand{\\arraystretch}{1.2}\n"
+        "\\setlength{\\tabcolsep}{3pt}\n"
+        "\\begin{longtable}{| >{\\centering\\arraybackslash}p{\\dimexpr(\\textwidth-16pt)/2\\relax}"
+        " | >{\\centering\\arraybackslash}p{\\dimexpr(\\textwidth-16pt)/2\\relax} |}\n"
+        "\\hline\n"
+        "\\rowcolor[gray]{0.92}\n"
+        "\\textbf{Herramienta} & \\textbf{Uso} \\\\\n"
+        "\\hline\n"
+        "\\endhead\n"
+        "Python & Pruebas \\\\\n"
+        "\\hline\n"
+        "\\end{longtable}\n"
+        "\\endgroup\n"
+        "\n"
+        "\\vspace*{1.15cm}\n"
+        "\\begin{flushright}\n"
+        "\\rule{7.3cm}{0.4pt}\\\\[-0.1cm]\n"
+        "{\\bfseries Alejandro Padilla}\\\\\n"
+        "Autor\n"
+        "\\end{flushright}\n"
+        "\n"
+        "\n"
+        "% The renderer fills FRONT_MATTER with the very same block it puts in\n"
+        "% AI_DECLARATION (the plain-report.tex mechanism), so the declaration is\n"
+        "% printed once above and the duplicate is captured here instead of being\n"
+        "% typeset twice.\n"
+        "\\long\\def\\reportaideclarationalias{}\n"
+        "\n"
+        "\\end{document}\n"
+    )
+
+
+def test_declaration_with_a_group_keeps_one_signature(tmp_path: Path) -> None:
+    raw = {"ai_declaration": DECLARATION, "ai_declaration_position": "after_bibliography"}
+    tex = render_ape(tmp_path, raw, student=", ".join(GROUP), members=GROUP)
+    assert tex.count(r"\vspace*{1.15cm}") == 1
+    assert len(signature_cells(tex)) == len(GROUP)
+    assert tex.index(r"\section*{Declaración}") < tex.index("Autores")
+
+
+def test_every_signing_format_signs_without_ai_declaration(tmp_path: Path) -> None:
+    from test_ape_template import full_ape_metadata, make_render_config
+
+    for fmt in ("ape", "acd", "aa", "libre", "ieee"):
+        tex = build_latex_report.render_tex(make_render_config(
+            tmp_path / fmt, raw={"format": fmt, "ai_declaration": False}, metadata=full_ape_metadata(),
+        ))
+        assert tex.count(r"\rule{7.3cm}{0.4pt}") == 1, fmt
+
+
+def test_report_without_the_ai_declaration_key_is_left_alone(tmp_path: Path) -> None:
+    tex = render_ape(tmp_path, {})
+    assert r"\rule{7.3cm}" not in tex
