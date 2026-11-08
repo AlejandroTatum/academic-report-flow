@@ -29,6 +29,7 @@ import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+import accepted_gaps
 import content_check
 import final_review_marker
 import rubric_plan
@@ -361,6 +362,15 @@ def _phase_verify(folder: Path, _config: ReportConfig, _documents_root: Path | N
     """
     state = content_check.content_check_state(folder)
     if state == "pass":
+        accepted = accepted_gaps.applied_gaps(folder)
+        if accepted:
+            names = ", ".join(dict.fromkeys(str(g["accepted_by"]) for g in accepted))
+            return PhaseState(
+                "verify",
+                DONE,
+                f"content-check.yml passes for the current draft with {len(accepted)} accepted "
+                f"gap{'' if len(accepted) == 1 else 's'} (accepted by {names}; see accepted-gaps.yml)",
+            )
         return PhaseState("verify", DONE, "content-check.yml passes for the current draft")
     if state == "absent":
         return PhaseState("verify", PENDING, "content-check.yml missing")
@@ -928,6 +938,11 @@ def _guidance(
                     "missing items) and fix {body} only through the user's literal edit orders; "
                     "rebuild the preview, then re-run the verifier with {check_command} "
                     "--verify-brief --since verification.yml")
+        if accepted_gaps.only_partials_block(folder):
+            template += ("; only partial requirements block the check: tell the user that accepted_gaps.py "
+                         "exists to accept a partial requirement they name with a reason "
+                         "({accepted_gaps_command} --by NAME --requirement \"exact text\" --reason \"why\"), "
+                         "a decision that is theirs alone: offer it, never run it yourself or suggest the reason")
     if phase_name == "draft" and blocked_reason == "body_check_failed":
         template = "fix {body} until {check_command} --body-check passes, then re-run doc_status"
     if phase_name == "intake" and not config.metadata.get("student"):
@@ -977,6 +992,9 @@ def _guidance(
         final_review=folder / "final-review.yml",
         rubric_grade=folder / "rubric-grade.md",
         check_command=_tool_command("content_check.py", folder),
+        accepted_gaps_command=shlex.join(
+            [sys.executable, str(ROOT / "tools" / "accepted_gaps.py"), "accept", str(folder)]
+        ),
         packet_command=_tool_command("approval_packet.py", folder),
         express_approve_command=shlex.join(
             [sys.executable, str(ROOT / "tools" / "approval_marker.py"), "approve", str(folder), "--express"]

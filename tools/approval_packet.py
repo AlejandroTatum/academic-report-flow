@@ -17,6 +17,7 @@ import re
 import sys
 from pathlib import Path
 
+import accepted_gaps
 import content_check
 import pdf_viewer
 import rubric_plan
@@ -94,6 +95,12 @@ def _verify_section(folder: Path) -> list[str]:
                if r.get("status") == "partial"]
     lines += _listing("Missing", missing)
     lines += _listing("Partial", partial) if partial else []
+    # The table above stays honest (a partial criterion is `falta`); the human's
+    # acceptance is listed apart, with its reason and who gave it.
+    accepted = [f"{g['criterion']}: {g['requirement']} (gap: {g['gap']}; reason: {' '.join(g['reason'].split())}; "
+                f"accepted by {' '.join(g['accepted_by'].split())})" for g in accepted_gaps.applied_gaps(folder, requirements)]
+    lines += _listing("Accepted gaps (human-accepted partial requirements; the criteria above stay falta)",
+                      accepted) if accepted else []
     lines += _listing("Deletion candidates", [str(p) for p in marker.get("unmapped_paragraphs") or []])
     lines += _listing("Findings", [str(f) for f in marker.get("findings") or []])
     return lines

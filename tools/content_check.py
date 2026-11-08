@@ -42,7 +42,12 @@ a half-written verdict.
 re-derives the verdict from the recorded criteria (every status ``cumple``),
 the recorded requirements (all ``found``, every criterion covered), the recorded
 mechanical checks (every ``ok``), and the recorded criterion ids (equal to the
-current rubric ids) -- a forged ``result: pass`` fails. Markers written by the
+current rubric ids) -- a forged ``result: pass`` fails. A ``partial`` requirement
+passes only when a human accepted it in ``accepted-gaps.yml`` (``accepted_gaps.py``):
+the write path and ``content_check_state`` share one predicate, and the waiver is
+re-read and re-validated against the body, rubric, bib and recorded requirements
+each time, never copied into the marker, so the recorded statuses stay
+``partial``/``falta`` and ``missing`` never passes. Markers written by the
 old two-judge flow (``judges``/``disagreements``) stay readable and valid.
 
 CLI: ``python tools/content_check.py <report-folder> --verification <file>``
@@ -67,6 +72,7 @@ import rubric_plan
 import rubric_checks
 import timings
 import yaml
+import accepted_gaps
 from approval_marker import BODY_NAME, sha256_file
 from report_config import ReportConfig, read_yaml
 from validate_report import SECTION_SPECS, bold_pseudo_heading_lines, section_structure_validation
@@ -569,6 +575,39 @@ def downgrade_unquoted_evidence(requirements: list[dict], body_text: str) -> tup
     return result, findings
 
 
+def requirements_accepted(requirements: list, waived: frozenset[tuple[str, str]]) -> bool:
+    """Every requirement is ``found`` or a ``partial`` a human accepted (``accepted_gaps.py``).
+
+    One predicate for the write path and ``content_check_state``: ``missing``
+    never passes, and a ``partial`` passes only when ``waived`` names its
+    ``(criterion, requirement)``.
+    """
+    return all(
+        isinstance(r, dict) and (
+            r.get("status") == "found"
+            or (r.get("status") == "partial" and (str(r.get("criterion")), str(r.get("requirement"))) in waived)
+        )
+        for r in requirements
+    )
+
+
+def criteria_closed(criteria: list, requirements: list, waived: frozenset[tuple[str, str]]) -> bool:
+    """Every criterion is ``cumple``, or ``falta`` only because of ``partial`` requirements all accepted.
+
+    The recorded status stays ``falta``; this is the verdict's reading of it.
+    """
+    for record in criteria:
+        if not isinstance(record, dict):
+            return False
+        if record.get("status") == "cumple":
+            continue
+        own = [r for r in requirements if isinstance(r, dict) and str(r.get("criterion")) == str(record.get("id"))]
+        if (record.get("status") != "falta" or not any(r.get("status") == "partial" for r in own)
+                or not requirements_accepted(own, waived)):
+            return False
+    return True
+
+
 def derive_criteria(criteria: list[dict], requirements: list[dict]) -> list[dict]:
     """Per-criterion ``cumple`` (every requirement found) or ``falta``; never ``flojo``.
 
@@ -949,7 +988,8 @@ def run_check(
     checks.append({"check": "rubric_checks", "ok": not failed and not format_problems, "detail": detail})
     checks.append(link_entry)
     mechanical_ok = all(check["ok"] for check in checks)
-    criteria_ok = all(item["status"] == "cumple" for item in derived)
+    waived = accepted_gaps.waived_requirements(folder, requirements)
+    criteria_ok = criteria_closed(derived, requirements, waived) and requirements_accepted(requirements, waived)
     guide = _guide_input(folder, config)
     guide_binding = {"guide_sha256": _sha256_or_empty(folder / guide)} if guide else {}
     marker = {
@@ -1084,9 +1124,6 @@ def content_check_state(report_dir: Path) -> str:
             return "stale"
 
     criteria = data["criteria"]
-    criteria_ok = all(
-        isinstance(record, dict) and record.get("status") == "cumple" for record in criteria
-    )
     mechanical_ok = all(
         isinstance(entry, dict) and entry.get("ok") is True for entry in data["mechanical"]
     )
@@ -1113,12 +1150,14 @@ def content_check_state(report_dir: Path) -> str:
     recorded_ids = [str(record.get("id")) for record in criteria if isinstance(record, dict)]
     current_ids = [str(criterion.get("id")) for criterion in planned]
     ids_match = len(recorded_ids) == len(current_ids) and set(recorded_ids) == set(current_ids)
+    # The waiver is read and re-validated here, never copied into the marker.
+    recorded_requirements = data["requirements"] if verified else []
+    waived = accepted_gaps.waived_requirements(folder, recorded_requirements) if verified else frozenset()
+    criteria_ok = criteria_closed(criteria, recorded_requirements, waived)
     requirements_ok = True
     if verified:
-        covered = {str(r.get("criterion")) for r in data["requirements"] if isinstance(r, dict)}
-        requirements_ok = all(
-            isinstance(r, dict) and r.get("status") == "found" for r in data["requirements"]
-        ) and set(current_ids) <= covered
+        covered = {str(r.get("criterion")) for r in recorded_requirements if isinstance(r, dict)}
+        requirements_ok = requirements_accepted(recorded_requirements, waived) and set(current_ids) <= covered
     return "pass" if criteria_ok and mechanical_ok and ids_match and requirements_ok else "fail"
 
 
