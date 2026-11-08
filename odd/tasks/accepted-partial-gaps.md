@@ -15,11 +15,12 @@ Branch `feat/accepted-partial-gaps` (from origin/main 7e158a2). Lets the human e
 ## Tasks
 
 - [x] T1 S1-S7 — implement tool + content_check/doc_status/approval_packet changes + tests + docs (worker) — commit ab36c8a
-- [ ] T2 S4 — independent verification (Risk item 2: guard change) — evidence
-- [ ] T3 — PR (user decides merge)
+- [x] T2 S4 — independent verification (Risk item 2: guard change) — safe to merge, S1-S7 PASS, 3 minor (hand-forged waiver like other unsigned markers; gap text not cross-checked; accepted_at not parsed)
+- [x] T3 — PR (user decides merge); full suite green (10m24s, exit 0)
 
 ## Log
 
 - L1 (2026-11-08, user): "vio la ultima version, yo ya le expuse en quarto amigo. me parece falla de skill bloquear tanto"
 - L2 (2026-11-08, user): chose "Arreglar la skill (recomendado)".
 - L3 (2026-11-08, evidence): explorer map — verdict sites tools/content_check.py:~952/:981 (write) and :1087/:1116-1122 (re-derive); approval_marker independent of verify; doc_status _phase_verify :351-381; approval_packet.py:71/:89; tests pattern tools/test_content_check_partial.py, tools/conftest.py helpers _verification/_content_check; run `python3 -m pytest tools/ tests/`.
+- L4 (2026-11-08, evidence): independent verifier: S1-S7 PASS, 474+45+10 adversarial tests passed, no blockers.
