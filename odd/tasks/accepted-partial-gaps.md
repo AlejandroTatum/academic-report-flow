@@ -14,7 +14,7 @@ Branch `feat/accepted-partial-gaps` (from origin/main 7e158a2). Lets the human e
 
 ## Tasks
 
-- [ ] T1 S1-S7 — implement tool + content_check/doc_status/approval_packet changes + tests + docs (worker) — commit
+- [x] T1 S1-S7 — implement tool + content_check/doc_status/approval_packet changes + tests + docs (worker) — commit ab36c8a
 - [ ] T2 S4 — independent verification (Risk item 2: guard change) — evidence
 - [ ] T3 — PR (user decides merge)
 
