@@ -192,6 +192,51 @@ def report_authors(meta: dict) -> str:
     return str(meta.get("student") or "")
 
 
+def signature_names(meta: dict) -> list[str]:
+    """Group members who each sign: ``metadata.members``, else the comma list in ``student``.
+
+    Fewer than two names is not a group; the caller keeps the single-author block.
+    """
+    members = meta.get("members")
+    if isinstance(members, list):
+        names = [str(name).strip() for name in members if str(name).strip()]
+    else:
+        names = [name.strip() for name in str(meta.get("student") or "").split(",") if name.strip()]
+    return names if len(names) > 1 else []
+
+
+def group_signature_latex(names: list[str]) -> str:
+    r"""One signature rule per member in a two-column grid, with a single "Autores" label.
+
+    The whole grid sits in one ``minipage``, which LaTeX never splits across
+    pages. A last row left with one member is centred instead of left-aligned.
+    """
+    cell = "\n".join([
+        r"\begin{minipage}[t]{0.46\linewidth}\centering",
+        r"\rule{\linewidth}{0.4pt}\\[-0.1cm]",
+        r"{\bfseries %s}",
+        r"\end{minipage}",
+    ])
+    cells = [cell % cover_field(name) for name in names]
+    rows = []
+    for index in range(0, len(cells), 2):
+        pair = cells[index: index + 2]
+        if len(pair) == 2:
+            rows.append(r"\noindent" + "\n" + "\n\\hfill\n".join(pair) + r"\par")
+        else:
+            rows.append(r"\noindent\hspace*{\fill}" + "\n" + pair[0] + "\n" + r"\hspace*{\fill}\par")
+    return "\n".join([
+        r"\vspace*{1.15cm}",
+        r"\noindent\begin{minipage}{\linewidth}",
+        "\n\\vspace{1cm}\n".join(rows),
+        r"\vspace{0.4cm}",
+        r"\centering Autores",
+        r"\end{minipage}",
+        r"\newpage",
+        "",
+    ])
+
+
 LOGO_FILENAME = "unl-logo-aa1-transparent.png"
 BACKGROUND_FILENAME = "fondo-overleaf-investigacion.png"
 # Faculty logo extracted from the teacher's APE Word template (the header
@@ -1560,7 +1605,8 @@ def render_tex(config: ReportConfig) -> str:
     date = meta.get("date") or ""
     # No \thispagestyle here: when the signature does not fit, the command
     # runs on the previous page and strips that page's institutional header.
-    signature_latex = "\n".join([
+    group_names = signature_names(meta)
+    signature_latex = group_signature_latex(group_names) if group_names else "\n".join([
         r"\vspace*{1.15cm}",
         r"\begin{flushright}",
         r"\rule{7.3cm}{0.4pt}\\[-0.1cm]",
