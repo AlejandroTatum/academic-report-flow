@@ -1558,13 +1558,14 @@ def render_tex(config: ReportConfig) -> str:
     ai_declaration = config.raw.get("ai_declaration") or config.raw.get("declaracion_ia")
     student = meta.get("student") or ""
     date = meta.get("date") or ""
+    # No \thispagestyle here: when the signature does not fit, the command
+    # runs on the previous page and strips that page's institutional header.
     signature_latex = "\n".join([
-        r"\thispagestyle{plain}",
         r"\vspace*{1.15cm}",
         r"\begin{flushright}",
         r"\rule{7.3cm}{0.4pt}\\[-0.1cm]",
         rf"{{\bfseries {cover_field(student)}}}\\",
-        "Autor",
+        "Autores" if "," in str(student) else "Autor",
         r"\end{flushright}",
         r"\newpage",
         "",
