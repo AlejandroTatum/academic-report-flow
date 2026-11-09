@@ -1689,12 +1689,13 @@ def render_tex(config: ReportConfig) -> str:
     # `ai_declaration: false` opts out of the declaration, not of the signature:
     # the author still signs, so only the signature closes the document. A report
     # that never mentions the key is left as it was. The chamba fallback above
-    # already set its own declaration and signature.
+    # already set its own declaration and signature. `signature: false` drops it.
     declaration_opted_out = any(
         key in config.raw and not config.raw[key] for key in ("ai_declaration", "declaracion_ia")
     )
     if (
         declaration_opted_out
+        and config.raw.get("signature", True) is not False
         and not ai_declaration
         and not ai_signature_latex
         and (group_names or student)

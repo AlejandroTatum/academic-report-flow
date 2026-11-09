@@ -257,3 +257,13 @@ def test_every_signing_format_signs_without_ai_declaration(tmp_path: Path) -> No
 def test_report_without_the_ai_declaration_key_is_left_alone(tmp_path: Path) -> None:
     tex = render_ape(tmp_path, {})
     assert r"\rule{7.3cm}" not in tex
+
+
+def test_signature_false_drops_the_signature(tmp_path: Path) -> None:
+    tex = render_ape(
+        tmp_path, {"ai_declaration": False, "signature": False},
+        student=", ".join(GROUP), members=GROUP,
+    )
+    assert signature_cells(tex) == []
+    assert "Autores" not in tex
+    assert r"\rule{" not in tex.split("Contenido de Recomendaciones.", 1)[1]
