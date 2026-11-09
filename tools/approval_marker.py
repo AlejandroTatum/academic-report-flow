@@ -49,6 +49,9 @@ from report_config import read_yaml
 BODY_NAME = "body.md"
 MARKER_NAME = "approval.yml"
 SNAPSHOT_NAME = "approved-body.md"
+# The body last shown to the reviewer (``approval_packet.py --open``): the base
+# of the diff a re-approval round shows instead of the whole draft.
+PRESENTED_NAME = "presented-body.md"
 MARKER_SCHEMA = "academic.doc-approval/v1"
 REQUIRED_KEYS = ("body_sha256", "approved_at", "approved_by")
 
@@ -130,6 +133,38 @@ def draft_preview_path(work_folder: Path) -> Path:
 def draft_preview_is_fresh(work_folder: Path) -> bool:
     """True when the plain draft exists and records the current ``body.md`` bytes."""
     return draft_is_fresh(draft_preview_path(work_folder), Path(work_folder) / BODY_NAME)
+
+
+def review_base(work_folder: Path) -> str | None:
+    """The body the reviewer last saw, or ``None`` before the first approval prompt.
+
+    ``presented-body.md`` wins (the latest round shown); ``approved-body.md``
+    covers folders approved before presentation was recorded.
+    """
+    folder = Path(work_folder)
+    for name in (PRESENTED_NAME, SNAPSHOT_NAME):
+        try:
+            return (folder / name).read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+    return None
+
+
+def approval_preview_ready(work_folder: Path) -> bool:
+    """True when the approval prompt may be shown: a fresh first draft, or a later round.
+
+    The plain draft PDF is built once, for the first prompt; later rounds show
+    only the diff since :func:`review_base`, so they need no rebuild.
+    """
+    return review_base(work_folder) is not None or draft_preview_is_fresh(work_folder)
+
+
+def record_presented(work_folder: Path) -> Path:
+    """Record the current ``body.md`` as the body the reviewer has been shown."""
+    folder = Path(work_folder)
+    target = folder / PRESENTED_NAME
+    write_files_atomically([(target, (folder / BODY_NAME).read_bytes())])
+    return target
 
 
 def write_draft_record(pdf_path: Path, body_path: Path, digest: str | None = None) -> Path:

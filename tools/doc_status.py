@@ -36,7 +36,7 @@ import rubric_plan
 import typeset
 from guide_facts import load_guide_facts
 from course_profile import COURSE_LAYOUT, PRACTICE_FORMATS, course_repo
-from approval_marker import approval_state, bound_file_names, draft_preview_is_fresh, draft_preview_path, render_settings_unchanged, sha256_file
+from approval_marker import approval_preview_ready, approval_state, bound_file_names, draft_preview_path, render_settings_unchanged, review_base, sha256_file
 from publish_pdf import PublicationError, matching_delivered_version, scan_delivery_versions
 from report_config import (
     ROOT,
@@ -86,6 +86,23 @@ STATE_TOKENS = (DONE, CURRENT, PENDING, BLOCKED)
 SCHEMA_NAME = "academic.doc-status"
 SCHEMA_VERSION = 1
 
+# A later approval round: the reviewer already saw a body, so the draft PDF is
+# not rebuilt and the packet shows only the changes since then.
+REAPPROVAL_GUIDANCE = (
+    "re-approval round: the draft PDF is not built again and the whole draft is not shown again; print "
+    "{packet_command} --open, which shows only the changes since your last review (the diff) "
+    "and the verify result, paste it unchanged right before the prompt; "
+    "generation runs only after you approve {body}"
+)
+
+# First approval round only: the draft PDF builds in parallel with the verifier.
+FIRST_ROUND_DRAFT_CLAUSE = (
+    "; the verifier and {draft_command} (the preview build) do not depend on each other: start both "
+    "in parallel for the same {body} bytes, and the approval gate stays closed until the draft and "
+    "the verification are both current"
+)
+LATER_ROUND_DRAFT_CLAUSE = "; later approval round: no draft PDF rebuild, the packet shows only the changes"
+
 # One action sentence per phase: the closing ``**Next**`` line for the routed token,
 # and the front-loaded gate's consequence for the phase that still waits. Every
 # sentence names the absolute path it acts on -- the work folder exactly as the
@@ -118,9 +135,7 @@ _GUIDANCE = {
         VERIFIER_LAUNCH + " for {rubric} with the brief from {check_command} "
         "--verify-brief (add --verify-brief --since verification.yml when it exists, so only "
         "changed sections are re-checked), save its matrix as verification.yml; run {check_command} "
-        "--verification verification.yml, then re-run doc_status; the verifier and {draft_command} "
-        "(the preview build) do not depend on each other: start both in parallel for the same {body} "
-        "bytes, and the approval gate stays closed until the draft and the verification are both current"
+        "--verification verification.yml, then re-run doc_status" + FIRST_ROUND_DRAFT_CLAUSE
     ),
     "format": (
         "the format answers normally arrive with the approval batch; ask only the missing "
@@ -919,13 +934,15 @@ def _guidance(
             + _tool_command("rubric_plan.py", folder).replace("{", "{{").replace("}", "}}")
             + ", re-verify if the rubric changed, then re-run doc_status"
         )
-    elif phase_name == "approval" and not draft_preview_is_fresh(folder):
+    elif phase_name == "approval" and not approval_preview_ready(folder):
         template = (
             "rebuild the draft PDF: {draft_command} (the draft PDF is missing "
             "or does not match the current {body}); do not present the approval prompt until it "
             "is rebuilt, then re-run doc_status; generation runs only after you approve {body}"
         )
     elif phase_name == "approval":
+        if review_base(folder) is not None:
+            template = REAPPROVAL_GUIDANCE
         template += _approval_format_suffix(folder, config, documents_root)
     if phase_name == "verify" and blocked_reason == "content_check_stale":
         template = (VERIFIER_LAUNCH + " for {body} with the brief from {check_command} "
@@ -934,10 +951,12 @@ def _guidance(
     if phase_name == "verify" and blocked_reason == "content_check_malformed":
         template = VERIFIER_LAUNCH + " for {body}, then run the content check: {check_command} --verification verification.yml"
     if phase_name == "verify" and blocked_reason == "content_check_failed":
-        template = ("show the user the approval packet from {packet_command} --open (draft PDF, criterion summary, "
-                    "missing items) and fix {body} only through the user's literal edit orders; "
-                    "rebuild the preview, then re-run the verifier with {check_command} "
-                    "--verify-brief --since verification.yml")
+        later = review_base(folder) is not None
+        template = ("show the user the approval packet from {packet_command} --open ("
+                    + ("changes since the last review" if later else "draft PDF")
+                    + ", criterion summary, missing items) and fix {body} only through the user's literal "
+                    "edit orders; " + ("" if later else "rebuild the preview, ")
+                    + "then re-run the verifier with {check_command} --verify-brief --since verification.yml")
         if accepted_gaps.only_partials_block(folder):
             template += ("; only partial requirements block the check: tell the user that accepted_gaps.py "
                          "exists to accept a partial requirement they name with a reason "
@@ -980,6 +999,8 @@ def _guidance(
         )
     if phase_name == "research" and _effective_min_sources(config) == 0:
         template = "no sources are required (min_sources: 0); re-run doc_status"
+    if review_base(folder) is not None:
+        template = template.replace(FIRST_ROUND_DRAFT_CLAUSE, LATER_ROUND_DRAFT_CLAUSE)
     return template.format(
         folder=folder,
         report_yml=folder / "report.yml",
