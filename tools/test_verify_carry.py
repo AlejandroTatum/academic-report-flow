@@ -126,3 +126,27 @@ def test_bounded_edit_keeps_a_fail(tmp_path: Path) -> None:
     _edit(folder, "mas [@key3]", "ademas de [@key3]")
 
     assert content_check.content_check_state(folder) == "fail"
+
+
+def test_bounded_edit_carries_a_crlf_body(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    _report(folder)
+    _sources_bib(folder)
+    _rubric(folder)
+    (folder / "body.md").write_bytes(DEFAULT_CITED_BODY.replace("\n", "\r\n").encode("utf-8"))
+    assert content_check.main([str(folder), "--verification", str(_verification(folder))]) == 0
+    assert (folder / content_check.CHECKED_SNAPSHOT_NAME).read_bytes() == (folder / "body.md").read_bytes()
+
+    text = (folder / "body.md").read_bytes().replace(b"mas [@key3]", b"ademas de [@key3]")
+    (folder / "body.md").write_bytes(text)
+
+    assert content_check.content_check_state(folder) == "pass"
+
+
+def test_bounded_edit_with_accepted_gaps_is_stale(tmp_path: Path) -> None:
+    folder = _checked(tmp_path / "wf")
+    (folder / "accepted-gaps.yml").write_text("gaps: []\n", encoding="utf-8")
+
+    _edit(folder, "mas [@key3]", "ademas de [@key3]")
+
+    assert content_check.content_check_state(folder) == "stale"

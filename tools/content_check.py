@@ -848,7 +848,7 @@ def _sha256_or_empty(path: Path | None) -> str:
         return ""
 
 
-def _write_marker_atomically(path: Path, text: str) -> None:
+def _write_marker_atomically(path: Path, text: str | bytes) -> None:
     """Write ``text`` to ``path`` so readers never see a half-written marker.
 
     The temp file sits beside the target (same filesystem, so ``os.replace`` is
@@ -857,7 +857,10 @@ def _write_marker_atomically(path: Path, text: str) -> None:
     """
     tmp = path.with_name(path.name + ".tmp")
     try:
-        tmp.write_text(text, encoding="utf-8")
+        if isinstance(text, bytes):
+            tmp.write_bytes(text)
+        else:
+            tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, path)
     except OSError:
         tmp.unlink(missing_ok=True)
@@ -1023,7 +1026,8 @@ def run_check(
         "rubric_check_results": rubric_results,
         "result": "pass" if mechanical_ok and criteria_ok else "fail",
     }
-    _write_marker_atomically(folder / CHECKED_SNAPSHOT_NAME, body_text)
+    # Raw bytes, so the snapshot hashes to body_sha256 even with CRLF line ends.
+    _write_marker_atomically(folder / CHECKED_SNAPSHOT_NAME, body_path.read_bytes())
     _write_marker_atomically(
         folder / CONTENT_CHECK_NAME,
         yaml.safe_dump(marker, sort_keys=False, allow_unicode=False),
@@ -1173,10 +1177,13 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
     The edit must be bounded (``bounded_edit``: at most 40 words, no heading),
     every recorded ``found`` quote must still be in the body and the draft's
     mechanical checks must still pass on the new bytes; otherwise the verifier
-    reruns as before. Never raises.
+    reruns as before. Accepted gaps bind the exact body, so with
+    ``accepted-gaps.yml`` present any edit stales the marker. Never raises.
     """
     snapshot = folder / CHECKED_SNAPSHOT_NAME
     try:
+        if (folder / accepted_gaps.ACCEPTED_GAPS_NAME).exists():
+            return False
         if not snapshot.is_file():
             return False
         snapshot_bytes = snapshot.read_bytes()
