@@ -1167,7 +1167,8 @@ def test_new_marker_goes_stale_when_an_input_changes(tmp_path: Path, edit: str) 
     assert content_check.content_check_state(folder) == "pass"
 
     if edit == "body":
-        _body(folder, DEFAULT_CITED_BODY + "\nUna frase nueva.\n")
+        # A heading makes the edit unbounded; bounded edits keep the marker (test_verify_carry.py).
+        _body(folder, DEFAULT_CITED_BODY + "\n## Nueva\n\nUna frase nueva.\n")
     elif edit == "rubric":
         _rubric(folder, source="otra rubrica")
     elif edit == "bib":

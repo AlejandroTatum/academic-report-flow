@@ -170,7 +170,7 @@ def test_without_a_content_check_nothing_is_accepted(tmp_path: Path, capsys: pyt
 
 def test_a_stale_content_check_accepts_nothing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     folder = partial_only(tmp_path)
-    (folder / "body.md").write_text((folder / "body.md").read_text(encoding="utf-8") + "\nOtra linea.\n",
+    (folder / "body.md").write_text((folder / "body.md").read_text(encoding="utf-8") + "\n## Nueva\n\nOtra linea.\n",
                                     encoding="utf-8")
     before = listing(folder)
     assert accept(folder) == 1

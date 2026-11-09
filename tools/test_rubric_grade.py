@@ -177,7 +177,7 @@ def test_grade_requires_a_current_verification(tmp_path: Path, capsys: pytest.Ca
     assert "verification" in capsys.readouterr().err
     assert not (folder / "rubric-grade.yml").exists()
     folder = verified_folder(tmp_path / "other")
-    _body(folder, BODY + "\nCambio.\n")
+    _body(folder, BODY + "\n## Nueva\n\nCambio.\n")  # unbounded: a heading
     assert rubric_grade.main([str(folder)]) == 2
     assert "stale" in capsys.readouterr().err
     assert not (folder / "rubric-grade.md").exists()
