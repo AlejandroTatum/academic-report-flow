@@ -74,12 +74,15 @@ import timings
 import yaml
 import accepted_gaps
 from approval_marker import BODY_NAME, sha256_file
+from bounded_edit import bounded
 from report_config import ReportConfig, read_yaml
 from validate_report import SECTION_SPECS, bold_pseudo_heading_lines, section_structure_validation
 from source_count import MIN_ACADEMIC_SOURCES, all_entry_keys, effective_min_sources, eligible_entry_keys
 from validate_ieee_refs import bib_keys, cited_keys
 
 CONTENT_CHECK_NAME = "content-check.yml"
+# The body bytes the check ran on; a bounded edit against them keeps the marker.
+CHECKED_SNAPSHOT_NAME = "checked-body.md"
 CONTENT_CHECK_SCHEMA = "academic.content-check/v1"
 VERIFICATION_SCHEMA = "academic.verification/v1"
 REQUIREMENT_STATUSES = ("found", "partial", "missing")
@@ -845,7 +848,7 @@ def _sha256_or_empty(path: Path | None) -> str:
         return ""
 
 
-def _write_marker_atomically(path: Path, text: str) -> None:
+def _write_marker_atomically(path: Path, text: str | bytes) -> None:
     """Write ``text`` to ``path`` so readers never see a half-written marker.
 
     The temp file sits beside the target (same filesystem, so ``os.replace`` is
@@ -854,7 +857,10 @@ def _write_marker_atomically(path: Path, text: str) -> None:
     """
     tmp = path.with_name(path.name + ".tmp")
     try:
-        tmp.write_text(text, encoding="utf-8")
+        if isinstance(text, bytes):
+            tmp.write_bytes(text)
+        else:
+            tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, path)
     except OSError:
         tmp.unlink(missing_ok=True)
@@ -1020,6 +1026,8 @@ def run_check(
         "rubric_check_results": rubric_results,
         "result": "pass" if mechanical_ok and criteria_ok else "fail",
     }
+    # Raw bytes, so the snapshot hashes to body_sha256 even with CRLF line ends.
+    _write_marker_atomically(folder / CHECKED_SNAPSHOT_NAME, body_path.read_bytes())
     _write_marker_atomically(
         folder / CONTENT_CHECK_NAME,
         yaml.safe_dump(marker, sort_keys=False, allow_unicode=False),
@@ -1034,7 +1042,7 @@ def content_check_state(report_dir: Path) -> str:
     be read or is missing required keys is ``malformed``; a marker whose
     ``body_sha256``, ``rubric_sha256`` or ``bib_sha256`` no longer matches the
     folder is ``stale`` (the draft, the rubric or the bib changed since the
-    check), as is a recorded ``guide_sha256`` that no longer matches the
+    check; a bounded draft edit keeps the marker, see ``_bounded_since_check``), as is a recorded ``guide_sha256`` that no longer matches the
     guide the report declares (or the guide is gone). A marker without
     ``guide_sha256`` predates guide binding and stays valid. A marker with a
     ``verifier`` is a single-verify marker; one without is the legacy two-judge
@@ -1097,7 +1105,8 @@ def content_check_state(report_dir: Path) -> str:
         body_hash = sha256_file(body_path)
     except OSError:
         return "malformed"
-    if str(data["body_sha256"]).strip().lower() != body_hash:
+    recorded_body = str(data["body_sha256"]).strip().lower()
+    if recorded_body != body_hash and not _bounded_since_check(folder, recorded_body, data):
         return "stale"
 
     rubric_path = folder / rubric_plan.RUBRIC_NAME
@@ -1159,6 +1168,38 @@ def content_check_state(report_dir: Path) -> str:
         covered = {str(r.get("criterion")) for r in recorded_requirements if isinstance(r, dict)}
         requirements_ok = requirements_accepted(recorded_requirements, waived) and set(current_ids) <= covered
     return "pass" if criteria_ok and mechanical_ok and ids_match and requirements_ok else "fail"
+
+
+def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
+    """True when ``body.md`` differs from the checked bytes only by a bounded edit.
+
+    The snapshot is trusted only when it hashes to the recorded ``body_sha256``.
+    The edit must be bounded (``bounded_edit``: at most 40 words, no heading),
+    every recorded ``found`` quote must still be in the body and the draft's
+    mechanical checks must still pass on the new bytes; otherwise the verifier
+    reruns as before. Accepted gaps bind the exact body, so with
+    ``accepted-gaps.yml`` present any edit stales the marker. Never raises.
+    """
+    snapshot = folder / CHECKED_SNAPSHOT_NAME
+    try:
+        if (folder / accepted_gaps.ACCEPTED_GAPS_NAME).exists():
+            return False
+        if not snapshot.is_file():
+            return False
+        snapshot_bytes = snapshot.read_bytes()
+        if hashlib.sha256(snapshot_bytes).hexdigest() != recorded:
+            return False
+        old = snapshot_bytes.decode("utf-8")
+        new = (folder / BODY_NAME).read_text(encoding="utf-8")
+        if not bounded(old, new)[0]:
+            return False
+        requirements = data.get("requirements")
+        if isinstance(requirements, list) and downgrade_unquoted_evidence(requirements, new)[1]:
+            return False
+        return all(check["ok"] for check in body_check_results(folder)
+                   if check["check"] in _BODY_CHECK_MECHANICAL)
+    except Exception:
+        return False
 
 
 _BODY_CHECK_MECHANICAL = ("citations_resolve", "eligible_sources_cited")

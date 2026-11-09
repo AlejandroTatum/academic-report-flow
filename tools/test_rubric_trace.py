@@ -177,7 +177,7 @@ def test_a_current_verification_adds_requirement_counts_and_sections_of_the_quot
 
 def test_a_stale_verification_is_ignored_and_said_so(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     folder = verified_folder(tmp_path)
-    _body(folder, BODY + "\nUna frase nueva.\n")
+    _body(folder, BODY + "\n## Nueva\n\nUna frase nueva.\n")  # unbounded: a heading
     assert rubric_trace.main([str(folder)]) == 0  # checks are green; stale matrix is not used
     out = capsys.readouterr().out
     assert "verification stale" in out
