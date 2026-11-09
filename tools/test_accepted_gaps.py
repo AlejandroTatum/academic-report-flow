@@ -365,3 +365,14 @@ def test_rubric_grade_output_is_the_same_with_and_without_the_waiver(tmp_path: P
     assert accept(folder) == 0
     assert rubric_grade.main([str(folder)]) == 0
     assert ((folder / "rubric-grade.yml").read_bytes(), (folder / "rubric-grade.md").read_bytes()) == before
+
+
+def test_a_bounded_edit_after_accepting_stales_instead_of_failing(tmp_path: Path) -> None:
+    folder = partial_only(tmp_path)
+    assert accept(folder) == 0
+    assert content_check.content_check_state(folder) == "pass"
+    body = folder / "body.md"
+    body.write_text(body.read_text(encoding="utf-8").rstrip("\n") + " Fin.\n", encoding="utf-8")
+
+    assert content_check.content_check_state(folder) == "stale"
+    assert doc_status._phase_verify(folder, None, None).blocked_reason == "content_check_stale"
