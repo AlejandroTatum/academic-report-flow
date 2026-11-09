@@ -1618,6 +1618,9 @@ def render_tex(config: ReportConfig) -> str:
     ])
     # Strip the trailing \newpage from signature when placed
     # after bibliography — avoids a blank end-page
+    # No document is signed unless its report.yml asks for it with `signature: true`.
+    if config.raw.get("signature") is not True:
+        signature_latex = ""
     sig_no_newpage = signature_latex.rstrip()
     if sig_no_newpage.endswith(r"\newpage"):
         sig_no_newpage = sig_no_newpage[: -len(r"\newpage")].rstrip()
@@ -1689,12 +1692,13 @@ def render_tex(config: ReportConfig) -> str:
     # `ai_declaration: false` opts out of the declaration, not of the signature:
     # the author still signs, so only the signature closes the document. A report
     # that never mentions the key is left as it was. The chamba fallback above
-    # already set its own declaration and signature.
+    # already set its own declaration and signature. `signature: false` drops it.
     declaration_opted_out = any(
         key in config.raw and not config.raw[key] for key in ("ai_declaration", "declaracion_ia")
     )
     if (
         declaration_opted_out
+        and config.raw.get("signature", True) is not False
         and not ai_declaration
         and not ai_signature_latex
         and (group_names or student)
@@ -1787,6 +1791,12 @@ def render_tex(config: ReportConfig) -> str:
             template,
             keep_academic_only_fields=config.route == DEFAULT_ROUTE,
             template_path=template_path,
+        )
+    # `visible_links: true` colours URLs so readers see they are clickable;
+    # internal references and citations stay black.
+    if config.raw.get("visible_links") is True:
+        template = template.replace(
+            "colorlinks=false", "colorlinks=true,\n  linkcolor=black,\n  citecolor=black,\n  urlcolor=blue",
         )
     return template
 
