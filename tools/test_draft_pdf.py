@@ -187,7 +187,10 @@ def test_approval_packet_links_and_opens_the_draft(
 
     _body(folder, AA_BODY + "\nEditado.\n")
     opened.clear()
-    assert "STALE: rebuild the draft with" in approval_packet.render(folder)
+    # Already shown once: the next round lists only the changes, no draft rebuild.
+    later = approval_packet.render(folder)
+    assert "## Changes since your last review (1 words)" in later and "+Editado." in later
+    assert "STALE" not in later
     approval_packet.main([str(folder), "--open"])
     assert opened == []
 

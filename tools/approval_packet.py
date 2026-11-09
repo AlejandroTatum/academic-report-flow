@@ -6,13 +6,17 @@ the plain draft PDF preview, ``body.md`` and the latest DOCX draft, the verify r
 one row per criterion (cumple/falta, found/total), the missing items, the
 deletion candidates and the findings, then the rubric trace (weight, covering
 sections, checks and requirements per criterion). The per-requirement evidence matrix is
-for agents: it stays in ``content-check.yml`` and is linked, never pasted (#64). It is read-only: it never runs the verifier, builds or approves.
+for agents: it stays in ``content-check.yml`` and is linked, never pasted (#64). It never runs the verifier, builds or approves.
+Once the reviewer has seen a body (``presented-body.md``, written by ``--open``) or
+approved one (``approved-body.md``), the packet replaces the draft PDF link with
+the diff since that body: a re-approval round shows only the changes.
 A stale or absent verification shows no matrix, so an old verdict is never
 presented as current.
 """
 from __future__ import annotations
 
 import argparse
+import difflib
 import re
 import sys
 from pathlib import Path
@@ -23,7 +27,8 @@ import pdf_viewer
 import rubric_plan
 import rubric_trace
 import yaml
-from approval_marker import BODY_NAME, draft_preview_is_fresh, draft_preview_path
+from approval_marker import BODY_NAME, draft_preview_is_fresh, draft_preview_path, record_presented, review_base
+from bounded_edit import word_diff
 from draft_docx import DRAFT_DIR
 
 _DOCX_VERSION = re.compile(r"-borrador-v(\d+)\.docx$")
@@ -62,6 +67,19 @@ def _files_section(folder: Path) -> list[str]:
     if docx is not None:
         lines.append(f"- DOCX draft: {_link(docx)}")
     return lines
+
+
+def _changes_section(folder: Path, base: str) -> list[str]:
+    """Only what changed since the body the reviewer last saw, never the whole draft."""
+    body = folder / BODY_NAME
+    current = body.read_text(encoding="utf-8")
+    words = word_diff(base, current)
+    if not words:
+        return ["## Changes since your last review: none", "", f"- {BODY_NAME}: {_link(body)}"]
+    diff = [line for line in difflib.unified_diff(base.splitlines(), current.splitlines(), lineterm="", n=0)
+            if not line.startswith(("---", "+++"))]
+    return [f"## Changes since your last review ({words} words)", "", "```diff", *diff, "```", "",
+            f"- {BODY_NAME}: {_link(body)}"]
 
 
 def _listing(title: str, items: list[str]) -> list[str]:
@@ -122,17 +140,19 @@ def _rubric_section(folder: Path) -> list[str]:
 
 def render(folder: Path) -> str:
     folder = Path(folder)
-    return "\n".join([f"# Approval packet: {folder.name}", "", *_files_section(folder), "",
+    base = review_base(folder)
+    head = _files_section(folder) if base is None else _changes_section(folder, base)
+    return "\n".join([f"# Approval packet: {folder.name}", "", *head, "",
                       *_verify_section(folder), *_rubric_section(folder)]) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Print the approval packet (preview links, verify matrix, missing items); read-only."
+        description="Print the approval packet (preview links or changes, verify matrix, missing items)."
     )
     parser.add_argument("folder", type=Path)
     parser.add_argument("--open", action="store_true",
-                        help="also open the preview PDF for the reviewer, only when it is fresh")
+                        help="mark this body as shown; in the first round also open the fresh preview PDF")
     args = parser.parse_args(argv)
     if not (args.folder / "report.yml").is_file():
         print(f"approval packet input error: report folder not found: {args.folder}", file=sys.stderr)
@@ -143,17 +163,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"approval packet input error: {exc}", file=sys.stderr)
         return 2
     if args.open:
-        _open_preview(args.folder)
+        _present(args.folder)
     return 0
 
 
-def _open_preview(folder: Path) -> None:
-    pdf = preview_pdf(folder)
-    if not pdf.is_file() or not draft_preview_is_fresh(folder):
-        print("preview not opened: rebuild the preview first (draft_pdf.py)", file=sys.stderr)
-        return
-    error = pdf_viewer.open_pdf(pdf)
-    print(f"preview not opened: {error}" if error else f"opened {pdf.resolve()}", file=sys.stderr)
+def _present(folder: Path) -> None:
+    """``--open`` marks the printed body as shown; a first round needs its fresh draft."""
+    if review_base(folder) is None:
+        if not draft_preview_is_fresh(folder):
+            print("preview not opened: rebuild the preview first (draft_pdf.py)", file=sys.stderr)
+            return
+        pdf = preview_pdf(folder)
+        error = pdf_viewer.open_pdf(pdf)
+        print(f"preview not opened: {error}" if error else f"opened {pdf.resolve()}", file=sys.stderr)
+    record_presented(folder)
 
 
 if __name__ == "__main__":

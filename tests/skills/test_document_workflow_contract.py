@@ -1086,9 +1086,9 @@ def test_rubric_checks_default_to_document_wide() -> None:
 
 
 def test_approval_gate_requires_fresh_preview_and_clickable_links() -> None:
-    """#59/#60: the gate needs a rebuilt preview and absolute file:// links to it and body.md."""
+    """#59/#60: the first gate needs a rebuilt preview and absolute file:// links; later rounds show only the changes."""
     approval = _flat(APPROVAL_MD)
-    for token in ("records the sha256", "rebuild the draft pdf", "clickable markdown links", "absolute file:// urls", "never present the gate without them", "rebuild the preview pdf"):
+    for token in ("records the sha256", "rebuild the draft pdf", "clickable markdown links", "absolute file:// urls", "never present the first gate without them", "only the changes", "presented-body.md"):
         assert token in approval, f"approval.md must require a fresh preview and links: {token}"
 
 
