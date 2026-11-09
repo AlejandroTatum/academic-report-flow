@@ -38,12 +38,19 @@ def signature_cells(block: str) -> list[str]:
     )
 
 
+def signed_config(tmp_path: Path, template: str, extra: dict | None = None):
+    """A config that opts in to the signature, which is off by default."""
+    config = make_config(tmp_path, template, extra)
+    config.raw["signature"] = True
+    return config
+
+
 GROUP = ["Alejandro Padilla Espinoza", "Doménica Rojas", "Ivett Zaragocín", "Luis Gómez", "Ana Pérez"]
 
 
 def test_signature_does_not_set_a_page_style(tmp_path: Path) -> None:
     tex = build_latex_report.render_tex(
-        make_config(tmp_path, TEMPLATE, {"student": "Ana"}),
+        signed_config(tmp_path, TEMPLATE, {"student": "Ana"}),
     )
     preceding = tex[: tex.index(r"\rule{7.3cm}{0.4pt}")].rsplit(r"\section*", 1)[-1]
     assert r"\thispagestyle" not in preceding
@@ -51,7 +58,7 @@ def test_signature_does_not_set_a_page_style(tmp_path: Path) -> None:
 
 def test_single_author_is_labelled_autor(tmp_path: Path) -> None:
     tex = build_latex_report.render_tex(
-        make_config(tmp_path, TEMPLATE, {"student": "Ana Pérez"}),
+        signed_config(tmp_path, TEMPLATE, {"student": "Ana Pérez"}),
     )
     block = signature_block(tex)
     assert "Autor\n" in block
@@ -60,14 +67,14 @@ def test_single_author_is_labelled_autor(tmp_path: Path) -> None:
 
 def test_several_authors_are_labelled_autores(tmp_path: Path) -> None:
     tex = build_latex_report.render_tex(
-        make_config(tmp_path, TEMPLATE, {"student": "Ana Pérez, Luis Gómez"}),
+        signed_config(tmp_path, TEMPLATE, {"student": "Ana Pérez, Luis Gómez"}),
     )
     assert "Autores\n" in signature_block(tex)
 
 
 def test_single_author_signature_is_unchanged(tmp_path: Path) -> None:
     tex = build_latex_report.render_tex(
-        make_config(tmp_path, TEMPLATE, {"student": "Ana Pérez & Co"}),
+        signed_config(tmp_path, TEMPLATE, {"student": "Ana Pérez & Co"}),
     )
     assert signature_block(tex) + "\\newpage\n" == (
         "\\vspace*{1.15cm}\n"
@@ -82,7 +89,7 @@ def test_single_author_signature_is_unchanged(tmp_path: Path) -> None:
 
 def test_group_members_each_sign_on_their_own_rule(tmp_path: Path) -> None:
     tex = build_latex_report.render_tex(
-        make_config(tmp_path, TEMPLATE, {"student": ", ".join(GROUP), "members": GROUP}),
+        signed_config(tmp_path, TEMPLATE, {"student": ", ".join(GROUP), "members": GROUP}),
     )
     block = signature_block(tex)
     cells = signature_cells(block)
@@ -97,14 +104,14 @@ def test_group_members_each_sign_on_their_own_rule(tmp_path: Path) -> None:
 
 def test_group_from_comma_separated_student_without_members(tmp_path: Path) -> None:
     tex = build_latex_report.render_tex(
-        make_config(tmp_path, TEMPLATE, {"student": ", ".join(GROUP)}),
+        signed_config(tmp_path, TEMPLATE, {"student": ", ".join(GROUP)}),
     )
     assert len(signature_cells(signature_block(tex))) == len(GROUP)
 
 
 def test_group_block_is_kept_on_one_page(tmp_path: Path) -> None:
     tex = build_latex_report.render_tex(
-        make_config(tmp_path, TEMPLATE, {"members": GROUP}),
+        signed_config(tmp_path, TEMPLATE, {"members": GROUP}),
     )
     block = signature_block(tex)
     # An outer minipage is unbreakable, so no page break can split the grid.
@@ -116,7 +123,7 @@ def test_group_block_is_kept_on_one_page(tmp_path: Path) -> None:
 
 def test_odd_last_row_is_centred_and_even_rows_are_not(tmp_path: Path) -> None:
     def rows(members: list[str]) -> list[str]:
-        tex = build_latex_report.render_tex(make_config(tmp_path, TEMPLATE, {"members": members}))
+        tex = build_latex_report.render_tex(signed_config(tmp_path, TEMPLATE, {"members": members}))
         return [r for r in signature_block(tex).split(r"\par") if "0.46" in r]
 
     odd = rows(GROUP)
@@ -131,7 +138,7 @@ def test_odd_last_row_is_centred_and_even_rows_are_not(tmp_path: Path) -> None:
 
 def test_group_names_are_latex_escaped(tmp_path: Path) -> None:
     tex = build_latex_report.render_tex(
-        make_config(tmp_path, TEMPLATE, {"members": ["A & B", "C_D"]}),
+        signed_config(tmp_path, TEMPLATE, {"members": ["A & B", "C_D"]}),
     )
     block = signature_block(tex)
     assert r"A \& B" in block and r"C\_D" in block
@@ -160,7 +167,7 @@ def render_ape(tmp_path: Path, raw: dict, **metadata: object) -> str:
 
 def test_ape_group_signs_without_ai_declaration(tmp_path: Path) -> None:
     tex = render_ape(
-        tmp_path, {"ai_declaration": False}, student=", ".join(GROUP), members=GROUP,
+        tmp_path, {"ai_declaration": False, "signature": True}, student=", ".join(GROUP), members=GROUP,
     )
     cells = signature_cells(tex)
     assert len(cells) == len(GROUP)
@@ -173,7 +180,7 @@ def test_ape_group_signs_without_ai_declaration(tmp_path: Path) -> None:
 
 
 def test_ape_single_author_signs_without_ai_declaration(tmp_path: Path) -> None:
-    tex = render_ape(tmp_path, {"ai_declaration": False})
+    tex = render_ape(tmp_path, {"ai_declaration": False, "signature": True})
     assert (
         "\\vspace*{1.15cm}\n"
         "\\begin{flushright}\n"
@@ -187,12 +194,12 @@ def test_ape_single_author_signs_without_ai_declaration(tmp_path: Path) -> None:
 
 
 def test_signature_is_not_duplicated_at_the_front_without_declaration(tmp_path: Path) -> None:
-    tex = render_ape(tmp_path, {"ai_declaration": False}, student=", ".join(GROUP), members=GROUP)
+    tex = render_ape(tmp_path, {"ai_declaration": False, "signature": True}, student=", ".join(GROUP), members=GROUP)
     assert tex.count(r"\vspace*{1.15cm}") == 1
 
 
 def test_ape_declaration_output_is_unchanged(tmp_path: Path) -> None:
-    raw = {"ai_declaration": DECLARATION, "ai_declaration_position": "after_bibliography"}
+    raw = {"ai_declaration": DECLARATION, "ai_declaration_position": "after_bibliography", "signature": True}
     tex = render_ape(tmp_path, raw)
     assert tex[tex.index(r"\Needspace{5"):] == (
         "\\Needspace{5\\baselineskip}\n"
@@ -237,7 +244,7 @@ def test_ape_declaration_output_is_unchanged(tmp_path: Path) -> None:
 
 
 def test_declaration_with_a_group_keeps_one_signature(tmp_path: Path) -> None:
-    raw = {"ai_declaration": DECLARATION, "ai_declaration_position": "after_bibliography"}
+    raw = {"ai_declaration": DECLARATION, "ai_declaration_position": "after_bibliography", "signature": True}
     tex = render_ape(tmp_path, raw, student=", ".join(GROUP), members=GROUP)
     assert tex.count(r"\vspace*{1.15cm}") == 1
     assert len(signature_cells(tex)) == len(GROUP)
@@ -249,7 +256,7 @@ def test_every_signing_format_signs_without_ai_declaration(tmp_path: Path) -> No
 
     for fmt in ("ape", "acd", "aa", "libre", "ieee"):
         tex = build_latex_report.render_tex(make_render_config(
-            tmp_path / fmt, raw={"format": fmt, "ai_declaration": False}, metadata=full_ape_metadata(),
+            tmp_path / fmt, raw={"format": fmt, "ai_declaration": False, "signature": True}, metadata=full_ape_metadata(),
         ))
         assert tex.count(r"\rule{7.3cm}{0.4pt}") == 1, fmt
 
@@ -267,3 +274,45 @@ def test_signature_false_drops_the_signature(tmp_path: Path) -> None:
     assert signature_cells(tex) == []
     assert "Autores" not in tex
     assert r"\rule{" not in tex.split("Contenido de Recomendaciones.", 1)[1]
+
+
+# --- No signature unless the report asks for one ---------------------------
+#
+# The default is no signature in any path; `signature: true` opts in.
+
+
+def test_no_signature_by_default_with_declaration(tmp_path: Path) -> None:
+    tex = render_ape(
+        tmp_path, {"ai_declaration": DECLARATION}, student=", ".join(GROUP), members=GROUP,
+    )
+    assert signature_cells(tex) == []
+    assert "Autores" not in tex
+
+
+def test_no_signature_by_default_without_declaration(tmp_path: Path) -> None:
+    tex = render_ape(tmp_path, {"ai_declaration": False})
+    assert r"\rule{7.3cm}" not in tex
+
+
+def test_signature_true_keeps_the_group_signature(tmp_path: Path) -> None:
+    tex = render_ape(
+        tmp_path, {"ai_declaration": DECLARATION, "signature": True},
+        student=", ".join(GROUP), members=GROUP,
+    )
+    assert len(signature_cells(tex)) == len(GROUP)
+
+
+# --- visible_links: true colours URLs so readers see they are clickable ----
+
+
+def test_links_stay_hidden_by_default(tmp_path: Path) -> None:
+    tex = render_ape(tmp_path, {})
+    assert "colorlinks=false" in tex
+    assert "urlcolor=blue" not in tex
+
+
+def test_visible_links_colour_only_urls(tmp_path: Path) -> None:
+    tex = render_ape(tmp_path, {"visible_links": True})
+    assert "colorlinks=false" not in tex
+    assert "urlcolor=blue" in tex
+    assert "linkcolor=black" in tex and "citecolor=black" in tex
