@@ -109,7 +109,17 @@ def test_generation_reports_rubric_findings_and_still_fails_on_other_errors(
     _build(folder, monkeypatch, _Validation(errors=[finding], findings=[finding]))
     out = capsys.readouterr().out
     assert "RUBRIC FINDINGS (no es una declaración de cumplimiento; bloquean la publicación):\n- " + finding in out
-    assert "PDF GENERADO Y VALIDADO" in out
+    pdf = folder / "final" / "report.pdf"
+    lines = out.splitlines()
+    assert (
+        f"PDF GENERADO CON HALLAZGOS DE RÚBRICA (no validado para publicar): {pdf} "
+        f"(SHA-256: {approval_marker.sha256_file(pdf)}). No es una declaración de cumplimiento: "
+        "revisá esta versión con el usuario y pedí una revisión (v2/v3); la publicación sigue "
+        "bloqueada mientras haya hallazgos."
+    ) in lines
+    assert "VALIDADO" not in out
+    assert "VALIDATION PASSED" not in out
+    assert "FORMAT CHECKS PASSED; RUBRIC FINDINGS REMAIN" in lines
     assert approval_marker.generation_record_current(folder, folder / "final" / "report.pdf")
     assert not (folder / "approval.yml").exists()
 
@@ -118,6 +128,25 @@ def test_generation_reports_rubric_findings_and_still_fails_on_other_errors(
         _build(folder, monkeypatch, _Validation(errors=[finding, "La tabla 1 no cabe"], findings=[finding]))
     assert str(exc.value).startswith("VALIDATION FAILED:\n- La tabla 1 no cabe\n")
     assert not (folder / "build" / "generation.yml").exists()
+
+
+def test_generation_without_findings_keeps_the_validated_line(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    folder = planned_folder(tmp_path)
+    _declared_format(folder, "libre")
+    assert typeset.main(["bind", str(folder)]) == 0
+    capsys.readouterr()
+    _build(folder, monkeypatch)  # returns normally: exit code 0
+    out = capsys.readouterr().out
+    pdf = folder / "final" / "report.pdf"
+    lines = out.splitlines()
+    assert "VALIDATION PASSED" in lines
+    assert (
+        f"PDF GENERADO Y VALIDADO: {pdf} (SHA-256: {approval_marker.sha256_file(pdf)}). "
+        "La entrega a ~/Documents es una fase separada: ejecutá tools/deliver_report.py."
+    ) in lines
+    assert "RUBRIC FINDINGS" not in out and "HALLAZGOS" not in out
 
 
 def test_unresolved_citation_still_blocks_the_route_at_draft(tmp_path: Path, capsys) -> None:

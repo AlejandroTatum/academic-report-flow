@@ -207,7 +207,12 @@ def _run(args: argparse.Namespace) -> None:
         return
     if result.errors:
         raise SystemExit("VALIDATION FAILED:\n- " + "\n- ".join(result.errors) + f"\n\nReporte: {config.quality_report_path}")
-    if result.warnings:
+    if generation and findings:
+        # S1: with rubric findings pending, nothing printed may read as a pass.
+        if result.warnings:
+            print("WARNINGS:\n- " + "\n- ".join(result.warnings))
+        print("FORMAT CHECKS PASSED; RUBRIC FINDINGS REMAIN")
+    elif result.warnings:
         print("VALIDATION PASSED WITH WARNINGS:\n- " + "\n- ".join(result.warnings))
     else:
         print("VALIDATION PASSED")
@@ -224,11 +229,20 @@ def _run(args: argparse.Namespace) -> None:
                 approval_marker.write_generation_record(args.folder, config.pdf_path, inputs, validated_pdf_hash)
             except (OSError, ValueError) as exc:
                 raise SystemExit(f"GENERATION IDENTITY ERROR: {exc}")
-        print(
-            f"PDF GENERADO Y VALIDADO: {config.pdf_path} "
-            f"(SHA-256: {validated_pdf_hash}). La entrega a ~/Documents es una "
-            "fase separada: ejecutá tools/deliver_report.py."
-        )
+        if generation and findings:
+            # S1: generation is not a compliance claim; the PDF is not validated.
+            print(
+                f"PDF GENERADO CON HALLAZGOS DE RÚBRICA (no validado para publicar): {config.pdf_path} "
+                f"(SHA-256: {validated_pdf_hash}). No es una declaración de cumplimiento: "
+                "revisá esta versión con el usuario y pedí una revisión (v2/v3); la publicación "
+                "sigue bloqueada mientras haya hallazgos."
+            )
+        else:
+            print(
+                f"PDF GENERADO Y VALIDADO: {config.pdf_path} "
+                f"(SHA-256: {validated_pdf_hash}). La entrega a ~/Documents es una "
+                "fase separada: ejecutá tools/deliver_report.py."
+            )
     print(f"Reporte: {config.quality_report_path}")
 
 

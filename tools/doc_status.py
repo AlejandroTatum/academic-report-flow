@@ -169,6 +169,16 @@ _GUIDANCE = {
     "deliver": "wait for the user's explicit instruction; only then publish with {deliver_command}, then re-run doc_status",
 }
 
+# S2: a current v1 whose validation failed is reviewed for a revision (v2/v3);
+# validate stays blocked and delivery stays locked behind it.
+REVISION_REVIEW_DETAIL = "v1 failed validation: review it and request a revision (v2/v3); publication stays blocked"
+REVISION_REVIEW_GUIDANCE = (
+    "v1 failed validation ({validation} records result: fail) and publication stays blocked: "
+    "ask the user to review {pdf} with its findings and to request a revision (v2/v3) that "
+    "resolves them; apply it in {body}, rebuild and re-validate, then re-run doc_status; "
+    "a final review recorded now does not open delivery"
+)
+
 
 @dataclass(frozen=True)
 class PhaseState:
@@ -640,7 +650,7 @@ def _phase_typeset(folder: Path, _config: ReportConfig, _documents_root: Path | 
     results = typeset.check_results(folder)
     failed = [item for item in results if not item["ok"]]
     if not failed:
-        return PhaseState("typeset", DONE, "body.typeset.md formats the approved body.md and passes the checks")
+        return PhaseState("typeset", DONE, "body.typeset.md formats body.md and passes the checks")
     if len(results) == 1:
         return PhaseState("typeset", PENDING, failed[0]["detail"])
     return PhaseState(
@@ -752,6 +762,22 @@ def _phase_validate(folder: Path, config: ReportConfig, _documents_root: Path | 
     return PhaseState("validate", DONE, f"validation.yml passes for {pdf.name}")
 
 
+def _v1_revision_review(folder: Path, config: ReportConfig) -> bool:
+    """Whether a current v1 failed validation, so review asks for a revision (S2).
+
+    True only when the build's generation record binds the current final PDF
+    and the validation receipt records ``fail`` for those exact bytes. Read-only.
+    """
+    try:
+        pdf = config.pdf_path
+        if not pdf.is_file() or not generation_record_current(folder, pdf):
+            return False
+        validate = _phase_validate(folder, config, None)
+    except Exception:  # an unreadable artifact keeps the route as it was
+        return False
+    return validate.state == BLOCKED and validate.blocked_reason == "validation_failed"
+
+
 def _phase_review(folder: Path, config: ReportConfig, _documents_root: Path | None) -> PhaseState:
     """Map the final-review predicate onto one phase state (new-report-flow T1/T5).
 
@@ -860,6 +886,12 @@ def derive(folder: Path, *, documents_root: Path | None = None) -> DocStatus:
         phases.append(phase)
 
     focus = next((phase for phase in phases if phase.state != DONE), None)
+    if focus is not None and focus.name == "validate" and _v1_revision_review(folder, config):
+        # S2: the failure stays visible on validate and delivery stays locked,
+        # but the human reviews v1 and asks for a revision instead of a dead end.
+        # A recorded final review never makes this review done.
+        focus = PhaseState("review", PENDING, REVISION_REVIEW_DETAIL)
+        phases[PHASES.index("review")] = focus
     if focus is None:
         current, next_token, gate = DONE, DONE, ""
     else:
@@ -982,6 +1014,8 @@ def _guidance(
             gaps = [key for key in missing if key not in known]
             if gaps:
                 template += "; remaining gaps: " + ", ".join(gaps)
+    if phase_name == "review" and _v1_revision_review(folder, config):
+        template = REVISION_REVIEW_GUIDANCE
     if phase_name == "review":
         template += ("; open the PDF for the user (never screenshots): "
                      + _tool_command("pdf_viewer.py", config.pdf_path).replace("{", "{{").replace("}", "}}"))

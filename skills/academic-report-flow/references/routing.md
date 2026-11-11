@@ -30,7 +30,7 @@ Every command is absolute and cwd-independent. Run first:
 | typeset | `production.md` | academic-report-flow | `reports/<wf>/body.typeset.md` |
 | generate | `production.md` | academic-report-flow | `outputs/<materia>/<final>.pdf` |
 | validate | `production.md` | academic-report-flow or `gentle-ai review` | `reports/<wf>/validation.yml` |
-| review | `delivery.md` | human gate (each version), no executor | `reports/<wf>/final-review.yml` |
+| review | `delivery.md` | human gate (each version, also a v1 whose validation failed: request v2/v3), no executor | `reports/<wf>/final-review.yml` |
 | deliver | `delivery.md` | academic-report-flow | `~/Documents/<category>/[<subject-slug>/]<slug>/<slug>-vNNN.pdf` |
 
 Each phase produces one artifact. Research is mandatory (at least 5 book or paper sources, or the report's `min_sources:`; `0` only off the academic route; `business` defaults to 0; `uncited_bibliography: true`, academic only and exclusive with `min_sources`, lists the whole bib with no citations).

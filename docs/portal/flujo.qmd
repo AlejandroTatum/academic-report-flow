@@ -65,6 +65,10 @@ Cada fase produce un único artefacto en la carpeta de trabajo; `doc_status` los
 | `generate` | PDF o DOCX bajo `outputs/<materia>/` | la skill |
 | `validate` | `validation.yml` | la skill o `gentle-ai review` |
 | `review` | `final-review.yml` (con `rubric-grade.md` presentada junto al PDF) | compuerta humana sobre cada versión (Decisión 3) |
+
+Si la validación de una v1 vigente (`build/generation.yml` actual) falla por hallazgos, `doc_status` deja `validate` en
+`blocked` (`validation_failed`) y marca `next: review`: el humano revisa v1 con sus hallazgos y pide una revisión
+(v2/v3). `deliver` sigue en `pending` y la publicación sigue bloqueada aunque se registre una revisión final.
 | `deliver` | `<slug>-vNNN.pdf` en la biblioteca de Documentos | la skill |
 
 Las decisiones humanas se describen en [Decisiones del usuario](decisiones-usuario.qmd).
