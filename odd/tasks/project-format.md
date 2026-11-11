@@ -24,12 +24,15 @@ S6. "mejora als tablas" — parent reading for `format: proyecto`: (a) the ident
 
 S7. "un solo formato para los titulos" — in `format: proyecto` every heading level uses one style family: the section style (sans, bold, green, number in the same face). Subsections and sub-subsections differ from sections only by size; no italic serif heading and no differently styled number.
 
+S8. Defects the parent saw on the first real report built with `format: proyecto` (pages at `/home/alejo/devwork/.projects/apps/academic-report-automation/outputs/_jarvis_research/pages/p-1.png` and `p-3.png`), all within the user's "mejora als tablas": (a) the headers of right-aligned numeric columns were hyphenated and stacked ("Precio unita-/rio/(USD)", "Subto-/tal/(USD)") because those columns are too narrow: a numeric column must be wide enough for its header on one line, or break it only at a space, never hyphenate a header word; text columns give up the width; (b) a plain line "Tabla N. <caption>" directly above a table rendered as an indented body paragraph: in proyecto it renders as a table caption (no paragraph indent, sans, "Tabla N." bold, small gap to the table) and never separates from its table; (c) the identification table printed the date as "2026-11-11": an ISO `metadata.date` prints in Spanish long form ("11 de noviembre de 2026"); any other date text prints unchanged.
+
 ## Tasks
 
 - T1 [S1] inline (parent): remove the AA syllabus-time ficha entry; done, uncommitted in this worktree; committed with T2 and T4.
 - T2 [S2-S4] delegated worker: implement `format: proyecto` with tests and docs; done (20 new tests pass; AA, format-choice, section-structure, report-config, optional-fields suites pass); uncommitted.
 - T3 [S2-S7] parent: build the sample at `outputs/_proyecto_aa_preview/` with `format: proyecto` and inspect the pages; first build inspected (no sidebar, no AA labels, budget table whole); found label/value misalignment in the identification table, fixed with `\leavevmode` in `\proyectodato`; re-inspection pending after T4.
 - T4 [S5-S7] delegated worker: centred title block and header, better tables, single heading style; done (33 proyecto tests pass; AA suite 71 passed; other formats render identical to HEAD); worker inspected the sample pages.
+- T5 [S8] delegated worker: numeric header widths, table captions, long-form date; done (proyecto + AA suites: 109 passed after the parent fixed a missing brace in the S8a test assertion; final Jarvis PDF built with it).
 
 ## Log
 
@@ -41,3 +44,4 @@ L5. Parent decision (user did not answer the label question, session runs withou
 L6. The main checkout is shared with other sessions; this feature lives only in its own worktree. A full-suite run takes many minutes on this machine and main has 24 known baseline failures unrelated to this work.
 L7. User after seeing the first `format: proyecto` sample: "centra el tittulo y el encabezafo, mejora als tablas, un solo formato para los titulos".
 L8. T4 worker evidence: RED 9 failed/23 passed, GREEN 33 passed; sample pages show centred letterhead/title/running header, aligned identification labels, tinted table header, bold Total row. Known leftovers: `doc_status` format question still lists only APE, AA, ACD or libre (pinned by tools/test_doc_status_approval.py); tables styled through `table_styles.enabled` do not get the proyecto table treatment.
+L9. Slice boundary: commit 3bccf41 holds T1, T2 and T4 (966 authored lines, one cohesive new format; over the ~400-line slice). T5 goes in its own commit.

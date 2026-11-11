@@ -219,6 +219,10 @@
 % \leavevmode first: a colour whatsit in vertical mode would become the top of
 % the p-cell and push the label one line below its value.
 \newcommand{\proyectodato}[1]{\leavevmode{\sffamily\fontsize{7.4}{9}\selectfont\color{muted}\spaced{\MakeUppercase{#1}}}}
+% Table caption (S8b): a "Tabla N." line right above a table, set flush, in
+% sans with the label in bold green like the figure captions; the renderer
+% ties it to its table with \nopagebreak.
+\newcommand{\proyectotablecaption}[2]{\par\medskip\noindent{\sffamily\small{\bfseries\color{accent}#1}\ #2\par}}
 % Short tables are tabularx blocks (they never split); same sans body as the
 % breakable xltabular tables.
 \AddToHook{env/tabularx/begin}{\sffamily}

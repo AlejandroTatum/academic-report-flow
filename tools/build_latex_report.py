@@ -695,6 +695,33 @@ def aa_ficha(meta: dict) -> str:
     return "\n".join(rf"\ficha{{{label}}}{{{value}}}" for label, value in entries if value)
 
 
+SPANISH_MONTHS = (
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+)
+
+
+def spanish_long_date(value: object) -> str:
+    """An ISO date (``2026-11-11`` or a YAML date) in Spanish long form.
+
+    ``11 de noviembre de 2026``; any other text, including an impossible ISO
+    date, is returned unchanged.
+    """
+    import datetime
+
+    if isinstance(value, datetime.date):
+        day = value
+    else:
+        text = " ".join(str(value or "").split())
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+            return text
+        try:
+            day = datetime.date.fromisoformat(text)
+        except ValueError:
+            return text
+    return f"{day.day} de {SPANISH_MONTHS[day.month - 1]} de {day.year}"
+
+
 def proyecto_identification_table(meta: dict) -> str:
     r"""Render the project identification table (under the title, full width).
 
@@ -716,7 +743,7 @@ def proyecto_identification_table(meta: dict) -> str:
         ("Asignatura", _flat(meta.get("subject"))),
         ("Ciclo", cycle),
         ("Docente", _flat(meta.get("teacher"))),
-        ("Fecha de entrega", _flat(meta.get("date"))),
+        ("Fecha de entrega", _flat(spanish_long_date(meta.get("date")))),
     )
     rows = [rf"\proyectodato{{{label}}} & {value} \\" for label, value in entries if value]
     if not rows:
@@ -936,6 +963,11 @@ def markdown_to_latex(
     # lines, len(output) where the chain currently ends (-1: no open chain)].
     keep_chain: list[int] = [-1, 0, -1]
 
+    # emphasised_tables: [output index of a "Tabla N." paragraph, its label,
+    # its text, len(output) right after it]; a table that starts there turns
+    # the paragraph into its caption.
+    caption_slot: list = [-1, "", "", -2]
+
     def look_ahead(lines_needed: int, chain_lines: int = 0) -> None:
         """Reserve room before a block, or tie it to the heading/caption above."""
         if keep_blocks_together and keep_chain[2] == len(output):
@@ -999,11 +1031,46 @@ def markdown_to_latex(
         # Column widths follow the content (table_column_weights), instead of
         # equal thirds.
         weights = table_column_weights(rows, columns)
+        alignments = booktabs_alignments(rows, columns, markers)
         colspec = " ".join(
             rf">{{\hsize={weight}\hsize\{name}\arraybackslash}}X"
-            for weight, name in zip(weights, booktabs_alignments(rows, columns, markers))
+            for weight, name in zip(weights, alignments)
         )
         header_cells = rows[0] + [""] * (columns - len(rows[0]))
+        header_latex = [r"\reporttablehead{" + convert_inline(cell) + "}" for cell in header_cells]
+        if emphasised_tables:
+            # Numeric columns are natural-width `r` columns, as wide as their
+            # widest cell or header line, so a header word never hyphenates;
+            # the text columns share what is left (S8a). A trailing unit
+            # ("(USD)") goes under the header words: a break at a space only.
+            numeric = [
+                index > 0 and is_numeric_column(
+                    [re.sub(r"[*`$_]", "", row[index]) for row in rows[1:] if index < len(row)]
+                )
+                for index in range(columns)
+            ]
+            text_columns = [index for index in range(columns) if not numeric[index]]
+            text_weights = iter(table_column_weights(
+                [[row[index] if index < len(row) else "" for index in text_columns] for row in rows],
+                len(text_columns),
+            ))
+            colspec = " ".join(
+                "r" if numeric[index]
+                else rf">{{\hsize={next(text_weights)}\hsize\{alignments[index]}\arraybackslash}}X"
+                for index in range(columns)
+            )
+            for index, cell in enumerate(header_cells):
+                unit = re.fullmatch(r"(.*\S)\s+(\([^()]*\))", cell.strip()) if numeric[index] else None
+                if unit:
+                    header_latex[index] = (
+                        r"\reporttablehead{{\renewcommand{\arraystretch}{1}\begin{tabular}[t]{@{}r@{}}"
+                        + convert_inline(unit.group(1)) + r"\\" + convert_inline(unit.group(2))
+                        + r"\end{tabular}}}"
+                    )
+            # A "Tabla N." line right above the table is its caption (S8b).
+            if caption_slot[3] == len(output):
+                index, label, rest = caption_slot[:3]
+                output[index] = rf"\proyectotablecaption{{{convert_inline(label)}}}{{{convert_inline(rest)}}}"
         # A column page cannot hold xltabular: the table is a tabularx block
         # one column wide, without the repeating header \endhead provides.
         # With keep_blocks_together a short table is such a block too, so it
@@ -1030,7 +1097,7 @@ def markdown_to_latex(
             else rf"\begin{{{env}}}{{{text_width}}}{{@{{}}{colspec}@{{}}}}",
             r"\toprule",
             *([r"\rowcolor{wash}"] if emphasised_tables else []),
-            " & ".join(r"\reporttablehead{" + convert_inline(cell) + "}" for cell in header_cells) + r" \\",
+            " & ".join(header_latex) + r" \\",
             r"\midrule",
             *([] if boxed else [r"\endhead"]),
         ])
@@ -1142,6 +1209,9 @@ def markdown_to_latex(
                 else:
                     segments[-1].append(line)
             output.append("\\\\\n".join(convert_inline(" ".join(segment)) for segment in segments))
+            table_caption = re.fullmatch(r"((?:Tabla|Table)\s+\d+\.)\s*(.*)", text)
+            if emphasised_tables and table_caption and len(segments) == 1:
+                caption_slot[:] = [len(output) - 1, table_caption.group(1), table_caption.group(2), len(output) + 1]
             output.append("")
             if caption:
                 open_chain()

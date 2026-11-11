@@ -18,6 +18,7 @@ public render path the AA tests use; no TeX engine is needed.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -382,9 +383,9 @@ def test_s6_data_table_header_row_is_tinted(tmp_path: Path) -> None:
 def test_s6_numeric_columns_are_right_aligned(tmp_path: Path) -> None:
     table = _budget(render(tmp_path, body=BUDGET))
     spec = next(line for line in table.splitlines() if line.startswith(r"\begin{tabularx}"))
-    # Cantidad has no `---:` marker: a column of numbers is detected.
-    assert spec.count(r"\raggedleft") == 3, f"Cantidad, Precio and Subtotal right-aligned: {spec}"
-    assert spec.index(r"\raggedright") < spec.index(r"\raggedleft"), "the text column stays left"
+    # Cantidad has no `---:` marker: a column of numbers is detected. Numeric
+    # columns are natural-width `r` columns (S8a), the text column an X.
+    assert spec.endswith("{>{\\hsize=1\\hsize\\raggedright\\arraybackslash}X r r r}"), spec
     assert r"\centering" not in spec
 
 
@@ -435,3 +436,72 @@ def test_s6_header_tint_stays_inside_the_rules(tmp_path: Path) -> None:
     table = _budget(render(tmp_path, body=BUDGET))
     spec = next(line for line in table.splitlines() if line.startswith(r"\begin{tabularx}"))
     assert "@{}" not in spec, spec
+
+
+
+# ---------------------------------------------------------------------------
+# S8: numeric headers, table captions, long-form date
+# ---------------------------------------------------------------------------
+
+STORE_BUDGET = (
+    "# Presupuesto\n\n"
+    "Tabla 2. Componentes obligatorios\n\n"
+    "| Componente | Tienda | Cant. | Precio unitario (USD) | Subtotal (USD) |\n"
+    "|---|---|---:|---:|---:|\n"
+    "| ESP32-S3 DevKit N16R8, 16 MB de flash y 8 MB de PSRAM | bmlogics, Loja | 1 | 15,25 | 15,25 |\n"
+    "| Micrófono INMP441 I2S | bmlogics, Loja | 1 | 6,90 | 6,90 |\n"
+    "| **Total obligatorio** | | | | **22,15** |\n"
+)
+
+
+def _spec(table: str) -> str:
+    return next(line for line in table.splitlines() if line.startswith(r"\begin{tabularx}"))
+
+
+def test_s8a_numeric_columns_fit_their_header_and_text_columns_give_up_the_width(tmp_path: Path) -> None:
+    table = _budget(render(tmp_path, body=STORE_BUDGET))
+    spec = _spec(table)
+    # Natural-width numeric columns can never hyphenate; the two text columns
+    # share the rest of the line (their \hsize factors add up to 2).
+    assert spec.endswith("X r r r}"), spec
+    weights = [float(w) for w in re.findall(r"\\hsize=([\d.]+)\\hsize", spec)]
+    assert len(weights) == 2 and abs(sum(weights) - 2) < 1e-6, weights
+    header = next(line for line in table.splitlines() if r"\reporttablehead{Componente}" in line)
+    # A header breaks only at a space: a trailing unit goes under the words.
+    # Its lines are set at normal spacing, not the table's opened-up rows.
+    stack = r"{\renewcommand{\arraystretch}{1}\begin{tabular}[t]{@{}r@{}}"
+    assert r"\reporttablehead{" + stack + r"Precio unitario\\(USD)\end{tabular}}}" in header
+    assert r"\reporttablehead{" + stack + r"Subtotal\\(USD)\end{tabular}}}" in header
+    assert r"\reporttablehead{Cant.}" in header
+
+
+def test_s8b_table_caption_line_is_a_caption_tied_to_its_table(tmp_path: Path) -> None:
+    tex = render(tmp_path, body=STORE_BUDGET)
+    # Space above (it is not part of the paragraph before it), none indent.
+    assert r"\newcommand{\proyectotablecaption}[2]{\par\medskip\noindent{\sffamily" in tex
+    gap = _between(tex, r"\section{Presupuesto}", r"\begin{tabularx}")
+    assert r"\proyectotablecaption{Tabla 2.}{Componentes obligatorios}" in gap
+    after = gap[gap.index(r"\proyectotablecaption"):]
+    assert r"\nopagebreak" in after and r"\Needspace" not in gap
+    assert "\nTabla 2. Componentes obligatorios\n" not in tex, "no longer a body paragraph"
+
+
+def test_s8b_a_tabla_line_without_a_table_stays_a_paragraph(tmp_path: Path) -> None:
+    tex = render(tmp_path, body="# Notas\n\nTabla 3. Ver anexo.\n\nOtro texto.\n")
+    assert r"\proyectotablecaption{" not in tex.split(r"\begin{document}")[1]
+    assert "Tabla 3. Ver anexo." in tex
+
+
+def test_s8c_iso_date_prints_in_spanish_long_form(tmp_path: Path) -> None:
+    table = datos_table(render(tmp_path, metadata={**required_metadata(), "date": "2026-11-11"}))
+    assert r"\proyectodato{Fecha de entrega} & 11 de noviembre de 2026 \\" in table
+
+
+def test_s8c_yaml_date_and_free_text_dates(tmp_path: Path) -> None:
+    import datetime
+
+    table = datos_table(render(tmp_path, metadata={**required_metadata(), "date": datetime.date(2026, 3, 5)}))
+    assert r"\proyectodato{Fecha de entrega} & 5 de marzo de 2026 \\" in table
+    for n, written in enumerate(("Noviembre de 2026", "2026-13-40")):
+        table = datos_table(render(tmp_path / str(n), metadata={**required_metadata(), "date": written}))
+        assert rf"\proyectodato{{Fecha de entrega}} & {written} \\" in table, "other text unchanged"
