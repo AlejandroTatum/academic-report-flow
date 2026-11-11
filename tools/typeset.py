@@ -10,6 +10,10 @@ missing (an existing one keeps its text) and records the binding plus a
 ``typeset-source.md`` snapshot of the bound ``body.md``; after an edit of
 ``body.md``, it refuses while the words the edit inserted are missing from
 the typeset body or the text it removed is still there (issue #98).
+``auto`` binds the same way and then applies the deterministic formatting
+(``typeset_auto``: tables from ``- a; b; c`` lines, ``Figura:`` lines, bare
+URLs) to a typeset body that is still an untouched copy of ``body.md``; it
+never rewrites one that was already formatted, and lists what it leaves.
 ``check`` reports and never edits a body (it only appends
 its duration to ``timings.yml``): the binding
 matches the current ``body.md``, the typeset body passes the rendering rules
@@ -31,6 +35,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 import timings
+import typeset_auto
 from approval_marker import BODY_NAME, MARKER_NAME, utc_now, write_files_atomically
 from content_check import body_format_problems
 from report_config import (
@@ -131,6 +136,25 @@ def bind(folder: Path) -> Path:
     return target
 
 
+def auto(folder: Path) -> tuple[Path, dict[str, int] | None]:
+    """Bind, then format a typeset body that is still an untouched copy of the body.
+
+    Returns the typeset path and the conversion counts, or ``None`` instead of
+    the counts when the typeset body already differed and was left unchanged.
+    """
+    folder = Path(folder)
+    body = (folder / BODY_NAME).read_bytes()
+    target = folder / TYPESET_BODY_NAME
+    untouched = not target.is_file() or target.read_bytes() == body
+    # Decode before binding: an unreadable body must refuse without writing anything.
+    formatted, counts = typeset_auto.auto_format(body.decode("utf-8"))
+    bind(folder)
+    if not untouched:
+        return target, None
+    write_files_atomically([(target, formatted.encode("utf-8"))])
+    return target, counts
+
+
 def _result(check: str, problems: list[str], passed: str) -> dict:
     return {"check": check, "ok": not problems, "detail": "; ".join(problems) or passed}
 
@@ -150,6 +174,13 @@ def check_results(folder: Path) -> list[dict]:
     results = [_result("binding", binding_problems, f"{TYPESET_BODY_NAME} formats the current {BODY_NAME}")]
     text = target.read_text(encoding="utf-8")
     results.append(_result("body_format", body_format_problems(text), "level-1 headings, no Unicode sub/superscripts"))
+    results.append(
+        _result(
+            "table_headers",
+            [f"line {number}: table without column names" for number, _ in typeset_auto.empty_table_headers(text)],
+            "every table names its columns",
+        )
+    )
     config = ReportConfig(folder=folder, raw={**read_yaml(folder / "report.yml"), "body": TYPESET_BODY_NAME})
     if config.format in SECTION_SPECS:
         results.append(
@@ -185,6 +216,11 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     for name, text in (
         ("bind", "create body.typeset.md if missing and bind it to the current body.md"),
+        (
+            "auto",
+            "bind, then format an untouched body.typeset.md: tables from '- a; b; c' lines, "
+            "'Figura:' lines and bare URLs; lists what it leaves for you",
+        ),
         ("check", "report the typeset checks; never edits a body (records timings.yml)"),
     ):
         commands.add_parser(name, help=text).add_argument("folder", type=Path)
@@ -196,6 +232,24 @@ def main(argv: list[str] | None = None) -> int:
             print(f"typeset not bound: {exc}", file=sys.stderr)
             return 1
         print(f"bound {target} to {BODY_NAME}; format it there, never in {BODY_NAME}")
+    if args.command == "auto":
+        try:
+            target, counts = auto(args.folder)
+        except (ValueError, OSError) as exc:
+            print(f"typeset not bound: {exc}", file=sys.stderr)
+            return 1
+        if counts is None:
+            print(
+                f"bound {target} to {BODY_NAME}; {TYPESET_BODY_NAME} already differs from {BODY_NAME}, "
+                f"auto left it unchanged"
+            )
+        else:
+            print(
+                f"bound {target} to {BODY_NAME}; auto formatted {counts['tables']} table(s), "
+                f"{counts['figures']} figure(s), {counts['urls']} URL(s)"
+            )
+        for item in typeset_auto.pending(target.read_text(encoding="utf-8")):
+            print(f"  left for you: {item}")
     try:
         # A refused bind wrote nothing and returned above; only a real check is timed.
         with timings.timed(args.folder, "typeset", "typeset.py"):
@@ -205,7 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     for item in results:
         print(f"  [{'ok' if item['ok'] else 'FAIL'}] {item['check']}: {item['detail']}")
-    if args.command == "bind":
+    if args.command in ("bind", "auto"):
         return 0
     return 0 if all(item["ok"] for item in results) else 1
 

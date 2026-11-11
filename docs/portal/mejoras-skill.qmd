@@ -77,7 +77,7 @@ Hallazgos que fundamentan las propuestas:
 
 1. **Medir primero.** Un recibo `timings.yml` derivado de las marcas de tiempo de los artefactos (`doc_status` ya los lee) para ver tiempo por fase en los próximos 3-4 reportes.
 2. **Paralelizar `verify` con la vista previa.** El verificador solo necesita `body.md` y la rúbrica; la compilación de la vista previa (`references/approval.md:25`) no depende de él. Cambio solo en la skill.
-3. **Automatizar `typeset`.** Hoy el agente edita `body.typeset.md` a mano (`references/production.md:23-26`). Un modo `typeset.py auto` convertiría de forma determinista tablas desde líneas `a; b`, líneas `Figura: ...`, URL desnudas y fórmulas simples, y dejaría al agente solo los casos ambiguos.
+3. **Automatizar `typeset`.** Hoy el agente edita `body.typeset.md` a mano (`references/production.md:23-26`). Un modo `typeset.py auto` convertiría de forma determinista tablas desde líneas `a; b`, líneas `Figura: ...`, URL desnudas y fórmulas simples, y dejaría al agente solo los casos ambiguos. **Hecho** (`tools/typeset_auto.py`): `typeset.py auto` convierte tablas, figuras y URL; deja la cabecera de cada tabla vacía (el borrador no trae nombres de columna) y `typeset.py check` la exige con `table_headers`; las fórmulas solo se señalan.
 4. **Fases visibles agrupadas** (conservando artefactos y recibos):
    - `format` desaparece como fase propia: ya "normalmente queda `done` sin parada" (`references/approval.md:41`).
    - `typeset + generate + validate` se presentan como una sola fase `build` con un único comando que encadena las tres.

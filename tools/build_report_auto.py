@@ -147,7 +147,7 @@ def _run(args: argparse.Namespace) -> None:
         if pending_typeset:
             raise SystemExit(
                 f"TYPESET REQUIRED: body.md es texto plano y body.typeset.md no está listo "
-                f"({pending_typeset}). Corré typeset.py bind, aplicá el formato en body.typeset.md "
+                f"({pending_typeset}). Corré typeset.py auto, aplicá el formato en body.typeset.md "
                 "y typeset.py check antes de construir."
             )
 
