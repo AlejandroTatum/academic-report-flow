@@ -36,7 +36,7 @@ import rubric_plan
 import typeset
 from guide_facts import load_guide_facts
 from course_profile import COURSE_LAYOUT, PRACTICE_FORMATS, course_repo
-from approval_marker import approval_preview_ready, approval_state, bound_file_names, draft_preview_path, render_settings_unchanged, review_base, sha256_file
+from approval_marker import approval_preview_ready, approval_state, bound_file_names, draft_preview_path, generation_record_current, render_settings_unchanged, review_base, sha256_file
 from publish_pdf import PublicationError, matching_delivered_version, scan_delivery_versions
 from report_config import (
     ROOT,
@@ -83,6 +83,9 @@ PHASES = (
 )
 DONE, CURRENT, PENDING, BLOCKED = "done", "current", "pending", "blocked"
 STATE_TOKENS = (DONE, CURRENT, PENDING, BLOCKED)
+# Body/content checks that are findings for v1 (S1), never a generation block;
+# content-check.yml still has to pass on them before publication.
+BODY_CHECK_FINDINGS = ("eligible_sources_cited", "rubric_checks")
 SCHEMA_NAME = "academic.doc-status"
 SCHEMA_VERSION = 1
 
@@ -135,23 +138,23 @@ _GUIDANCE = {
         VERIFIER_LAUNCH + " for {rubric} with the brief from {check_command} "
         "--verify-brief (add --verify-brief --since verification.yml when it exists, so only "
         "changed sections are re-checked), save its matrix as verification.yml; run {check_command} "
-        "--verification verification.yml, then re-run doc_status" + FIRST_ROUND_DRAFT_CLAUSE
+        "--verification verification.yml, then re-run doc_status; report missing and partial findings honestly"
     ),
     "format": (
-        "the format answers normally arrive with the approval batch; ask only the missing "
+        "before building v1, ask only the missing format " 
         "fields named by doc_status, never re-ask what {report_yml} records: use ask_user_choice "
         "for APE, AA, ACD or libre, PDF or DOCX, and each remaining metadata gap with suggested "
         "options (never free text); decide group work and members here; "
         "record the answer in {report_yml}, then re-run doc_status; when ai_declaration is missing "
         "it is not a question: write it yourself in {report_yml} for every work, as "
         "`ai_declaration: {{format: markdown, text: ...}}` (title optional: the default heading is used) "
-        "plus `ai_declaration_position: after_bibliography`, with Tabla A (herramientas: tool | use) and "
+        "plus `ai_declaration_position: after_bibliography`, with Tabla A (herramientas: tool, use) and "
         "Tabla B (prompts per iteration: the prompt verbatim when available, otherwise explicitly labeled "
         "as a summary, never invented as literal); write `ai_declaration: false` only when the user "
         "explicitly orders removing it"
     ),
     "typeset": (
-        "run {typeset_bind_command} (it copies the approved {body} to {typeset_body} when missing "
+        "run {typeset_bind_command} (it copies {body} to {typeset_body} when missing "
         "and binds it), apply the backend formatting there and never in {body}: formulas as math, "
         "data as tables, `Figura:` lines as `![caption](path)`, bare URLs as `<url>`, the format's "
         "fixed headings; keep every word and [@key] of {body}; run {typeset_check_command} until it "
@@ -163,8 +166,18 @@ _GUIDANCE = {
         "ask the user to review {pdf}, then record {final_review}, "
         "then re-run doc_status"
     ),
-    "deliver": "publish with {deliver_command}, then re-run doc_status",
+    "deliver": "wait for the user's explicit instruction; only then publish with {deliver_command}, then re-run doc_status",
 }
+
+# S2: a current v1 whose validation failed is reviewed for a revision (v2/v3);
+# validate stays blocked and delivery stays locked behind it.
+REVISION_REVIEW_DETAIL = "v1 failed validation: review it and request a revision (v2/v3); publication stays blocked"
+REVISION_REVIEW_GUIDANCE = (
+    "v1 failed validation ({validation} records result: fail) and publication stays blocked: "
+    "ask the user to review {pdf} with its findings and to request a revision (v2/v3) that "
+    "resolves them; apply it in {body}, rebuild and re-validate, then re-run doc_status; "
+    "a final review recorded now does not open delivery"
+)
 
 
 @dataclass(frozen=True)
@@ -308,34 +321,39 @@ def _phase_draft(folder: Path, _config: ReportConfig, _documents_root: Path | No
     # not offered. A current approval marker is never re-gated (the user already
     # approved those exact bytes). A carried approval is not exempt: its bytes
     # changed, and the body check still runs after every edit.
+    # S1 (v1 flow): rubric checks and uncited eligible sources are content
+    # findings -- shown here, never a reason to stop v1, and still publication
+    # conditions through content-check.yml. Every other check still blocks.
     if approval_state(folder).state != "current":
         try:
             failed = [c for c in content_check.body_check_results(folder) if not c["ok"]]
         except (OSError, ValueError, TypeError) as exc:
             return PhaseState("draft", PENDING, f"body check could not run: {exc}", "body_check_failed")
-        if failed:
+        blocking = [c for c in failed if c["check"] not in BODY_CHECK_FINDINGS]
+        if blocking:
             return PhaseState(
                 "draft",
                 PENDING,
-                "body check fails: " + "; ".join(f"{c['check']}: {c['detail']}" for c in failed),
+                "body check fails: " + "; ".join(f"{c['check']}: {c['detail']}" for c in blocking),
                 "body_check_failed",
+            )
+        if failed:
+            return PhaseState(
+                "draft",
+                DONE,
+                "body.md present; body check findings (not a compliance pass; they block publication): "
+                + "; ".join(f"{c['check']}: {c['detail']}" for c in failed),
             )
     return PhaseState("draft", DONE, "body.md present and passes the body check")
 
 
 def _phase_approval(folder: Path, _config: ReportConfig, _documents_root: Path | None) -> PhaseState:
-    """Map the shared approval predicate onto one phase state.
+    """Keep the legacy phase token without requiring or claiming draft approval.
 
-    ``current`` and ``carried`` (a bounded edit since approval) are ``done``: an
-    absent marker stays ``pending`` so the route waits at approval, and a stale marker -- the body changed since approval --
-    also returns to ``pending``, because editing after approval is the normal
-    review loop, not a deadlock. Only a malformed marker is ``blocked``, with the
-    predicate's own bounded reason. The marker is never written here.
-
-    Approval is not offered (``blocked``, ``guide_inventory_unmapped``) while a
-    guide inventory item has no criterion and no ``not_applicable:`` entry: evidence
-    coverage of the guide, never a score threshold and never about ``missing``
-    requirements (the verify gate owns those).
+    S2: the first formatted build is v1, so this phase never waits. A legacy
+    ``approval.yml`` is reported as it stands (never written or repaired), and
+    an unmapped guide inventory is shown as a finding; the publisher still
+    refuses it for a report without a current approval.
     """
     state = approval_state(folder)
     if state.state == "current":
@@ -343,25 +361,14 @@ def _phase_approval(folder: Path, _config: ReportConfig, _documents_root: Path |
         return PhaseState("approval", DONE, f"approval.yml matches {bound}")
     if state.state == "carried":
         return PhaseState("approval", DONE, state.detail)
-    if state.state in ("absent", "stale"):
-        unmapped = rubric_plan.inventory_problems(folder)
-        if unmapped:
-            ids = ", ".join(problem.split(":", 1)[0] for problem in unmapped)
-            return PhaseState(
-                "approval",
-                BLOCKED,
-                f"guide inventory items without a criterion or not_applicable entry: {ids}",
-                "guide_inventory_unmapped",
-            )
-    if state.state == "absent":
-        return PhaseState("approval", PENDING, state.detail)
-    if state.state == "stale":
-        return PhaseState(
-            "approval",
-            PENDING,
-            f"{state.detail}; the body changed since approval, re-approve",
-        )
-    return PhaseState("approval", BLOCKED, state.detail, state.reason)
+    detail = "draft approval is not required; review the formatted report"
+    if state.state != "absent":
+        detail += f" (legacy approval.yml {state.state}: {state.detail})"
+    unmapped = rubric_plan.inventory_problems(folder)
+    if unmapped:
+        ids = ", ".join(problem.split(":", 1)[0] for problem in unmapped)
+        detail += f"; finding: guide inventory items without a criterion or not_applicable entry: {ids}"
+    return PhaseState("approval", DONE, detail)
 
 
 def _phase_verify(folder: Path, _config: ReportConfig, _documents_root: Path | None) -> PhaseState:
@@ -397,12 +404,20 @@ def _phase_verify(folder: Path, _config: ReportConfig, _documents_root: Path | N
             "content_check_stale",
         )
     if state == "fail":
-        return PhaseState(
-            "verify",
-            BLOCKED,
-            "content check failed: findings must be fixed through the user's edit orders",
-            "content_check_failed",
-        )
+        marker = read_yaml(folder / content_check.CONTENT_CHECK_NAME)
+        mechanical = marker.get("mechanical", [])
+        technical = [item for item in mechanical if not item.get("ok")
+                     and (item.get("check") not in BODY_CHECK_FINDINGS
+                          or (item.get("check") == "rubric_checks" and "body_format:" in item.get("detail", "")))]
+        if technical:
+            detail = "; ".join(f"{item['check']}: {item.get('detail', '')}" for item in technical)
+            return PhaseState("verify", BLOCKED, f"content check technical failure: {detail}", "content_check_failed")
+        findings = marker.get("findings") or []
+        requirements = marker.get("requirements") or []
+        gaps = [f"{item.get('status')}: {item.get('requirement')}"
+                for item in requirements if item.get("status") in ("missing", "partial")]
+        detail = "; ".join(str(item) for item in [*gaps, *findings]) or "rubric findings remain"
+        return PhaseState("verify", DONE, f"rubric findings (not a compliance pass): {detail}")
     return PhaseState("verify", BLOCKED, "content-check.yml malformed", "content_check_malformed")
 
 
@@ -635,7 +650,7 @@ def _phase_typeset(folder: Path, _config: ReportConfig, _documents_root: Path | 
     results = typeset.check_results(folder)
     failed = [item for item in results if not item["ok"]]
     if not failed:
-        return PhaseState("typeset", DONE, "body.typeset.md formats the approved body.md and passes the checks")
+        return PhaseState("typeset", DONE, "body.typeset.md formats body.md and passes the checks")
     if len(results) == 1:
         return PhaseState("typeset", PENDING, failed[0]["detail"])
     return PhaseState(
@@ -662,6 +677,11 @@ def _phase_generate(folder: Path, config: ReportConfig, _documents_root: Path | 
         return PhaseState("generate", PENDING, "final PDF missing")
     marker = folder / "approval.yml"
     report_yml = folder / "report.yml"
+    generation = folder / "build" / "generation.yml"
+    if generation.is_file() or not marker.is_file():
+        if generation_record_current(folder, pdf):
+            return PhaseState("generate", DONE, f"final PDF {pdf.name} matches generated artifact identity")
+        return PhaseState("generate", PENDING, "generated artifact identity missing or stale; rebuild")
     if not marker.is_file():
         return PhaseState("generate", PENDING, "approval.yml missing")
     if not report_yml.is_file():
@@ -740,6 +760,22 @@ def _phase_validate(folder: Path, config: ReportConfig, _documents_root: Path | 
                 f"validation.yml bibliography_sha256 does not match {bib.name}",
             )
     return PhaseState("validate", DONE, f"validation.yml passes for {pdf.name}")
+
+
+def _v1_revision_review(folder: Path, config: ReportConfig) -> bool:
+    """Whether a current v1 failed validation, so review asks for a revision (S2).
+
+    True only when the build's generation record binds the current final PDF
+    and the validation receipt records ``fail`` for those exact bytes. Read-only.
+    """
+    try:
+        pdf = config.pdf_path
+        if not pdf.is_file() or not generation_record_current(folder, pdf):
+            return False
+        validate = _phase_validate(folder, config, None)
+    except Exception:  # an unreadable artifact keeps the route as it was
+        return False
+    return validate.state == BLOCKED and validate.blocked_reason == "validation_failed"
 
 
 def _phase_review(folder: Path, config: ReportConfig, _documents_root: Path | None) -> PhaseState:
@@ -850,6 +886,12 @@ def derive(folder: Path, *, documents_root: Path | None = None) -> DocStatus:
         phases.append(phase)
 
     focus = next((phase for phase in phases if phase.state != DONE), None)
+    if focus is not None and focus.name == "validate" and _v1_revision_review(folder, config):
+        # S2: the failure stays visible on validate and delivery stays locked,
+        # but the human reviews v1 and asks for a revision instead of a dead end.
+        # A recorded final review never makes this review done.
+        focus = PhaseState("review", PENDING, REVISION_REVIEW_DETAIL)
+        phases[PHASES.index("review")] = focus
     if focus is None:
         current, next_token, gate = DONE, DONE, ""
     else:
@@ -919,11 +961,7 @@ def _guidance(
     if config is None:
         config = ReportConfig(folder=folder, raw=read_yaml(folder / "report.yml"))
     if phase_name == "approval" and config.flow == "express":
-        template = (
-            "express flow: there is no draft gate; do not ask the user and do not build a preview; "
-            "run {express_approve_command}, then re-run doc_status; "
-            "the user sees the document once, at review"
-        )
+        template = "express flow: no draft approval or automatic approval marker; review the formatted report"
     elif phase_name == "approval" and blocked_reason == "guide_inventory_unmapped":
         template = (
             "do not offer approval yet: list the guide inventory with "
@@ -951,17 +989,9 @@ def _guidance(
     if phase_name == "verify" and blocked_reason == "content_check_malformed":
         template = VERIFIER_LAUNCH + " for {body}, then run the content check: {check_command} --verification verification.yml"
     if phase_name == "verify" and blocked_reason == "content_check_failed":
-        later = review_base(folder) is not None
-        template = ("show the user the approval packet from {packet_command} --open ("
-                    + ("changes since the last review" if later else "draft PDF")
-                    + ", criterion summary, missing items) and fix {body} only through the user's literal "
-                    "edit orders; " + ("" if later else "rebuild the preview, ")
-                    + "then re-run the verifier with {check_command} --verify-brief --since verification.yml")
-        if accepted_gaps.only_partials_block(folder):
-            template += ("; only partial requirements block the check: tell the user that accepted_gaps.py "
-                         "exists to accept a partial requirement they name with a reason "
-                         "({accepted_gaps_command} --by NAME --requirement \"exact text\" --reason \"why\"), "
-                         "a decision that is theirs alone: offer it, never run it yourself or suggest the reason")
+        template = ("correct the named technical or provenance failure in {body} or its inputs, "
+                    "then re-run {check_command} --verification verification.yml; "
+                    "report missing and partial rubric findings without claiming compliance")
     if phase_name == "draft" and blocked_reason == "body_check_failed":
         template = "fix {body} until {check_command} --body-check passes, then re-run doc_status"
     if phase_name == "intake" and not config.metadata.get("student"):
@@ -984,6 +1014,8 @@ def _guidance(
             gaps = [key for key in missing if key not in known]
             if gaps:
                 template += "; remaining gaps: " + ", ".join(gaps)
+    if phase_name == "review" and _v1_revision_review(folder, config):
+        template = REVISION_REVIEW_GUIDANCE
     if phase_name == "review":
         template += ("; open the PDF for the user (never screenshots): "
                      + _tool_command("pdf_viewer.py", config.pdf_path).replace("{", "{{").replace("}", "}}"))

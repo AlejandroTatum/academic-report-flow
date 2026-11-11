@@ -2,14 +2,15 @@
 title: "Flujo del documento"
 ---
 
-Flujo vigente de la skill `academic-report-flow` (acordado e implementado el 2026-10-01): tres decisiones humanas y,
-antes de cada una, una compuerta que exige una herramienta. Un documento nuevo crea primero su carpeta de trabajo
-`reports/<slug>/`; luego `doc_status` deriva en qué fase está y su `next` selecciona la referencia que se carga
-(ver [Skills](skills.qmd)).
+Flujo vigente de la skill `academic-report-flow` (v1 sin aprobación del borrador, 2026-11-11): tres decisiones
+humanas (datos, formato antes de v1 y revisión de cada versión) y compuertas técnicas que exige una herramienta. Un
+documento nuevo crea primero su carpeta de trabajo `reports/<slug>/`; luego `doc_status` deriva en qué fase está y su
+`next` selecciona la referencia que se carga (ver [Skills](skills.qmd)). Los hallazgos de la rúbrica se muestran con
+honestidad y no bloquean la generación de v1; generar no es declarar cumplimiento. La publicación sigue bloqueada
+mientras haya fallas de rúbrica sin brecha aceptada, citas sin resolver o falte la revisión humana final.
 
 ```mermaid
-%% Flujo vigente de academic-report-flow (acordado e implementado 2026-10-01): tres decisiones humanas;
-%% cada regla de calidad la exige una herramienta antes de la siguiente decisión humana.
+%% Flujo vigente de academic-report-flow (v1 sin aprobación del borrador, 2026-11-11).
 flowchart TD
     REQ["Pedido<br/>p. ej. 'resolver el ejercicio 1.5'"] --> WF{"¿Existe carpeta de trabajo<br/>para este documento?"}
     WF -->|no| NEW["Crear reports/&lt;slug&gt;/"]
@@ -25,22 +26,18 @@ flowchart TD
     STATUS --> SRC["Fuentes<br/>respeta min_sources, verify_sources"]
     SRC --> PLAN["Plan<br/>rúbrica del docente o, si no hay, pedidos de la guía"]
     PLAN --> DRAFT["Borrador body.md<br/>código ejecutado, números verificados"]
-    DRAFT --> G1{"CONTROL del borrador<br/>secciones con #, subíndices en fórmula,<br/>citas, chequeos de la rúbrica"}
-    G1 -->|falla| DRAFT
-
-    G1 -->|pasa| D2[/"DECISIÓN 2 - una sola tanda<br/>aprobar body.md (borrador PDF simple, sin plantilla)<br/>+ formato AA/APE/libre + PDF/DOCX + datos faltantes"/]
-    D2 -->|pedido de cambios| DRAFT
-
-    D2 -->|aprobado| G2{"CONTROL de verificación<br/>2 jueces independientes<br/>(los lanza el orquestador)"}
-    G2 -->|flojo/falta| DRAFT
-    G2 -->|cumple| GEN["Generar PDF/DOCX"]
-    GEN --> G3{"CONTROL de validación<br/>validate_report (incluye los chequeos de la rúbrica sobre el typeset y el texto del PDF)<br/>+ auditoría visual<br/>+ revisión página por página = VISUAL_PASS"}
-    G3 -->|defecto del contenido| DRAFT
-    G3 -->|defecto de herramienta| STOP(["Detenerse y reportar<br/>(se arregla la herramienta, nunca el borrador aprobado a escondidas)"])
-
-    G3 -->|pasa| D3[/"DECISIÓN 3 - OK final sobre el PDF exacto<br/>+ tabla de calificación de la rúbrica (estimación mecánica)"/]
-    D3 -->|cambios| DRAFT
-    D3 -->|OK| DEL["Publicar vNNN<br/>~/Documents/&lt;categoría&gt;/&lt;materia&gt;/&lt;slug&gt;/<br/>READY_TO_SUBMIT"]
+    DRAFT --> G1{"CONTROL técnico del borrador<br/>secciones con #, texto plano, citas<br/>(chequeos de rúbrica en rojo = hallazgos)"}
+    G1 -->|falla técnica| DRAFT
+    G1 -->|pasa| G2{"Verificación independiente<br/>matriz requisito → evidencia"}
+    G2 --> ED["Pase editorial<br/>prosa directa, tablas y figuras propias<br/>(no es una aprobación)"]
+    ED --> D2[/"DECISIÓN 2 - formato antes de v1<br/>APE/AA/ACD/libre + PDF/DOCX + datos faltantes"/]
+    D2 --> GEN["typeset + generar v1<br/>con los hallazgos de la rúbrica a la vista"]
+    GEN --> G3{"CONTROL de validación<br/>validate_report + auditoría visual<br/>+ revisión página por página = VISUAL_PASS"}
+    G3 -->|defecto de herramienta| STOP(["Detenerse y reportar"])
+    G3 --> D3[/"DECISIÓN 3 - revisión humana de la versión formateada<br/>+ estado de la rúbrica y pendientes"/]
+    D3 -->|cambios o evidencia nueva| V2["Versión siguiente v2, v3…<br/>órdenes literales, verificación focalizada"]
+    V2 --> GEN
+    D3 -->|instrucción explícita de publicar| DEL["Publicar vNNN<br/>(solo con validación, revisión final,<br/>sin fallas de rúbrica ni citas sin resolver)"]
     DEL --> DONE([fin])
 
     classDef human fill:#fff4c2,stroke:#a80,color:#000
@@ -62,12 +59,16 @@ Cada fase produce un único artefacto en la carpeta de trabajo; `doc_status` los
 | `plan` | `rubric.yml` | la skill |
 | `draft` | `body.md` | la skill |
 | `verify` | `content-check.yml` | la skill + un verificador independiente |
-| `approval` | `approval.yml` | compuerta humana (Decisión 2) |
-| `format` | `report.yml` | la skill |
+| `approval` | `approval.yml` (heredado, solo lectura) | fase heredada: nunca espera ni pide aprobar el borrador |
+| `format` | `report.yml` | la skill (Decisión 2, antes de v1) |
 | `typeset` | `body.typeset.md` | la skill |
 | `generate` | PDF o DOCX bajo `outputs/<materia>/` | la skill |
 | `validate` | `validation.yml` | la skill o `gentle-ai review` |
-| `review` | `final-review.yml` (con `rubric-grade.md` presentada junto al PDF) | compuerta humana (Decisión 3) |
+| `review` | `final-review.yml` (con `rubric-grade.md` presentada junto al PDF) | compuerta humana sobre cada versión (Decisión 3) |
+
+Si la validación de una v1 vigente (`build/generation.yml` actual) falla por hallazgos, `doc_status` deja `validate` en
+`blocked` (`validation_failed`) y marca `next: review`: el humano revisa v1 con sus hallazgos y pide una revisión
+(v2/v3). `deliver` sigue en `pending` y la publicación sigue bloqueada aunque se registre una revisión final.
 | `deliver` | `<slug>-vNNN.pdf` en la biblioteca de Documentos | la skill |
 
 Las decisiones humanas se describen en [Decisiones del usuario](decisiones-usuario.qmd).

@@ -19,9 +19,9 @@ def test_plan_and_draft_run_the_rubric_trace() -> None:
     assert "--section" in content
 
 
-def test_approval_packet_shows_weight_and_trace() -> None:
+def test_optional_packet_shows_the_rubric_trace() -> None:
     approval = flat(REFS / "approval.md")
-    assert "weight" in approval and "trace" in approval
+    assert "rubric trace" in approval
 
 
 def test_validate_reruns_the_rubric_checks_on_the_typeset_body_and_pdf_text() -> None:

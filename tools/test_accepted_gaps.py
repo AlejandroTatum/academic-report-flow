@@ -325,22 +325,20 @@ def test_rerunning_the_check_with_a_changed_matrix_drops_the_waiver(tmp_path: Pa
 
 def test_doc_status_verify_is_done_and_names_the_accepted_gaps(tmp_path: Path) -> None:
     folder = partial_only(tmp_path)
-    assert doc_status._phase_verify(folder, None, None).state == doc_status.BLOCKED
+    initial = doc_status._phase_verify(folder, None, None)
+    assert initial.state == doc_status.DONE and "partial" in initial.detail
     assert accept(folder) == 0
     phase = doc_status._phase_verify(folder, None, None)
     assert phase.state == doc_status.DONE
     assert "1 accepted gap" in phase.detail and "Ana Perez" in phase.detail
 
 
-def test_verify_guidance_names_accepted_gaps_only_when_partials_alone_block(tmp_path: Path) -> None:
+def test_verify_guidance_addresses_technical_failure_not_automatic_waiver(tmp_path: Path) -> None:
     folder = partial_only(tmp_path)
     guidance = doc_status._guidance("verify", folder, blocked_reason="content_check_failed")
-    assert "accepted_gaps.py" in guidance
-    assert "never run it yourself" in guidance
-    missing = {"criterion": "conclusiones", "requirement": "Lists recommendations", "status": "missing",
-               "location": "", "evidence": ""}
-    folder = verified(tmp_path / "m", [*[r for r in REQUIREMENTS if r["status"] == "found"], PARTIAL, missing])
-    assert "accepted_gaps.py" not in doc_status._guidance("verify", folder, blocked_reason="content_check_failed")
+    assert "technical or provenance failure" in guidance
+    assert "without claiming compliance" in guidance
+    assert "accepted_gaps.py" not in guidance
 
 
 def test_the_approval_packet_lists_the_accepted_gap_and_never_claims_cumple(tmp_path: Path) -> None:

@@ -198,20 +198,21 @@ def test_document_contract_block_is_specified(intake: str) -> None:
     )
 
 
-def test_single_confirmation_is_the_approval_gate_and_traceable(intake: str) -> None:
-    """Exactly one confirmation gate exists in the route, and intake defers to it.
+def test_intake_defers_generation_to_v1_after_format(intake: str) -> None:
+    """Intake records data only; v1 is generated after verify and format (report-v1 T2).
 
-    Intake records data only; the single gate is the human approval defined in
-    references/approval.md.
+    There is no draft approval gate; intake forward-references the format phase
+    in references/approval.md and adds no human gate before v1.
     """
     data = plain(intake)
     lowered = data.lower()
     assert data.count(APPROVAL_REFERENCE) == 1, (
-        "intake must forward-reference the approval gate exactly once"
+        "intake must forward-reference the format phase exactly once"
     )
-    assert "generation starts only after the one human approval" in lowered, (
-        "intake must defer the single confirmation to the approval reference"
+    assert "generation of v1 starts after verify and the format phase" in lowered, (
+        "intake must defer generation to v1 after the format phase"
     )
+    assert "never adds a human gate before v1" in lowered
     assert "never asks for approval" in lowered, (
         "intake must explicitly refuse to be the approval gate"
     )
@@ -236,7 +237,7 @@ def test_intake_may_ask_one_targeted_clarification_per_missing_field(intake: str
 
 
 # --------------------------------------------------------------------------
-# SKILL.md — intake records data; the single gate is post-preview approval
+# SKILL.md — intake records data; v1 is built without a draft approval
 # --------------------------------------------------------------------------
 
 
@@ -248,8 +249,8 @@ def test_skill_keeps_intake_data_only_and_gates_the_build_on_approval(skill: str
     """
     lowered = re.sub(r"\s+", " ", plain(skill)).lower()
     assert "intake data (references/data.md) never authorizes generation" in lowered
-    assert "a preapproval draft preview is permitted only for review" in lowered
-    assert "never build the final artifact before approval is done and typeset passes" in lowered
+    assert "no draft pdf or approval packet is required" in lowered
+    assert "build v1 once verify, format and typeset are done" in lowered
     for stale in (
         "wait for explicit confirmation before generation",
         "generation begins only after the user confirms this block",

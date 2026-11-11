@@ -197,7 +197,7 @@ def test_delivery_refuses_pdf_changed_after_validation(tmp_path: Path) -> None:
 
 
 def test_delivery_refuses_without_current_approval(tmp_path: Path, capsys) -> None:
-    """Without a current approval.yml the publisher refuses and nothing appears."""
+    """Without approval.yml (a v1) and without its generated identity the publisher refuses."""
     folder = tmp_path / "wf"
     _report(folder)
     pdf = _pdf(folder)
@@ -208,7 +208,7 @@ def test_delivery_refuses_without_current_approval(tmp_path: Path, capsys) -> No
     assert _run(folder, documents_root) == 1
 
     captured = capsys.readouterr()
-    assert "aprobación" in captured.err
+    assert "identidad del PDF generado" in captured.err
     assert not (documents_root / CATEGORY).exists()
 
 

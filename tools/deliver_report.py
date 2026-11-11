@@ -178,14 +178,14 @@ def deliver(folder: Path, documents_root: Path | None = None) -> int:
         status_note += f"; sin {', '.join(missing)}"
     print(
         f"PDF {action}: {publication.path} (SHA-256: {publication.sha256}); "
-        f"copia técnicamente validada y aprobada; {status_note}."
+        f"copia técnicamente validada y revisada por una persona; {status_note}."
     )
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Publica el PDF validado y aprobado en ~/Documents (fase deliver)."
+        description="Publica el PDF validado y revisado por una persona en ~/Documents (fase deliver)."
     )
     parser.add_argument("folder", type=Path, help="Carpeta del reporte con report.yml")
     parser.add_argument(

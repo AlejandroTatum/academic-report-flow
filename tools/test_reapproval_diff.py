@@ -119,7 +119,7 @@ def test_approved_snapshot_is_the_base_without_a_presented_body(tmp_path: Path) 
 
 def test_later_round_verify_guidance_never_asks_for_the_draft(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     folder = _folder(tmp_path)
-    assert "draft_pdf.py" in doc_status._guidance("verify", folder)
+    assert "draft_pdf.py" not in doc_status._guidance("verify", folder)
     _fresh_preview(folder)
     _present(folder, monkeypatch)
     _cited_body(folder, EDITED)

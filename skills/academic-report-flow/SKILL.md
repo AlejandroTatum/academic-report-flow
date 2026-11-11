@@ -19,20 +19,20 @@ Recommend at most one type with a reason, never select it. Ambiguity stops the r
 
 ## Hard Rules
 
-Tools record per-phase durations in `timings.yml` in the work folder (informational, never a gate; `tools/timings.py <folder>` prints totals, slowest first). Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `validate_report.py`, visual audit, `deliver_report.py`); run them and obey their blocks. Three human decisions: data, draft approval plus format, final review. Express (`flow: express`, routes B-E only, `references/data.md`) keeps one: the final review.
+Tools record per-phase durations in `timings.yml` in the work folder (informational, never a gate; `tools/timings.py <folder>` prints totals, slowest first). Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `validate_report.py`, visual audit, `deliver_report.py`); run them and obey their blocks. There is no draft approval: after data and format the first formatted build is v1, with rubric findings shown honestly; generation is not a compliance claim. The human reviews the formatted version, then asks for v2, v3 or gives an explicit instruction to publish (`references/delivery.md`).
 
 - Present the human block verbatim and every human gate losslessly; never proceed on silence.
 - Quality over quantity: no minimum length; preserve complete coverage. Cut redundancy or add necessary evidence or explanation when needed (`references/content.md`).
 - Require rubric TDD checks in the plan before drafting; the draft turns them green.
-- Keep the rubric visible: `tools/rubric_trace.py` at plan, per draft section, in the approval packet and in validate (final artifact); at review present `rubric-grade.md` from `tools/rubric_grade.py` with the PDF. Only that tool computes the estimated score; it is informational, never a gate, and no agent or verifier assigns one.
+- Keep the rubric visible: `tools/rubric_trace.py` at plan, per draft section, in the v1 findings and in validate (final artifact); at review present `rubric-grade.md` from `tools/rubric_grade.py` with the PDF. Only that tool computes the estimated score; it is informational, never a gate, and no agent or verifier assigns one.
 - Use one independent verifier for semantic verification (requirement -> evidence matrix, unquotable evidence is `missing`); the drafter never verifies itself.
 - A `partial` requirement only a person can close may be accepted by the human alone: `tools/accepted_gaps.py accept` records their name, the exact requirement and reason in `accepted-gaps.yml`. Never for `missing` or mechanical failures, never on your own initiative, never by hand (`references/production.md`).
 - Require verified sources before research is finished.
-- Apply batched edit orders verbatim before seeking re-approval; a bounded edit (at most 40 changed words, no heading touched) keeps the approval, the final review and the verification without asking; validation still runs, no draft rebuild. Larger ones are re-approved from a changes-only packet, never the whole draft.
-- The draft is plain text: `# Title` headings and `[@key]` citations only, no math, tables, images or bold (`references/content.md`); backend formatting goes in `body.typeset.md` after approval, never in `body.md`.
-- A preapproval draft preview is permitted only for review, once, for the first prompt (`approval.md`): the plain PDF from `tools/draft_pdf.py`, no cover, logos or course template, in a temp folder; never build the final artifact before approval is `done` and `typeset` passes. Never present the approval gate before `draft` and `verify` are `done`.
+- Apply batched edit orders verbatim, then build the next version; a bounded edit (at most 40 changed words, no heading touched) keeps the final review and the verification without asking; validation still runs.
+- The draft is plain text: `# Title` headings and `[@key]` citations only, no math, tables, images or bold (`references/content.md`); backend formatting goes in `body.typeset.md`, never in `body.md`.
+- No draft PDF or approval packet is required (`approval.md`); `tools/draft_pdf.py` stays an optional plain preview on request. Build v1 once `verify`, `format` and `typeset` are `done`.
 - Stop at the earliest failed gate; never substitute an unsupported backend or executor.
-- Publish only through `deliver_report.py` with a current `APPROVAL_CURRENT` marker; publication is not approval.
+- Publish only through `deliver_report.py`, on the user's explicit instruction; it refuses unresolved rubric failures without an accepted gap, unresolved citations, a missing final review or generation record (legacy reports: `APPROVAL_CURRENT`). Publication is not approval.
 - No script, validator, or auditor ever grants `VISUAL_PASS`; `visual_pdf_auditor.py` PASS is only `AUDITOR_PRECHECK` evidence. Only independent semantic inspection of the assembled report grants it; `HUMAN_REVIEW` against immutable hashes precedes `READY_TO_SUBMIT`.
 - Never ghostwrite a final submission. Preserve privacy, provenance, citations, and consent boundaries.
 - Use `academic-visual-builder` for figures and inspect them again in the assembled report; the visual direction changes hierarchy and composition, not only decoration.
@@ -45,8 +45,8 @@ Tools record per-phase durations in `timings.yml` in the work folder (informatio
 |---|---|
 | `next` names a phase | Load its reference and run its executor (this skill, `research-workflow`, or the verifier). |
 | Intake data missing or ambiguous | Stop and ask; recording the contract is never approval. |
-| `next: approval` / `next: review` | Present the gate; write `approval.yml` / `final-review.yml` only on an explicit answer; record them with `approval_marker.py approve` / `final_review_marker.py record`, never `printf`. |
-| `verify` blocked only by `partial` requirements | Offer `accepted_gaps.py`; run it only after the user names requirement and reason. |
+| `next: review` | Present the current version with its findings; write `final-review.yml` only on an explicit answer, via `final_review_marker.py record`, never `printf`. |
+| Only `partial` requirements keep publication refused | Offer `accepted_gaps.py`; run it only after the user names requirement and reason. |
 | Type ambiguous or non-academic | Recommend or resolve a route; never fall back to Route A. |
 | Script PASS contradicts visible evidence | Record `VISUAL_FAIL`, correct, rebuild, repeat all gates. |
 | Inspection incomplete | Return `REVIEW_REQUIRED`, without `VISUAL_PASS`. |
@@ -61,14 +61,14 @@ Tools record per-phase durations in `timings.yml` in the work folder (informatio
 
 ## Output Contract
 
-Return the verbatim human block, the `academic.doc-status/v1` block, the routed token, the executor, the single artifact produced, hashes and tool results; at `review`, also `rubric-grade.md`. `READY_TO_SUBMIT` only after approval and final review.
+Return the verbatim human block, the `academic.doc-status/v1` block, the routed token, the executor, the single artifact produced, hashes and tool results; at `review`, also `rubric-grade.md`. `READY_TO_SUBMIT` only after validation and final review.
 
 ## References
 
 - `references/routing.md` - loop, work folders, status block, routes A-E.
 - `references/data.md` - Decision 1: intake, `report.yml`.
 - `references/content.md` - research, plan, draft, body check.
-- `references/approval.md` - Decision 2: approval plus format.
+- `references/approval.md` - Decision 2: format before v1, versions, edit orders, legacy approval.
 - `references/production.md` - verify, typeset, generate, validate, quality gates.
 - `references/delivery.md` - Decision 3: final review, deliver.
 - `references/unl-shell.md`, `references/profiles/` (Route A only), `references/visual-directions.md`.

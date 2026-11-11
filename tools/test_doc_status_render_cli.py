@@ -182,7 +182,7 @@ def test_render_human_golden(tmp_path: Path) -> None:
 
 
 def test_gate_names_the_runnable_deliver_entrypoint(tmp_path: Path) -> None:
-    """The deliver gate names tools/deliver_report.py, not only the artifact."""
+    """The deliver gate names tools/deliver_report.py and waits for the user's explicit order (S2)."""
     folder = _deliver_pending(tmp_path)
     status = doc_status.derive(folder)
     entrypoint = doc_status.ROOT / "tools" / "deliver_report.py"
@@ -192,7 +192,7 @@ def test_gate_names_the_runnable_deliver_entrypoint(tmp_path: Path) -> None:
     assert status.current == "deliver"
     assert entrypoint.is_file(), "the printed entrypoint must exist"
     assert _human_gate(text) == (
-        f"deliver pending - publish with "
+        f"deliver pending - wait for the user's explicit instruction; only then publish with "
         f"{shlex.join([sys.executable, str(entrypoint), str(status.work_folder)])}, "
         "then re-run doc_status"
     )
@@ -285,7 +285,7 @@ def test_human_and_json_gate_agree_across_the_state_matrix(tmp_path: Path) -> No
         "plan pending - "
     )
     assert _human_gate(doc_status.render_human(doc_status.derive(stale_approval))).startswith(
-        "approval pending - "
+        "format pending - "
     )
     assert _human_gate(doc_status.render_human(doc_status.derive(mismatched))).startswith(
         "validate pending - "
@@ -341,7 +341,7 @@ def test_render_human_gate_names_a_stale_check(tmp_path: Path) -> None:
 
 
 def test_render_human_gate_reports_waiting_stale_approval(tmp_path: Path) -> None:
-    """TRIANGULATE: a stale marker keeps the focus on approval, waiting not blocked."""
+    """TRIANGULATE (S2): a stale legacy marker no longer holds the focus on approval."""
     folder = tmp_path / "wf"
     _report(folder)
     _sources_bib(folder)
@@ -353,8 +353,9 @@ def test_render_human_gate_reports_waiting_stale_approval(tmp_path: Path) -> Non
     status = doc_status.derive(folder)
     text = doc_status.render_human(status)
 
-    assert status.current == "approval"
-    assert "**Gate**: approval pending - " in text
+    assert status.current == "format"
+    assert "**Gate**: format pending - " in text
+    assert "- approval: done" in text
     _assert_human_contract(text)
 
 
@@ -424,13 +425,12 @@ def test_render_machine_lists_blocked_reasons(tmp_path: Path) -> None:
     _sources_bib(folder)
     _rubric(folder)
     _body(folder)
-    _content_check(folder)
-    _marker_text(folder, "body_sha256: [unclosed\n")
+    (folder / "content-check.yml").write_text("result: [unclosed\n", encoding="utf-8")
 
     text = doc_status.render_machine(doc_status.derive(folder))
 
-    assert "approval_marker_malformed" in text
-    assert _payload_block(text)["blockedReasons"] == ["approval_marker_malformed"]
+    assert "content_check_malformed" in text
+    assert _payload_block(text)["blockedReasons"] == ["content_check_malformed"]
 
 
 def test_main_json_routes_machine_to_stdout_and_human_to_stderr(tmp_path: Path, capsys) -> None:
@@ -495,7 +495,7 @@ def test_printed_deliver_command_names_the_interpreter_and_quotes_the_paths(tmp_
 def test_printed_deliver_command_refuses_without_approval_and_writes_nothing(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """The printed command runs as-is and refuses a missing approval without writes."""
+    """The printed command runs as-is; without approval it needs the v1 identity and writes nothing."""
     folder = _deliver_pending(tmp_path, name="wf sin aprobacion")
     status = doc_status.derive(folder)
     home = tmp_path / "fake home"
@@ -510,9 +510,9 @@ def test_printed_deliver_command_refuses_without_approval_and_writes_nothing(
 
     completed = _run_printed(argv, unrelated)
 
-    assert completed.returncode != 0, "a missing approval must refuse delivery"
+    assert completed.returncode != 0, "a PDF without approval or generated identity must refuse delivery"
     combined = completed.stdout + completed.stderr
-    assert "approval" in combined.lower(), combined
+    assert "identidad del pdf generado" in combined.lower(), combined
     assert not (home / "Documents").exists(), "a refusal must create nothing"
 
 

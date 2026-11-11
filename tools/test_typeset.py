@@ -49,18 +49,17 @@ def test_record_approval_writes_typeset_required(tmp_path: Path) -> None:
     assert approval_marker.approval_state(folder).state == "current"
 
 
-def test_bind_refuses_without_approval_and_writes_nothing(
+def test_bind_refuses_missing_body_and_writes_nothing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     folder = tmp_path / "wf"
     _report(folder)
-    (folder / "body.md").write_text(DEFAULT_BODY, encoding="utf-8")
     before = sorted(p.name for p in folder.iterdir())
 
     assert typeset.main(["bind", str(folder)]) == 1
 
     err = capsys.readouterr().err
-    assert "typeset not bound: body.md is not approved (approval.yml missing)" in err
+    assert "typeset not bound:" in err and "body.md" in err
     assert sorted(p.name for p in folder.iterdir()) == before
 
 

@@ -14,9 +14,9 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from approval_marker import ApprovalState, approval_state, draft_is_fresh, sha256_file
+from approval_marker import ApprovalState, approval_state, draft_is_fresh, generation_record_current, sha256_file
 from final_review_marker import FinalReviewState, final_review_state
-from report_config import resolve_documents_root, versioned_artifact_pattern
+from report_config import read_yaml, resolve_documents_root, versioned_artifact_pattern
 
 try:  # POSIX pair-claim serialization; a non-POSIX platform degrades to the
     # historical single-writer behavior instead of failing to import.
@@ -59,6 +59,68 @@ def _approval_refusal(state: ApprovalState, work_folder: Path) -> str:
         f"{work_folder}. Ejecutá la fase de aprobación después de revisar "
         "body.md; no se publica nada. La validación técnica pasó; falta "
         "únicamente la aprobación humana."
+    )
+
+
+GENERATION_REFUSAL = (
+    "Falta o está obsoleta la identidad del PDF generado y sus entradas; "
+    "volvé a generar y validar antes de publicar. No se publica nada."
+)
+
+
+def _content_refusal(work_folder: Path) -> str | None:
+    """Why a report without a current draft approval may not publish, or ``None``.
+
+    A v1 report reaches publication without the draft approval that used to
+    vouch for the verify gate, so the publisher re-derives that gate here: the
+    guide inventory is mapped and ``content-check.yml`` passes for the current
+    inputs -- every rubric requirement found or a partial a human accepted,
+    every citation resolved. Read-only; never writes.
+    """
+    import accepted_gaps
+    import content_check
+    import rubric_plan
+
+    unmapped = rubric_plan.inventory_problems(work_folder)
+    if unmapped:
+        ids = ", ".join(problem.split(":", 1)[0] for problem in unmapped)
+        return (
+            f"La guía tiene ítems sin criterio ni entrada not_applicable en rubric.yml: {ids}. "
+            "No se publica nada."
+        )
+    state = content_check.content_check_state(work_folder)
+    if state == "pass":
+        return None
+    if state != "fail":
+        return (
+            f"content-check.yml está {state} en {work_folder}: falta la verificación vigente "
+            "del contenido. Volvé a verificar antes de publicar; no se publica nada."
+        )
+    try:
+        marker = read_yaml(work_folder / content_check.CONTENT_CHECK_NAME)
+    except Exception:
+        marker = {}
+    mechanical = [item for item in marker.get("mechanical") or [] if isinstance(item, dict)]
+    citations = [item for item in mechanical if item.get("check") == "citations_resolve" and item.get("ok") is not True]
+    if citations:
+        return (
+            f"Hay citas sin resolver en body.md ({citations[0].get('detail', '')}). "
+            "Corregí las citas y volvé a verificar y generar antes de publicar; no se publica nada."
+        )
+    requirements = [item for item in marker.get("requirements") or [] if isinstance(item, dict)]
+    waived = accepted_gaps.waived_requirements(work_folder, requirements)
+    open_items = [
+        f"{item.get('status')}: {item.get('requirement')}"
+        for item in requirements
+        if item.get("status") in ("missing", "partial")
+        and (str(item.get("criterion")), str(item.get("requirement"))) not in waived
+    ]
+    open_items += [f"{item.get('check')}: {item.get('detail', '')}" for item in mechanical if item.get("ok") is not True]
+    detail = "; ".join(open_items) or "content-check.yml: fail"
+    return (
+        f"Hay fallas de rúbrica sin resolver y sin brecha aceptada ({detail}). "
+        "Corregí el informe o, solo si el usuario lo decide, registrá la brecha parcial con "
+        "accepted_gaps.py; no se publica nada."
     )
 
 
@@ -184,7 +246,10 @@ def publish_validated_pdf(
     human markers: ``work_folder/approval.yml`` must hash the exact bytes of
     ``work_folder/body.md``, and ``work_folder/final-review.yml`` must hash the
     exact bytes of the PDF being published — plus, when ``bibliography`` is
-    given, a ``bibliography_sha256`` binding those exact bytes. ``work_folder``
+    given, a ``bibliography_sha256`` binding those exact bytes. A v1 report
+    (no ``approval.yml``, or a ``build/generation.yml`` record) replaces the
+    draft approval with the generated artifact identity and, without a current
+    approval, the verify gate it vouched for (``_content_refusal``). ``work_folder``
     is required keyword-only, so a caller cannot skip the guards by omission.
     All checks run before any hash, directory or temporary file, so a refused
     publication creates nothing.
@@ -219,7 +284,18 @@ def publish_validated_pdf(
         )
 
     state = approval_state(work_folder)
-    if not state.ok:
+    # A report built as v1 (no draft approval, or a generation record) is
+    # bound to its generated artifact identity and re-checks the verify gate
+    # the approval used to vouch for; a legacy approval keeps its own path.
+    generation_record = work_folder / "build" / "generation.yml"
+    if generation_record.is_file() or state.state == "absent":
+        if not generation_record_current(work_folder, source):
+            raise PublicationError(GENERATION_REFUSAL)
+        if not state.ok:
+            refusal = _content_refusal(work_folder)
+            if refusal:
+                raise PublicationError(refusal)
+    elif not state.ok:
         raise PublicationError(_approval_refusal(state, work_folder))
 
     review = final_review_state(work_folder, source, bibliography=bibliography)

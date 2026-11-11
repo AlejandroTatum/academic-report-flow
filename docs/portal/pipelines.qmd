@@ -23,8 +23,9 @@ en lugar de renderizarla.
 
 `build_report_auto.py` es un router de backends: elige según `report.yml` el builder LaTeX
 (`build_latex_report.py`), el de DOCX (`build_docx_report.py`) o uno visual, y falla con un mensaje claro ante un
-backend no soportado en lugar de pasar a validación. Sin un `approval.yml` vigente no construye, salvo con
-`--no-approval-check` (solo previews, nunca para entrega). Otras banderas: `--validate-only` y `--tex-only`.
+backend no soportado en lugar de pasar a validación. No exige aprobación del borrador: construye v1 cuando `typeset` está listo, imprime los hallazgos de la rúbrica
+(`RUBRIC FINDINGS`, que no son una declaración de cumplimiento) y escribe `build/generation.yml`;
+`--no-approval-check` construye una vista previa sin controles de preparación que nunca habilita la entrega. Otras banderas: `--validate-only` y `--tex-only`.
 
 ## Compatibilidad de tres guiones (`---`) {#compatibilidad-de-tres-guiones}
 

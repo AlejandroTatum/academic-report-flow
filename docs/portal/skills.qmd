@@ -9,7 +9,7 @@ title: "Skills"
 
 | Skill | Responsabilidad |
 |---|---|
-| `skills/academic-report-flow/` | Posee todo el flujo documental: intake, investigación, plan, borrador, aprobación, verify, formato, generación, validación, revisión y entrega |
+| `skills/academic-report-flow/` | Posee todo el flujo documental: intake, investigación, plan, borrador, verify, formato, generación de v1, validación, revisión de cada versión y entrega |
 | `skills/research-workflow/` | Produce paquetes de evidencia trazables afirmación por afirmación; no crea ni entrega informes |
 | `skills/academic-visual-builder/` | Posee los recursos visuales: figuras, diagramas, infografías y su validación |
 
@@ -25,11 +25,11 @@ title: "Skills"
 |---|---|
 | `routing.md` | bucle, carpetas de trabajo, bloque de estado y rutas A a E |
 | `data.md` | Decisión 1: intake, flujo express, registro de `report.yml` |
-| `content.md` | investigación, plan, borrador y verificación del cuerpo |
-| `approval.md` | Decisión 2: aprobación más formato |
+| `content.md` | investigación, plan, borrador, pase editorial y verificación del cuerpo |
+| `approval.md` | Decisión 2: formato antes de v1, versiones v2/v3 y fase `approval` heredada (no espera) |
 | `production.md` | verify, typeset, generación, validación y compuertas de calidad |
-| `delivery.md` | Decisión 3: revisión final y entrega |
-| `unl-shell.md`, `visual-directions.md` | carcasa institucional UNL (solo ruta A) y direcciones visuales |
+| `delivery.md` | Decisión 3: revisión de cada versión y publicación con instrucción explícita |
+| `unl-shell.md`, `visual-directions.md` | carcasa institucional UNL (solo ruta A), direcciones visuales y criterios de tablas y figuras |
 
 Los perfiles de curso de `references/profiles/` contienen datos reales de materias y no se publican en este portal.
 

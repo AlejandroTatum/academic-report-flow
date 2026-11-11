@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
-"""Typeset phase: format the approved plain-text body in its own file (issue #96).
+"""Typeset phase: format the plain-text body in its own file (issue #96).
 
-The draft ``body.md`` the user verifies and approves is plain text. After
-approval, backend formatting (math, tables, figures, the format's fixed
-headings) is applied only in ``body.typeset.md``, never in ``body.md``, so a
-formatting fix never invalidates verified or approved content.
+Backend formatting is applied in ``body.typeset.md``, never in ``body.md``.
+Binding a formatted copy does not assert human approval.
 
 ``typeset.yml`` binds ``body.typeset.md`` to the sha256 of the ``body.md`` it
 formats. ``bind`` creates the typeset body as a copy of ``body.md`` when it is
 missing (an existing one keeps its text) and records the binding plus a
-``typeset-source.md`` snapshot of the bound ``body.md``; it refuses while
-``body.md`` is not approved, and, after an edit of ``body.md``, while the words
-the edit inserted are missing from the typeset body or the text it removed is
-still there (issue #98). ``check`` reports and never edits a body (it only appends
+``typeset-source.md`` snapshot of the bound ``body.md``; after an edit of
+``body.md``, it refuses while the words the edit inserted are missing from
+the typeset body or the text it removed is still there (issue #98).
+``check`` reports and never edits a body (it only appends
 its duration to ``timings.yml``): the binding
 matches the current ``body.md``, the typeset body passes the rendering rules
 and the format's fixed headings, and it cites exactly the keys ``body.md``
@@ -33,7 +31,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 
 import timings
-from approval_marker import BODY_NAME, MARKER_NAME, approval_state, utc_now, write_files_atomically
+from approval_marker import BODY_NAME, MARKER_NAME, utc_now, write_files_atomically
 from content_check import body_format_problems
 from report_config import (
     TYPESET_BINDING_NAME,
@@ -61,7 +59,7 @@ def typeset_required(folder: Path) -> bool:
 
 def typeset_in_use(folder: Path) -> bool:
     """True when the build renders ``body.typeset.md``: required, or bound on a legacy report."""
-    return typeset_required(folder) or typeset_binding_current(folder)
+    return not (Path(folder) / MARKER_NAME).is_file() or typeset_required(folder) or typeset_binding_current(folder)
 
 
 def _tokens(text: str) -> list[str]:
@@ -105,16 +103,12 @@ def unapplied_edit(source: str, body: str, typeset_text: str) -> list[str]:
 
 
 def bind(folder: Path) -> Path:
-    """Create ``body.typeset.md`` if missing and bind it to the current ``body.md``.
+    """Bind a formatted copy to the current body without asserting approval.
 
-    Raises ``ValueError`` (writing nothing) while ``body.md`` is not approved,
-    or while an edit of ``body.md`` since the last bind is not applied in
-    ``body.typeset.md``.
+    A missing body is an input error. An edit since the last bind must be
+    applied in the formatted copy before rebinding.
     """
     folder = Path(folder)
-    state = approval_state(folder)
-    if state.state not in ("current", "carried"):
-        raise ValueError(f"{BODY_NAME} is not approved ({state.detail})")
     body = (folder / BODY_NAME).read_bytes()
     target = folder / TYPESET_BODY_NAME
     source = folder / SOURCE_NAME
@@ -187,10 +181,10 @@ def build_gate(folder: Path) -> str | None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Format the approved body.md in body.typeset.md.")
+    parser = argparse.ArgumentParser(description="Format body.md in body.typeset.md without draft approval.")
     commands = parser.add_subparsers(dest="command", required=True)
     for name, text in (
-        ("bind", "create body.typeset.md if missing and bind it to the current body.md (after approval)"),
+        ("bind", "create body.typeset.md if missing and bind it to the current body.md"),
         ("check", "report the typeset checks; never edits a body (records timings.yml)"),
     ):
         commands.add_parser(name, help=text).add_argument("folder", type=Path)

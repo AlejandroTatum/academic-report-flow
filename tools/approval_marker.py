@@ -210,6 +210,41 @@ def write_render_record(folder: Path, digest: str | None = None) -> Path:
     return record
 
 
+def generation_inputs(folder: Path) -> dict[str, str]:
+    """Hash the current render inputs without making any human-approval claim."""
+    from report_config import ReportConfig
+
+    folder = Path(folder)
+    config = ReportConfig(folder=folder, raw=read_yaml(folder / "report.yml"))
+    return {
+        "body_sha256": sha256_file(folder / BODY_NAME),
+        "rendered_body_sha256": sha256_file(config.body_path),
+        "bibliography_sha256": sha256_file(config.bib_path) if config.bib_path else "",
+        "render_sha256": render_digest(folder / "report.yml"),
+    }
+
+
+def write_generation_record(folder: Path, pdf: Path, inputs: dict[str, str], pdf_sha256: str) -> None:
+    """Bind the validated PDF to unchanged inputs; never grant approval."""
+    if generation_inputs(folder) != inputs:
+        raise ValueError("render inputs changed during generation")
+    if sha256_file(pdf) != pdf_sha256:
+        raise ValueError("PDF changed after validation")
+    record = {**inputs, "pdf_sha256": pdf_sha256}
+    target = Path(folder) / "build" / "generation.yml"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    write_files_atomically([(target, (json.dumps(record, sort_keys=True) + "\n").encode())])
+
+
+def generation_record_current(folder: Path, pdf: Path) -> bool:
+    """Whether the build record matches the exact PDF and current inputs."""
+    try:
+        record = read_yaml(Path(folder) / "build" / "generation.yml")
+        return record == {**generation_inputs(folder), "pdf_sha256": sha256_file(pdf)}
+    except Exception:
+        return False
+
+
 def render_settings_unchanged(folder: Path) -> bool:
     """True when the last build recorded the current render settings of ``report.yml``."""
     record = render_record_path(folder)
@@ -397,7 +432,7 @@ def main(argv: list[str] | None = None) -> int:
     who.add_argument(
         "--express",
         action="store_true",
-        help="flow: express only: the agent records the draft approval; the user decides at final review",
+        help="legacy option, no longer records an automatic approval; review the formatted report instead",
     )
     args = parser.parse_args(argv)
     try:
@@ -405,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
             refusal = express_refusal(args.folder)
             if refusal:
                 raise ValueError(refusal)
-            marker = record_approval(args.folder, EXPRESS_APPROVER, express=True)
+            raise ValueError("automatic draft approval is no longer recorded; review the formatted report")
         else:
             marker = record_approval(args.folder, args.by)
     except ValueError as exc:
