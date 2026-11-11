@@ -366,6 +366,31 @@ def _extend_to_borders(points: list, tail: tuple, head: tuple) -> list:
     return [*lead, *points, *straight(points[-1], end)]
 
 
+def _declaration_order(model: dict) -> list[dict]:
+    """The concepts breadth-first along the tree links, each concept's children in the order of its links.
+
+    ``ordering=out`` alone is not enough: since Graphviz 16.1.1 it orders a concept's children by the order the
+    nodes were declared, not by the order of the links, so the declaration order must already be the link order.
+    """
+    by_id = {c["id"]: c for c in model["concepts"]}
+    children: dict[str, list[str]] = {}
+    has_parent = set()
+    for link in model["links"]:
+        if not link["cross"]:
+            children.setdefault(link["from"], []).append(link["to"])
+            has_parent.add(link["to"])
+    queue = [c["id"] for c in model["concepts"] if c["id"] not in has_parent]
+    seen: list[str] = []
+    while queue:
+        current = queue.pop(0)
+        if current in seen:
+            continue
+        seen.append(current)
+        queue.extend(children.get(current, []))
+    seen += [c["id"] for c in model["concepts"] if c["id"] not in seen]
+    return [by_id[i] for i in seen]
+
+
 def _dot(model: dict) -> tuple[float, float, dict, dict]:
     """Run Graphviz on padded boxes and fixed-size link labels; return graph size, drawn boxes and links.
 
@@ -379,7 +404,7 @@ def _dot(model: dict) -> tuple[float, float, dict, dict]:
     lines = ["digraph G {", f"rankdir=TB; nodesep={max(0.16 - air_x, 0.02):.3f}; ranksep={max(0.55 - air_y, 0.02):.3f}; "
              "splines=spline; ordering=out;",
              'node [shape=box fixedsize=true label=""];', "edge [arrowhead=none fontsize=14];"]
-    for concept in model["concepts"]:
+    for concept in _declaration_order(model):
         w, h = _box_size(concept)
         group = ' group="spine"' if concept["id"] in model["spine"] else ""
         lines.append(f"{name[concept['id']]} [width={w / 72 + air_x:.3f} height={h / 72 + air_y:.3f}{group}];")
