@@ -35,6 +35,7 @@ PLAIN_TEMPLATE = ROOT / "templates" / "plain-report.tex"
 APE_TEMPLATE = ROOT / "templates" / "ape-report.tex"
 ACD_TEMPLATE = ROOT / "templates" / "acd-report.tex"
 AA_TEMPLATE = ROOT / "templates" / "aa-report.tex"
+PROYECTO_TEMPLATE = ROOT / "templates" / "proyecto-report.tex"
 IEEE_TEMPLATE = ROOT / "templates" / "ieee-report.tex"
 TEMPLATE_ALIASES = {
     "default": DEFAULT_TEMPLATE,
@@ -50,6 +51,8 @@ TEMPLATE_ALIASES = {
     "acd_report": ACD_TEMPLATE,
     "aa": AA_TEMPLATE,
     "aa_report": AA_TEMPLATE,
+    "proyecto": PROYECTO_TEMPLATE,
+    "proyecto_report": PROYECTO_TEMPLATE,
     "ieee": IEEE_TEMPLATE,
     "ieee_report": IEEE_TEMPLATE,
 }
@@ -91,7 +94,8 @@ ROUTE_TEMPLATE_DEFAULTS = {
 
 # Default template per chosen FORMAT (new-report-flow): `ape` renders the
 # teacher's Word replica, `acd` the session record sheet, `aa` the editorial
-# autonomous-learning report, `ieee` the two-column IEEE conference essay and
+# autonomous-learning report, `proyecto` the same look without the AA labels
+# or the sidebar, `ieee` the two-column IEEE conference essay and
 # `libre` the plain template. The format is the
 # user's post-approval presentation choice, so it outranks the route default —
 # but never an explicit `template:` key, which still wins in either direction
@@ -100,6 +104,7 @@ FORMAT_TEMPLATE_DEFAULTS = {
     "ape": "ape",
     "acd": "acd",
     "aa": "aa",
+    "proyecto": "proyecto",
     "ieee": "ieee",
     "libre": "plain",
 }
@@ -473,6 +478,8 @@ BIBLIOGRAPHY_TITLES = {
     "acd_report": "Referencias",
     "aa": "Referencias",
     "aa_report": "Referencias",
+    "proyecto": "Referencias",
+    "proyecto_report": "Referencias",
     "ieee": "Referencias",
     "ieee_report": "Referencias",
 }
@@ -684,9 +691,54 @@ def aa_ficha(meta: dict) -> str:
         ("Actividad", activity),
         ("Docente", _flat(meta.get("teacher"))),
         ("Fecha de entrega", _flat(meta.get("date"))),
-        ("Tiempo en el sílabo", _flat(meta.get("planned_time"))),
     )
     return "\n".join(rf"\ficha{{{label}}}{{{value}}}" for label, value in entries if value)
+
+
+def proyecto_identification_table(meta: dict) -> str:
+    r"""Render the project identification table (under the title, full width).
+
+    The ``format: proyecto`` counterpart of ``aa_ficha``: the same data in a
+    normal two-column booktabs table in the document flow instead of a
+    sidebar. Rows follow the AA reading order without the AA-only entries
+    (unit, learning outcome, activity number, syllabus time); a row whose value
+    is absent is omitted. ``\proyectodato`` is defined by the template.
+    """
+    members = meta.get("members")
+    names = [_flat(name) for name in members if str(name).strip()] if isinstance(members, list) else []
+    students = r"\newline ".join(names) if names else _flat(meta.get("student"))
+    cycle = _flat(meta.get("cycle"))
+    parallel = _flat(meta.get("parallel"))
+    if cycle and parallel:
+        cycle = f"{cycle}, paralelo {parallel}"
+    entries = (
+        ("Integrantes", students),
+        ("Asignatura", _flat(meta.get("subject"))),
+        ("Ciclo", cycle),
+        ("Docente", _flat(meta.get("teacher"))),
+        ("Fecha de entrega", _flat(meta.get("date"))),
+    )
+    rows = [rf"\proyectodato{{{label}}} & {value} \\" for label, value in entries if value]
+    if not rows:
+        return ""
+    # Thin grey rules between the rows, as between the AA ficha entries; ink
+    # rules close the table like any AA booktabs table.
+    separator = r"\arrayrulecolor{hair}\midrule"
+    return "\n".join([
+        "% Datos del proyecto",
+        r"\begingroup",
+        r"\small",
+        # Rows as tall as the text (the booktabs rule padding separates them),
+        # and a label column as wide as its longest label.
+        r"\renewcommand{\arraystretch}{1}",
+        r"\noindent",
+        r"\begin{tabularx}{\textwidth}{@{}l@{\hspace{1.4em}}>{\raggedright\arraybackslash}X@{}}",
+        r"\arrayrulecolor{ink}\toprule",
+        f"\n{separator}\n".join(rows),
+        r"\arrayrulecolor{ink}\bottomrule",
+        r"\end{tabularx}",
+        r"\par\endgroup",
+    ])
 
 
 def split_annexes_markdown(markdown_source: str) -> tuple[str, str | None]:
@@ -833,6 +885,8 @@ def markdown_to_latex(
     booktabs_tables: bool = False,
     compact_headings: bool = False,
     column_layout: bool = False,
+    keep_blocks_together: bool = False,
+    emphasised_tables: bool = False,
 ) -> str:
     r"""Convert the report body to LaTeX.
 
@@ -855,6 +909,20 @@ def markdown_to_latex(
     whole page, so tables and figures are sized to ``\columnwidth``, and
     tables are non-floating ``tabularx`` blocks because ``longtable`` and
     ``xltabular`` cannot run in two-column mode.
+
+    ``keep_blocks_together`` (``KEEP_TOGETHER_TEMPLATE_KEYS``) never lets a
+    heading part from the start of its content: a heading, a "Tabla N."
+    caption or a table that directly follows a heading or caption gets no
+    ``\Needspace`` of its own (its break penalty is what strands the heading at
+    the page foot); it is tied to the block above with ``\nopagebreak`` and the
+    look-ahead of the first block of the chain grows instead. A table of up to
+    ``SHORT_TABLE_ROWS`` body rows is one unbreakable ``tabularx`` block.
+
+    ``emphasised_tables`` (``EMPHASISED_TABLE_TEMPLATE_KEYS``) tints the
+    booktabs header row (``\rowcolor{wash}``), right-aligns columns of numbers
+    (header included, as the column spec covers it), sets a last row whose
+    first cell starts with "Total" in bold under a rule, and opens up the row
+    spacing.
     """
     text_width = r"\columnwidth" if column_layout else r"\textwidth"
     lines = markdown.splitlines()
@@ -864,6 +932,25 @@ def markdown_to_latex(
     # Annex figures are pinned ([H]): an annex page often holds only its
     # heading, so a float would leave it empty and move to the next page.
     in_annex = False
+    # keep_blocks_together: [index in output of the chain's \Needspace, its
+    # lines, len(output) where the chain currently ends (-1: no open chain)].
+    keep_chain: list[int] = [-1, 0, -1]
+
+    def look_ahead(lines_needed: int, chain_lines: int = 0) -> None:
+        """Reserve room before a block, or tie it to the heading/caption above."""
+        if keep_blocks_together and keep_chain[2] == len(output):
+            if chain_lines:
+                keep_chain[1] += chain_lines
+                output[keep_chain[0]] = rf"\Needspace{{{keep_chain[1]}\baselineskip}}"
+            output.append(r"\nopagebreak")
+            return
+        output.append(rf"\Needspace{{{lines_needed}\baselineskip}}")
+        keep_chain[:] = [len(output) - 1, lines_needed, -1]
+
+    def open_chain() -> None:
+        """The block just emitted (a heading or caption) keeps what follows."""
+        if keep_blocks_together:
+            keep_chain[2] = len(output)
 
     def split_table_row(row: str) -> list[str]:
         # GFM: `\|` is a literal pipe inside a cell, never a column break.
@@ -892,8 +979,18 @@ def markdown_to_latex(
                 names.append("raggedright")
             else:
                 cells = [re.sub(r"[*`$_]", "", row[index]) for row in rows[1:] if index < len(row)]
+                if emphasised_tables and is_numeric_column(cells):
+                    names.append("raggedleft")
+                    continue
                 names.append("centering" if all(len(cell) <= 12 for cell in cells) else "raggedright")
         return names
+
+    def is_numeric_column(cells: list[str]) -> bool:
+        # Amounts, counts and percentages; empty cells (a total row's blanks)
+        # do not count against the column.
+        values = [re.sub(r"(?i)\s|usd|\\?[$€%]", "", cell) for cell in cells]
+        values = [value for value in values if value]
+        return bool(values) and all(re.fullmatch(r"[-+]?\d[\d.,]*", value) for value in values)
 
     def render_booktabs_table(rows: list[list[str]], columns: int, markers: list[str]) -> None:
         # Horizontal rules only, as in the approved AA-B and ACD-B mockups. Still
@@ -909,27 +1006,46 @@ def markdown_to_latex(
         header_cells = rows[0] + [""] * (columns - len(rows[0]))
         # A column page cannot hold xltabular: the table is a tabularx block
         # one column wide, without the repeating header \endhead provides.
-        env = "tabularx" if column_layout else "xltabular"
+        # With keep_blocks_together a short table is such a block too, so it
+        # never splits across pages.
+        boxed = column_layout or (keep_blocks_together and len(rows) - 1 <= SHORT_TABLE_ROWS)
+        env = "tabularx" if boxed else "xltabular"
         # tabularx adds no space around itself (xltabular does), so a column
         # table gets an explicit gap from the caption above and the text below.
-        gap = [r"\par\medskip"] if column_layout else []
+        gap = [r"\par\medskip"] if boxed else []
+        # An unbreakable block moves with its heading by itself; a breakable
+        # one needs the heading's look-ahead to cover its first rows.
+        look_ahead(4, 0 if boxed else 4)
         output.extend([
-            r"\Needspace{4\baselineskip}",
             *gap,
             r"\begingroup",
             r"\footnotesize" if column_layout else r"\small",
-            r"\renewcommand{\arraystretch}{1.2}",
+            r"\renewcommand{\arraystretch}{1.35}" if emphasised_tables else r"\renewcommand{\arraystretch}{1.2}",
             # A column-wide table must not inherit the paragraph indent.
-            *([r"\noindent"] if column_layout else []),
-            rf"\begin{{{env}}}{{{text_width}}}{{@{{}}{colspec}@{{}}}}",
+            *([r"\noindent"] if boxed else []),
+            # A tinted header keeps the edge padding: colortbl paints
+            # \tabcolsep past each cell, which `@{}` would push past the rules.
+            rf"\begin{{{env}}}{{{text_width}}}{{{colspec}}}"
+            if emphasised_tables
+            else rf"\begin{{{env}}}{{{text_width}}}{{@{{}}{colspec}@{{}}}}",
             r"\toprule",
+            *([r"\rowcolor{wash}"] if emphasised_tables else []),
             " & ".join(r"\reporttablehead{" + convert_inline(cell) + "}" for cell in header_cells) + r" \\",
             r"\midrule",
-            *([] if column_layout else [r"\endhead"]),
+            *([] if boxed else [r"\endhead"]),
         ])
-        for row in rows[1:]:
-            cells = row + [""] * (columns - len(row))
-            output.append(" & ".join(convert_inline(cell) for cell in cells) + r" \\")
+        body_rows = rows[1:]
+        total = (
+            emphasised_tables
+            and len(body_rows) > 1
+            and re.sub(r"[*_\s]", "", body_rows[-1][0] if body_rows[-1] else "").lower().startswith("total")
+        )
+        for index, row in enumerate(body_rows):
+            cells = [convert_inline(cell) for cell in row + [""] * (columns - len(row))]
+            if total and index == len(body_rows) - 1:
+                output.append(r"\midrule")
+                cells = [rf"\textbf{{{cell}}}" for cell in cells]
+            output.append(" & ".join(cells) + r" \\")
         output.extend([
             r"\bottomrule",
             rf"\end{{{env}}}",
@@ -1011,8 +1127,9 @@ def markdown_to_latex(
             text = " ".join(item.strip() for item in paragraph)
             # A "Tabla N." caption or a "**Código N.**" listing label must not be
             # stranded at a page foot apart from its table or listing.
-            if re.match(r"^(Tabla|Table)\s+\d+\.|^\*\*(Código|Listing)\s+\S+?\.\*\*", text):
-                output.append(r"\Needspace{8\baselineskip}")
+            caption = bool(re.match(r"^(Tabla|Table)\s+\d+\.|^\*\*(Código|Listing)\s+\S+?\.\*\*", text))
+            if caption:
+                look_ahead(8, 2)
             # CommonMark hard break: a line ending in one backslash ends a
             # visual line inside the paragraph ("**Pregunta**\" + answer).
             segments: list[list[str]] = [[]]
@@ -1026,6 +1143,8 @@ def markdown_to_latex(
                     segments[-1].append(line)
             output.append("\\\\\n".join(convert_inline(" ".join(segment)) for segment in segments))
             output.append("")
+            if caption:
+                open_chain()
             paragraph = []
 
     def close_list() -> None:
@@ -1333,9 +1452,10 @@ def markdown_to_latex(
                 needspace_lines = 10
             else:
                 needspace_lines = 8
-            output.append(rf"\Needspace{{{needspace_lines}\baselineskip}}")
+            look_ahead(needspace_lines, 3)
             output.append(rf"\{command}{{{title}}}")
             output.append("")
+            open_chain()
             i += 1
             continue
 
@@ -1434,6 +1554,8 @@ APE_TEMPLATE_KEYS = frozenset({"ape", "ape_report"})
 ACD_TEMPLATE_KEYS = frozenset({"acd", "acd_report"})
 # And for aa-report.tex, the editorial autonomous-learning report.
 AA_TEMPLATE_KEYS = frozenset({"aa", "aa_report"})
+# And for proyecto-report.tex, the AA look for a project report (no sidebar).
+PROYECTO_TEMPLATE_KEYS = frozenset({"proyecto", "proyecto_report"})
 # And for ieee-report.tex, the IEEE conference-style two-column essay.
 IEEE_TEMPLATE_KEYS = frozenset({"ieee", "ieee_report"})
 
@@ -1443,16 +1565,28 @@ IEEE_TEMPLATE_KEYS = frozenset({"ieee", "ieee_report"})
 # On these templates the fixed `# Anexos` section must render AFTER the
 # bibliography, so render_tex() splits body.md at that heading (see
 # split_annexes_markdown) and emits it through {{AFTER_BIBLIOGRAPHY}}.
-ANNEXES_AFTER_BIBLIOGRAPHY_TEMPLATE_KEYS = APE_TEMPLATE_KEYS | ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS
+ANNEXES_AFTER_BIBLIOGRAPHY_TEMPLATE_KEYS = (
+    APE_TEMPLATE_KEYS | ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS | PROYECTO_TEMPLATE_KEYS
+)
 # These templates restyle `description` as a label column, so render_tex()
 # turns Pandoc definition lists (`term` / `: definition`) into it.
 DEFINITION_LIST_TEMPLATE_KEYS = ACD_TEMPLATE_KEYS
 # These templates follow mockups with booktabs tables, figures set where they
 # are introduced and a short heading look-ahead, so render_tex() opts the
 # converter into each (see markdown_to_latex).
-BOOKTABS_TEMPLATE_KEYS = ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS
-INLINE_FIGURE_TEMPLATE_KEYS = ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS
-COMPACT_HEADING_TEMPLATE_KEYS = ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS | IEEE_TEMPLATE_KEYS
+BOOKTABS_TEMPLATE_KEYS = ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS | PROYECTO_TEMPLATE_KEYS
+INLINE_FIGURE_TEMPLATE_KEYS = ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS | PROYECTO_TEMPLATE_KEYS
+COMPACT_HEADING_TEMPLATE_KEYS = (
+    ACD_TEMPLATE_KEYS | AA_TEMPLATE_KEYS | PROYECTO_TEMPLATE_KEYS | IEEE_TEMPLATE_KEYS
+)
+# These templates never part a heading from its content and never split a
+# short table (see keep_blocks_together in markdown_to_latex).
+KEEP_TOGETHER_TEMPLATE_KEYS = PROYECTO_TEMPLATE_KEYS
+# These templates tint the table header, right-align numbers and set a "Total"
+# row apart (see emphasised_tables in markdown_to_latex).
+EMPHASISED_TABLE_TEMPLATE_KEYS = PROYECTO_TEMPLATE_KEYS
+# The largest table (body rows) keep_blocks_together sets as one unbreakable block.
+SHORT_TABLE_ROWS = 12
 # Multi-column templates: \textwidth is the whole page there, so the converter
 # sizes tables and figures to \columnwidth instead (see markdown_to_latex).
 COLUMN_LAYOUT_TEMPLATE_KEYS = IEEE_TEMPLATE_KEYS
@@ -1576,6 +1710,8 @@ def render_tex(config: ReportConfig) -> str:
         "booktabs_tables": template_key in BOOKTABS_TEMPLATE_KEYS,
         "compact_headings": template_key in COMPACT_HEADING_TEMPLATE_KEYS,
         "column_layout": template_key in COLUMN_LAYOUT_TEMPLATE_KEYS,
+        "keep_blocks_together": template_key in KEEP_TOGETHER_TEMPLATE_KEYS,
+        "emphasised_tables": template_key in EMPHASISED_TABLE_TEMPLATE_KEYS,
     }
     body = markdown_to_latex(
         main_source, build_dir=build_dir, table_styles=table_styles, figure_placement=figure_spec,
@@ -1743,6 +1879,8 @@ def render_tex(config: ReportConfig) -> str:
         "{{AA_LABEL}}": latex_escape(aa_label(meta)),
         "{{AA_HEADING}}": latex_escape(aa_heading(meta)),
         "{{AA_FICHA}}": aa_ficha(meta),
+        # proyecto-only machinery; a harmless no-op for every other template.
+        "{{PROYECTO_DATOS}}": proyecto_identification_table(meta),
         # IEEE-essay-only machinery; harmless no-ops for every other template.
         "{{IEEE_AUTHOR}}": ieee_author_block(meta),
         "{{IEEE_ABSTRACT}}": ieee_abstract_block(ieee_abstract, ieee_keywords),

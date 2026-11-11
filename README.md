@@ -55,7 +55,7 @@ Keep a `body.md` bound to one backend.
 
 ```txt
 ├── tools/        # pipeline, validators, gates and their tests (tools/test_*.py)
-├── templates/    # LaTeX templates (UNL, APE, AA, ACD, plain, cover page), CSS, table styles
+├── templates/    # LaTeX templates (UNL, APE, AA, Proyecto, ACD, plain, cover page), CSS, table styles
 ├── examples/     # ejemplo_informe_academico/ (report folder) and sample_report.md
 ├── skills/       # agent skills — source of truth for the runtimes
 ├── tests/        # skill contract tests (tests/skills/)

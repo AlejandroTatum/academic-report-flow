@@ -250,6 +250,7 @@ ROUTE_COVER_DEFAULTS: dict[str, dict[str, Any]] = {
 FORMAT_COVER_DEFAULTS: dict[str, dict[str, Any]] = {
     "ape": {"required": False, "body_starts_on_page": 1},
     "aa": {"required": False, "body_starts_on_page": 1},
+    "proyecto": {"required": False, "body_starts_on_page": 1},
     "acd": {"required": False, "body_starts_on_page": 1},
     "ieee": {"required": False, "body_starts_on_page": 1, "logo_required": False},
 }
@@ -277,6 +278,8 @@ def unknown_route_message(route: str) -> str:
 #
 #     format: ape     the teacher's Word replica (templates/ape-report.tex)
 #     format: aa      the current academic look (unl-report.tex), unchanged
+#     format: proyecto  a group/project report with the AA look and no
+#                     sidebar (templates/proyecto-report.tex)
 #     format: acd     the "Aprendizaje en Contacto con el Docente" session
 #                     record sheet (templates/acd-report.tex)
 #     format: ieee    an IEEE conference-style two-column essay, no cover
@@ -313,6 +316,9 @@ APE_OMITTABLE_FIELDS: tuple[str, ...] = (
 
 FORMAT_REQUIRED_METADATA: dict[str, tuple[str, ...]] = {
     "aa": ("title", "subject", "teacher", "student", "date"),
+    # A project report prints the AA identification data as a table; `cycle`
+    # and `parallel` are optional rows.
+    "proyecto": ("title", "subject", "teacher", "student", "date"),
     "ape": (
         "title", "subject", "teacher", "student", "date",
         "cycle", "unit", "learning_outcome", "practice_number",
@@ -446,7 +452,7 @@ class ReportConfig:
 
     @property
     def format(self) -> str | None:
-        """Canonical document format (``ape``, ``aa``, ``acd``, ``ieee`` or ``libre``).
+        """Canonical document format (``ape``, ``aa``, ``proyecto``, ``acd``, ``ieee`` or ``libre``).
 
         Returns ``None`` when the key is absent: the format has not been
         chosen yet, which is valid while the flow is still content-first.
