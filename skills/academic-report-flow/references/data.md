@@ -23,8 +23,8 @@ For a quick project, business, technical or one-page document the user wants wit
 - Intake asks only what the request lacks to identify the document (route, title, author); no guide, rubric or teacher batch.
 - Record the format defaults yourself, never ask them: `format: libre`, `format_spec: "documento sobrio sin portada"`, `output: pdf`, plus `min_sources: 0` unless the user supplies or requests sources.
 - Plan: write `rubric.yml` from the route's section list (`routing.md`) and the user's request; the independent verifier still runs.
-- Approval: run `approval_marker.py approve <folder> --express` (never `--by`); no draft PDF, no approval packet, no question. The tools refuse it outside `flow: express`.
-- The only human gate is the final review of the built PDF (`final-review.yml`); a request for changes there edits `body.md`, re-runs `--express` and rebuilds.
+- No approval step: like every report, v1 is built without a draft approval; `approval_marker.py` with `--express` refuses and records nothing.
+- The human gate is the review of the built PDF (`final-review.yml`); a request for changes there edits `body.md` and builds the next version.
 
 ## report.yml record
 
@@ -33,7 +33,7 @@ Keys the pipeline reads; never add `report.yml` keys beyond this record, and nev
 ```yaml
 type: report                  # backend: essay | report | technical_report | visual | docx ...
 route: project                # academic | project | business | technical | other
-# flow: express               # routes B-E only: one human gate, the final review (see Express flow)
+# flow: express               # routes B-E only: format defaults recorded, no format question (see Express flow)
 output: pdf                   # pdf | docx
 template: plain               # only when confirmed; omit otherwise
 
@@ -64,7 +64,7 @@ min_sources: 1                # only when a requirement limits sources; positive
 
 ## Full-route confirmations
 
-Standalone run, only when the work-folder flow is unavailable. Ask, then stop. The Document Contract below is a data record written to `report.yml`; it does not authorize generation, and intake never asks for approval. Generation starts only after the one human approval in `references/approval.md`.
+Standalone run, only when the work-folder flow is unavailable. Ask, then stop. The Document Contract below is a data record written to `report.yml`; it does not authorize generation, and intake never asks for approval. Generation of v1 starts after verify and the format phase (`references/approval.md`); the human reviews the formatted version.
 
 1. Document type: University academic work, Project documentation, Professional/business report, Technical document, Other. May recommend one with a one-line reason; must never auto-select or continue on silence. There is no default type.
 2. Audience and purpose, two independent fields: who reads it, and what the reader must do after. A mismatch stops the run.
@@ -76,7 +76,7 @@ Identity confirmation: individual report = full name; group report = complete me
 
 Structure confirmation: ask whether the teacher/client supplied a mandatory structure. Combine requirements from every supplied source; a contradiction between sources blocks confirmation until the user resolves it. Record each required section's exact title, order and at least one criterion; quantitative limits stay entirely optional per section and are never inferred. With no supplied structure, propose one and require explicit confirmation; never a provisional structure. The confirmed `structure:` (`tools/structure_contract.py`) downstream phases stay blocked while it is unconfirmed; a changed source requires reconfirmation.
 
-Question scope: length, depth or page count must not be a mandatory question; ask compactly, one targeted clarification per missing route-mandatory field; adaptivity never adds, removes or relocates the single approval gate.
+Question scope: length, depth or page count must not be a mandatory question; ask compactly, one targeted clarification per missing route-mandatory field; adaptivity never adds a human gate before v1.
 
 Render the record before writing it:
 

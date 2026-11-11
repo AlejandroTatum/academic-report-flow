@@ -25,12 +25,12 @@ Every command is absolute and cwd-independent. Run first:
 | plan | `content.md` | academic-report-flow | `reports/<wf>/rubric.yml` |
 | draft | `content.md` | academic-report-flow | `reports/<wf>/body.md` |
 | verify | `production.md` | academic-report-flow + one independent verifier | `reports/<wf>/content-check.yml` |
-| approval | `approval.md` | human gate, no executor | `reports/<wf>/approval.yml` |
-| format | `approval.md` | academic-report-flow | `reports/<wf>/report.yml` |
+| approval | `approval.md` | legacy phase, never waits; no executor | `reports/<wf>/approval.yml` |
+| format | `approval.md` | academic-report-flow (asks before v1) | `reports/<wf>/report.yml` |
 | typeset | `production.md` | academic-report-flow | `reports/<wf>/body.typeset.md` |
 | generate | `production.md` | academic-report-flow | `outputs/<materia>/<final>.pdf` |
 | validate | `production.md` | academic-report-flow or `gentle-ai review` | `reports/<wf>/validation.yml` |
-| review | `delivery.md` | human gate, no executor | `reports/<wf>/final-review.yml` |
+| review | `delivery.md` | human gate (each version), no executor | `reports/<wf>/final-review.yml` |
 | deliver | `delivery.md` | academic-report-flow | `~/Documents/<category>/[<subject-slug>/]<slug>/<slug>-vNNN.pdf` |
 
 Each phase produces one artifact. Research is mandatory (at least 5 book or paper sources, or the report's `min_sources:`; `0` only off the academic route; `business` defaults to 0; `uncited_bibliography: true`, academic only and exclusive with `min_sources`, lists the whole bib with no citations).

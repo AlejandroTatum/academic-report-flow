@@ -1,9 +1,9 @@
-"""Static contract: verification runs in parallel with the draft preview build (S7).
+"""Static contract: verification never waits for a draft preview (S7, report-v1 T2).
 
-The verifier needs only ``body.md`` and the rubric; ``draft_pdf.py`` needs only
-``body.md``. The skill tells the orchestrator to start both in the same step, and
-the approval gate still requires a fresh draft and a current verification for the
-same ``body.md`` bytes. No phase is added, removed or renamed.
+The verifier needs only ``body.md`` and the rubric; ``draft_pdf.py`` is an
+optional preview. When the user asks for one, the skill starts both in the same
+step. There is no approval gate any more, and no phase is added, removed or
+renamed.
 """
 
 from __future__ import annotations
@@ -22,20 +22,20 @@ def _flat(path: Path) -> str:
     return re.sub(r"\s+", " ", path.read_text(encoding="utf-8"))
 
 
-def test_production_runs_verify_in_parallel_with_the_preview_build() -> None:
+def test_production_starts_an_optional_preview_in_the_same_step_as_the_verifier() -> None:
     flat = _flat(REFS / "production.md")
-    assert re.search(r"in parallel with .{0,80}draft_pdf\.py", flat)
-    assert "same step" in flat
+    assert "No draft PDF has to exist first" in flat
+    assert re.search(r"optional plain preview .{0,80}draft_pdf\.py", flat)
+    assert "same step as the verifier" in flat
 
 
-def test_approval_starts_the_preview_build_with_the_verifier() -> None:
+def test_approval_reference_makes_the_preview_optional() -> None:
     flat = _flat(REFS / "approval.md")
-    assert re.search(r"parallel.{0,200}verif", flat)
-    assert re.search(r"fresh draft.{0,80}current verification|current verification.{0,80}fresh draft", flat)
-    assert "same `body.md` bytes" in flat
+    assert "Neither is a prerequisite for typeset or generate" in flat
+    assert "fresh draft" not in flat
 
 
-def test_parallel_verify_keeps_the_gate_and_the_phase_list() -> None:
+def test_verify_guidance_reports_findings_and_keeps_the_phase_list() -> None:
     sys.path.insert(0, str(TOOLS_DIR))
     import doc_status
 
@@ -43,7 +43,9 @@ def test_parallel_verify_keeps_the_gate_and_the_phase_list() -> None:
         "intake", "research", "plan", "draft", "verify", "approval", "format",
         "typeset", "generate", "validate", "review", "deliver",
     )
-    assert "approval gate stays closed" in doc_status._GUIDANCE["verify"]
+    verify = doc_status._GUIDANCE["verify"]
+    assert "approval gate stays closed" not in verify
+    assert "report missing and partial findings honestly" in verify
 
 
 def test_skill_mentions_timings_without_a_score_gate() -> None:

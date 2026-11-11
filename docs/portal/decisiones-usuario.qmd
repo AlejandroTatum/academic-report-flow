@@ -2,7 +2,8 @@
 title: "Decisiones del usuario"
 ---
 
-El flujo documental tiene **tres decisiones humanas**. Todo lo demás lo exigen herramientas (`doc_status`,
+El flujo documental tiene **tres decisiones humanas** y ninguna es aprobar el texto del borrador: la primera versión
+formateada es la v1, sin aprobación del borrador, con los hallazgos de la rúbrica a la vista. Todo lo demás lo exigen herramientas (`doc_status`,
 `content_check`, `validate_report.py`, auditoría visual, `deliver_report.py`) y la skill obedece sus bloqueos.
 La fuente de verdad es `skills/academic-report-flow/` (ver [Skills](skills.qmd)); el diagrama está en
 [Flujo del documento](flujo.qmd).
@@ -10,8 +11,8 @@ La fuente de verdad es `skills/academic-report-flow/` (ver [Skills](skills.qmd))
 | # | Decisión | Qué se decide | Referencia de la skill |
 |---|---|---|---|
 | 1 | Datos | título, estudiante y la guía, rúbrica y explicación del docente, en una sola tanda de preguntas | `references/data.md` |
-| 2 | Aprobación del borrador + formato | aprobar `body.md` (bytes exactos) y elegir formato (APE, AA, ACD o libre) y salida (PDF o DOCX), en una sola tanda | `references/approval.md` |
-| 3 | Revisión final | OK sobre el PDF exacto construido | `references/delivery.md` |
+| 2 | Formato antes de v1 | elegir formato (APE, AA, ACD o libre), salida (PDF o DOCX) y los datos que falten, en una sola tanda, después de verify y antes de `typeset` | `references/approval.md` |
+| 3 | Revisión de cada versión | sobre el PDF exacto de v1 (y luego v2, v3...): pedir cambios o evidencia nueva, dar el OK final y, aparte, la instrucción explícita de publicar | `references/delivery.md` |
 
 ## Reglas que cuidan al usuario
 
@@ -20,18 +21,23 @@ La fuente de verdad es `skills/academic-report-flow/` (ver [Skills](skills.qmd))
 - **Identidad:** un nombre de estudiante que el usuario guardó como permanente cuenta como confirmado; en otro caso es
   una sugerencia de opción única, nunca se rellena solo. Un título que contiene comentarios pide una confirmación de una línea.
 - **Intake no pregunta formato:** plantilla, portada, dirección visual y formato de entrega los decide la fase `format`
-  junto con la aprobación.
-- **Silencio no es aprobación:** `approval.yml` y `final-review.yml` se escriben solo con una respuesta explícita y con las
-  herramientas `approval_marker.py` y `final_review_marker.py`, nunca a mano.
-- **Ediciones del usuario:** las órdenes literales de edición se aplican tal cual, sin pulir el texto del usuario. Una
-  edición acotada (a lo sumo 40 palabras cambiadas y ningún encabezado tocado) conserva la aprobación sin preguntar; verify,
-  reconstrucción y validación siguen corriendo.
-- **Modo express:** `flow: express` (rutas B a E, nunca académica) deja una sola decisión: la revisión final.
-- **Publicar no es aprobar:** `deliver_report.py` solo publica con un marcador `APPROVAL_CURRENT` vigente.
+  antes de generar v1.
+- **Generar no es cumplir:** v1 se genera aunque la rúbrica tenga criterios faltantes o parciales; se muestran como
+  hallazgos y nunca como cumplidos.
+- **Silencio no es aprobación:** `final-review.yml` se escribe solo con una respuesta explícita y con
+  `final_review_marker.py`, nunca a mano. Un `approval.yml` heredado se lee tal cual; el flujo ya no registra uno nuevo.
+- **Ediciones del usuario:** las órdenes literales de edición se aplican tal cual, sin pulir el texto del usuario. Cada tanda
+  de cambios produce la versión siguiente. Una edición acotada (a lo sumo 40 palabras cambiadas y ningún encabezado
+  tocado) conserva la revisión final y la verificación sin preguntar; reconstrucción y validación siguen corriendo.
+- **Modo express:** `flow: express` (rutas B a E, nunca académica) registra el formato por defecto sin preguntar y deja
+  la revisión de la versión formateada; `approval_marker.py --express` ya no registra una aprobación automática.
+- **Publicar no es aprobar:** `deliver_report.py` publica solo ante una instrucción explícita y rechaza fallas de rúbrica
+  sin brecha aceptada, citas sin resolver, una revisión final ausente o un PDF sin su registro de generación
+  (`build/generation.yml`); un informe heredado conserva el camino de `APPROVAL_CURRENT`.
 
 ## Relación con las especificaciones
 
 Las especificaciones de [Flujo documental](../../openspec/specs/document-workflow/spec.md) y de
 [Orquestación del flujo documental](../../openspec/specs/document-workflow-orchestration/spec.md) fijan los requisitos
-(intake adaptable, estado derivado de artefactos, compuerta de aprobación que falla cerrada, distribución entre
+(intake adaptable, estado derivado de artefactos, compuertas de publicación que fallan cerradas, distribución entre
 runtimes). Para el comportamiento operativo vigente, la referencia son los archivos de `skills/academic-report-flow/references/`.

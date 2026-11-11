@@ -2,6 +2,16 @@
 
 The direction confirmed in Confirmation 5 is an execution parameter, not a label. It must change typography, tables, diagrams, density, color, and composition in the rendered artifact. If the rendered pages would look identical under two directions, the direction was not applied.
 
+## Tables and figures (every direction)
+
+The direction sets how a table or figure looks; these rules decide whether it belongs at all. They are review criteria for the draft, the editorial pass (`content.md`) and validation, not approval requirements.
+
+- Content: show the project's actual data, components or relationships (measured values, the real circuit, modules, states or decisions of this work); never a generic or decorative template that would fit any report on the topic.
+- Title: an informative title that says what the visual shows and, when it fits, what it reveals; units in headers or axes and the source (own measurement, guide, cited reference) when applicable.
+- Data: never invent measurements, results or values to fill a table or chart; a value that is not available stays out or is marked as pending in the text.
+- Count: no quota of tables or figures; add one only where it supports analysis or a comparison the text needs, and none is a valid outcome.
+- Prose interprets: the surrounding paragraph says what the visual shows and why it matters; it never repeats the cells or labels one by one.
+
 ## Technical
 
 - Typography: clean, neutral, consistent; monospace for codes, identifiers, paths, and commands.

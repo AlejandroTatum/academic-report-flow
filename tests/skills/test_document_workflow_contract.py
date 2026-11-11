@@ -70,7 +70,7 @@ PHASE_REFERENCE = {
 }
 PHASE_EXECUTOR = {
     "research": "research-workflow",
-    "approval": "human gate",
+    "approval": "legacy phase, never waits",
     "review": "human gate",
 }
 PHASE_ARTIFACT = {
@@ -241,10 +241,11 @@ def test_referenced_paths_resolve_and_removed_files_stay_gone() -> None:
 
 
 def test_approval_reference_contract() -> None:
-    """Slice 3b-i owns `approval.md`: the human gate, its marker schema, and its refusal to infer consent.
+    """`approval.md` owns the legacy approval marker schema and its refusal to infer consent.
 
-    The reference must exist on disk, name the three marker keys, and state that
-    silence or an agent-side inference never produces `approval.yml`.
+    report-v1 T2: the phase never waits and no human gate runs there; the
+    reference still names the legacy marker keys and states that silence or an
+    agent-side inference never produces `approval.yml`.
     """
     text = read(APPROVAL_MD)
     for key in ("body_sha256", "approved_at", "approved_by"):
@@ -262,29 +263,26 @@ def test_approval_reference_contract() -> None:
     assert re.search(r"never (?:produce|produces|writes|creates)[^.]*approval\.yml", flat), (
         "approval.md must state that a non-explicit answer never produces approval.yml"
     )
-    assert "human gate" in flat, "approval.md must identify the human gate"
-    assert "lossless" in flat, "approval.md must name the lossless prompt contract"
+    assert "no human gate" in flat and "never waits" in flat, "approval.md must state the phase never waits"
+    assert "never record a new `approval.yml`" in flat
     assert not re.search(r"^Executor:", text, re.MULTILINE), (
-        "approval.md is the human gate: it must declare no executor"
+        "approval.md must declare no executor"
     )
 
 
-def test_generate_reference_forbids_unapproved_build() -> None:
-    """Slice 3b-i extends `production.md` with the approval-done precondition.
+def test_generate_reference_builds_v1_without_draft_approval() -> None:
+    """report-v1 T2: generation waits for verify, format and typeset, never a draft approval.
 
-    Generation is the first phase that spends build effort on approved bytes, so the
-    reference must state the precondition and forbid acting before it holds. T1 cut
-    the preview binding: the approval marker binds `body.md` only.
+    The plain preview stays optional and is never the final artifact; the build
+    binds its PDF to the generated artifact identity the publisher checks.
     """
     text = read(PRODUCTION_MD)
     flat = re.sub(r"\s+", " ", text).lower()
-    assert "approval: done" in flat, "production.md must name the `approval: done` precondition"
-    assert "body_sha256" in flat, "production.md must name the hash the approval binds to"
-    assert "body.md" in flat, "production.md must name body.md as the approved input"
-    assert "preapproval draft preview" in flat and "never the final artifact" in flat
-    assert re.search(r"(?:never|must not|do not|does not) build (?:before|until)", flat), (
-        "production.md must forbid building before approval is done"
-    )
+    assert "approval: done" not in flat
+    assert "runs once `verify`, `format` and `typeset` are `done`; no draft approval is needed" in flat
+    assert "typeset required" in flat
+    assert "build/generation.yml" in flat
+    assert "optional plain preview" in flat and "never the final artifact" in flat
 
 
 def test_validate_reference_runs_only_the_fallback_chain() -> None:
@@ -539,15 +537,15 @@ def test_plan_defines_rubric_tdd_before_drafting() -> None:
         assert phrase in text
 
 
-def test_draft_runs_mechanical_checks_before_presentation() -> None:
+def test_draft_runs_mechanical_checks_before_verify() -> None:
     text = read(CONTENT_MD)
-    for phrase in ("every rubric check", "green", "content_check.py", "mechanical", "before presenting"):
+    for phrase in ("the rubric checks", "content_check.py", "mechanical", "Body check before verify"):
         assert phrase in text
 
 
 def test_approval_batches_literal_orders_and_rechecks() -> None:
     text = re.sub(r"\s+", " ", read(APPROVAL_MD))
-    for phrase in ("Batch", "all literal edit orders", "one reading", "verbatim", "only then", "re-approval", "verify", "generate", "validate"):
+    for phrase in ("Batch", "all literal edit orders", "one reading", "verbatim", "re-verify", "next version", "build, validate"):
         assert phrase in text
 
 
@@ -604,7 +602,7 @@ def test_clarity_policy_preserves_scope_authorship_and_semantic_review() -> None
     skill, content, approval, production, routing = map(_flat, (SKILL_MD, CONTENT_MD, APPROVAL_MD, PRODUCTION_MD, ROUTING_MD))
     assert "add necessary evidence" in skill and "never by adding prose" not in content
     assert "structural defaults, not independent content requirements" in routing
-    assert "preserve user-authored wording" in approval and "do not silently change approved prose" in approval
+    assert "preserve user-authored wording" in approval and "do not silently change its prose" in approval
     assert "do not authorize one" in approval
     assert "semantic repetition" in production and "whole draft" in production
     assert "advisory warnings" in content
@@ -987,21 +985,21 @@ def test_visual_pass_ownership_is_explicit_across_references() -> None:
 
 
 def test_approval_batches_the_format_questions_and_format_asks_only_missing() -> None:
-    """Task 9.1: one human stop; approval.md is a completeness check plus fallback."""
+    """Task 9.1 / report-v1 T2: one format batch before v1, asking only what is missing."""
     approval = re.sub(r"\s+", " ", read(APPROVAL_MD)).lower()
-    for token in ("same batch", "ape", "aa", "libre", "pdf", "docx", "report.yml", "never infer"):
+    for token in ("one batch", "same batch", "ape", "aa", "libre", "pdf", "docx", "report.yml", "never infer"):
         assert token in approval, f"approval.md must describe the single batch: {token}"
-    assert "only `body.md`" in approval or "binds only body.md" in approval
+    assert "draft-approval batch" in approval and "no longer rides" in approval
 
     fmt = re.sub(r"\s+", " ", read(APPROVAL_MD)).lower()
     assert "only the missing" in fmt and "never re-ask" in fmt
 
 
 def test_format_answers_are_recorded_apart_from_the_approval() -> None:
-    """#80: a request for changes keeps the format answers and reopens only approval."""
+    """#80 / report-v1 T2: format answers are plain report.yml data a content change never reopens."""
     approval = re.sub(r"\s+", " ", read(APPROVAL_MD)).lower()
-    assert "as soon as it is given, even when the user requests changes" in approval
-    assert "reopens only the body approval" in approval
+    assert "record each format answer in `report.yml` as soon as it is given" in approval
+    assert "a later request for content changes never reopens them" in approval
     assert "records nothing" not in approval
 
 
@@ -1071,11 +1069,10 @@ def test_stage_references_have_no_duplicate_step_numbers() -> None:
 
 
 def test_approval_previews_the_pdf_and_asks_format_spec_for_libre() -> None:
-    """Task 11(a)(b): preview + inspection before the batch; libre adds format_spec as a choice."""
+    """Task 11(a)(b) / report-v1 T2: the plain preview is optional; libre adds format_spec as a choice."""
     approval = _flat(APPROVAL_MD)
-    # issue #96: the preview is for content review; layout is audited after typeset/generate.
-    # S4: the preview is the plain temporary draft (no cover, logos or course template).
-    for token in ("draft_pdf.py", "preview", "no cover", "temporary", "body.typeset.md", "before asking", "never the final", "format_spec", "sin portada", "con portada"):
+    # S4: the preview is the plain temporary draft (no cover, logos or course template), never required.
+    for token in ("draft_pdf.py", "preview", "no cover", "temporary", "body.typeset.md", "neither is a prerequisite", "never the final", "format_spec", "sin portada", "con portada"):
         assert token in approval, f"approval.md must describe the preview and libre format_spec: {token}"
 
 
@@ -1085,11 +1082,13 @@ def test_rubric_checks_default_to_document_wide() -> None:
     assert "document-wide" in content and "only when the property must live in that section" in content
 
 
-def test_approval_gate_requires_fresh_preview_and_clickable_links() -> None:
-    """#59/#60: the first gate needs a rebuilt preview and absolute file:// links; later rounds show only the changes."""
+def test_optional_preview_links_and_versions_show_only_the_changes() -> None:
+    """#59/#60 / report-v1 T2: no preview gate; the optional packet links files; versions list only the changes."""
     approval = _flat(APPROVAL_MD)
-    for token in ("records the sha256", "rebuild the draft pdf", "clickable markdown links", "absolute file:// urls", "never present the first gate without them", "only the changes", "presented-body.md"):
-        assert token in approval, f"approval.md must require a fresh preview and links: {token}"
+    for token in ("clickable file:// links", "what changed", "never paste the whole body again"):
+        assert token in approval, f"approval.md must describe the optional packet and version changes: {token}"
+    for stale in ("rebuild the draft pdf", "never present the first gate without them"):
+        assert stale not in approval, stale
 
 
 def test_draft_phase_documents_the_docx_round_trip() -> None:
@@ -1149,15 +1148,14 @@ def test_content_check_cli_offers_one_verification_and_no_judge_flags() -> None:
     assert "--judgments" not in help_text and "--judge-brief" not in help_text
 
 
-def test_verify_runs_before_approval_and_the_gate_shows_one_packet() -> None:
-    """verify-concise-drafts T8 (S2), #64: one compact approval packet; the matrix stays for agents."""
+def test_verify_runs_before_format_and_v1_carries_the_matrix() -> None:
+    """verify-concise-drafts T8 (S2) / report-v1 T2: verify precedes format and v1; the packet is optional."""
     approval = read(APPROVAL_MD)
-    production = read(PRODUCTION_MD)
+    production = re.sub(r"\s+", " ", read(PRODUCTION_MD))
     assert "tools/approval_packet.py" in approval
-    assert "one summary row per criterion (cumple/falta, found/total), the missing items" in approval
-    assert "per-requirement evidence matrix is for agents" in approval
-    assert "before `approval`" in production
-    assert "approval packet" in production
+    assert "one summary row per criterion" in approval
+    assert "before `format`, `typeset` and v1" in production
+    assert "v1 is presented with the requirement matrix and its findings" in production
 
 
 def test_edit_rounds_recheck_only_what_changed() -> None:
