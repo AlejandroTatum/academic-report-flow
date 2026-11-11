@@ -154,12 +154,13 @@ _GUIDANCE = {
         "explicitly orders removing it"
     ),
     "typeset": (
-        "run {typeset_bind_command} (it copies {body} to {typeset_body} when missing, binds it and "
-        "formats what needs no judgement: `- a; b; c` lines as tables, `Figura:` lines as "
-        "`![caption](path)`, bare URLs as `<url>`), then finish the backend formatting there and never "
+        "run {build_command} (its typeset step is typeset.py auto: it copies {body} to {typeset_body} "
+        "when missing, binds it and formats what needs no judgement: `- a; b; c` lines as tables, `Figura:` lines as "
+        "`![caption](path)`, bare URLs as `<url>`; it builds nothing while the typeset checks fail), "
+        "then finish the backend formatting there and never "
         "in {body}: what it lists as left for you (table column names, formulas as math), the format's "
-        "fixed headings; keep every word and [@key] of {body}; run {typeset_check_command} until it "
-        "passes, then re-run doc_status"
+        "fixed headings; keep every word and [@key] of {body}; run {build_command} again until it "
+        "builds, then re-run doc_status"
     ),
     "generate": "build with {build_command}, then re-run doc_status",
     "validate": "record {validation} for the final PDF, then re-run doc_status",
@@ -1053,12 +1054,10 @@ def _guidance(
         express_approve_command=shlex.join(
             [sys.executable, str(ROOT / "tools" / "approval_marker.py"), "approve", str(folder), "--express"]
         ),
-        build_command=_tool_command("build_report_auto.py", folder),
+        build_command=_tool_command("build.py", folder),
         draft_command=_tool_command("draft_pdf.py", folder),
         draft_pdf=draft_preview_path(folder),
         deliver_command=_tool_command("deliver_report.py", folder),
-        typeset_bind_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "auto", str(folder)]),
-        typeset_check_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "check", str(folder)]),
         typeset_body=folder / "body.typeset.md",
     )
 
