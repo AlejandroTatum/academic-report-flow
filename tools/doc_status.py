@@ -154,9 +154,10 @@ _GUIDANCE = {
         "explicitly orders removing it"
     ),
     "typeset": (
-        "run {typeset_bind_command} (it copies {body} to {typeset_body} when missing "
-        "and binds it), apply the backend formatting there and never in {body}: formulas as math, "
-        "data as tables, `Figura:` lines as `![caption](path)`, bare URLs as `<url>`, the format's "
+        "run {typeset_bind_command} (it copies {body} to {typeset_body} when missing, binds it and "
+        "formats what needs no judgement: `- a; b; c` lines as tables, `Figura:` lines as "
+        "`![caption](path)`, bare URLs as `<url>`), then finish the backend formatting there and never "
+        "in {body}: what it lists as left for you (table column names, formulas as math), the format's "
         "fixed headings; keep every word and [@key] of {body}; run {typeset_check_command} until it "
         "passes, then re-run doc_status"
     ),
@@ -1056,7 +1057,7 @@ def _guidance(
         draft_command=_tool_command("draft_pdf.py", folder),
         draft_pdf=draft_preview_path(folder),
         deliver_command=_tool_command("deliver_report.py", folder),
-        typeset_bind_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "bind", str(folder)]),
+        typeset_bind_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "auto", str(folder)]),
         typeset_check_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "check", str(folder)]),
         typeset_body=folder / "body.typeset.md",
     )
