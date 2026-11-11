@@ -1,0 +1,284 @@
+% Proyecto report template (format: proyecto, odd/tasks/project-format.md S2-S4).
+% The AA template's look (aa-report.tex: UNL letterhead with logo, faculty and
+% career lines, Source Serif 4 / Source Sans 3 / Source Code Pro, crest green,
+% numbered green headings, booktabs tables) for a project report:
+%   * page 1: the letterhead, the eyebrow "PROYECTO · ASIGNATURA", the large
+%     serif title "Proyecto" and the report title as an italic subtitle;
+%   * no sidebar: the identification data is a normal full-width table in the
+%     flow (see proyecto_identification_table in the renderer), right under
+%     the title block and before the first section; the body uses the full
+%     text width on every page;
+%   * a heading never parts from the start of its content and a short table
+%     is never split (the renderer ties them with \nopagebreak, see
+%     keep_blocks_together; no club or widow lines below).
+% Like aa-report.tex, and unlike the institutional templates
+% (onehalfspacing), it keeps the tighter 1.12 line spacing.
+
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[fontsize=10.5pt]{fontsize}
+% One geometry for every page: symmetric margins, no marginal column, the
+% body at the full text width on every page (no sidebar).
+\usepackage[a4paper,top=2.9cm,bottom=2.6cm,left=2.7cm,right=2.7cm,headheight=0.8cm,headsep=0.8cm,footskip=1.1cm]{geometry}
+\usepackage{fontspec}
+% Source Serif 4, Source Sans 3 and Source Code Pro ship with TeX Live and with
+% the texlive/texlive image the renderer falls back to, but a minimal local
+% install may lack them. Each face then degrades to a TeX Gyre face, the same
+% fallbacks the other templates rely on, instead of failing to compile.
+\IfFontExistsTF{Source Serif 4}{%
+  \setmainfont{Source Serif 4}[Ligatures=TeX]
+}{%
+  \setmainfont{TeX Gyre Pagella}[Ligatures=TeX]
+}
+\IfFontExistsTF{Source Sans 3}{%
+  \setsansfont{Source Sans 3}[Ligatures=TeX]
+}{%
+  \setsansfont{TeX Gyre Heros}[Ligatures=TeX]
+}
+\IfFontExistsTF{SourceSerif4-Light.otf}{%
+  \newfontfamily\serlight{SourceSerif4}[Extension=.otf,UprightFont=*-Light,ItalicFont=*-LightIt]
+}{%
+  \newcommand{\serlight}{\normalfont}
+}
+\IfFontExistsTF{Source Code Pro}{%
+  \setmonofont{Source Code Pro}[Scale=MatchLowercase]
+}{%
+  \setmonofont{TeX Gyre Cursor}[Scale=MatchLowercase]
+}
+% es-noindentfirst: babel-spanish indents the first paragraph after a heading by
+% default; the mockup sets it flush and indents only the paragraphs that follow.
+\usepackage[spanish,es-noindentfirst]{babel}
+\usepackage{amsmath}
+\usepackage{unicode-math}
+\IfFontExistsTF{STIX Two Math}{%
+  \setmathfont{STIX Two Math}
+}{%
+  \setmathfont{Latin Modern Math}
+}
+% Math italic letters come from the text face: it matches the body and avoids
+% the STIX Two "W i" gap (the italic correction of its W is applied before the
+% subscript).
+\IfFontExistsTF{SourceSerif4-RegularIt.otf}{%
+  \setmathfont{SourceSerif4-RegularIt}[Extension=.otf,range={it/{latin,Latin}}]
+}{}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{setspace}
+\usepackage{needspace}
+\usepackage{titlesec}
+\usepackage{caption}
+\usepackage{float}
+\usepackage[section]{placeins}
+% placeins bounds floats by \section only; bound them at \subsection too, as
+% ape-report.tex does (#82).
+\let\ReportOriginalSubsection\subsection
+\renewcommand{\subsection}{\FloatBarrier\ReportOriginalSubsection}
+\usepackage{enumitem}
+\usepackage{tabularx}
+\usepackage{xltabular}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{ragged2e}
+\usepackage{fancyhdr}
+\usepackage{eso-pic}
+\usepackage{lastpage}
+\usepackage{csquotes}
+\usepackage[{{BIBLATEX_OPTIONS}}]{biblatex}{{BIBLATEX_SETUP}}
+\usepackage[table]{xcolor}
+{{LISTING_PREAMBLE}}
+\usepackage{ifthen}
+\usepackage[hidelinks]{hyperref}
+% xurl permits breaks throughout long URL and nolinkurl runs.
+\usepackage{xurl}
+\urlstyle{same}
+\addto\captionsspanish{\renewcommand{\tablename}{Tabla}}
+
+\newcommand{\reporthasbib}{{{HAS_BIB}}}
+\ifthenelse{\equal{\reporthasbib}{true}}{\addbibresource{{{BIB_FILE}}}}{}
+
+% Palette: ink, deep green taken from the crest, a quiet grey for labels.
+\definecolor{ink}{HTML}{1B1F1D}
+\definecolor{accent}{HTML}{1F4E3D}
+\definecolor{muted}{HTML}{5F6B66}
+\definecolor{hair}{HTML}{C9D1CC}
+\definecolor{wash}{HTML}{EEF2F0}
+\color{ink}
+
+\setlength{\parindent}{1.1em}
+\setlength{\parskip}{0pt}
+\linespread{1.12}
+\raggedbottom
+\emergencystretch=3em
+\setlist{topsep=3pt,itemsep=2pt,leftmargin=1.2em,labelsep=0.5em}
+\captionsetup{font={small,sf},labelfont={bf,color=accent},justification=raggedright,singlelinecheck=false,skip=5pt}
+\renewcommand{\figurename}{Figura}
+
+\newcommand{\spaced}[1]{{\addfontfeatures{LetterSpace=8}#1}}
+\newcommand{\labelcaps}[1]{{\sffamily\fontsize{6.8}{8}\selectfont\color{muted}\spaced{\MakeUppercase{#1}}\par}}
+
+% Headings (S7): one style family, sans bold in green with the number inline
+% in the same face; the levels differ only by size.
+\titleformat{\section}{\sffamily\fontsize{13.5}{16}\selectfont\bfseries\color{accent}}{\thesection}{0.7em}{}
+\titleformat{\subsection}{\sffamily\fontsize{11.5}{14}\selectfont\bfseries\color{accent}}{\thesubsection}{0.7em}{}
+\titleformat{\subsubsection}{\sffamily\fontsize{10.5}{13}\selectfont\bfseries\color{accent}}{\thesubsubsection}{0.6em}{}
+\titlespacing*{\section}{0pt}{20pt}{7pt}
+\titlespacing*{\subsection}{0pt}{13pt}{4pt}
+\titlespacing*{\subsubsection}{0pt}{10pt}{3pt}
+
+% Tables the Markdown converter emits for this template (booktabs: top, header
+% and bottom rules, no vertical rules or shading), as in the mockup: sans body,
+% bold header cells, ink rules.
+\arrayrulecolor{ink}
+\newcommand{\reporttablehead}[1]{\textbf{#1}}
+\AddToHook{env/xltabular/begin}{\sffamily}
+
+% The paragraph right after a table is flush, as the mockup sets it: the table
+% ends the thought that introduced it. A flag, not a group-local \everypar,
+% because the converter closes its \begingroup right after the table.
+% xltabular never runs cmd/endxltabular/after; its end command is the hook point.
+\newif\ifreportflushnext
+\AddToHook{cmd/endxltabular/after}{\global\reportflushnexttrue}
+\AddToHook{para/begin}{\ifreportflushnext\global\reportflushnextfalse\kern-\parindent\fi}
+
+% Code listings (fenced blocks in body.md): plain monospace with a green rule
+% at the left, no line numbers and no syntax colours.
+\lstdefinestyle{reportcode}{
+  basicstyle=\linespread{1}\footnotesize\ttfamily,
+  frame=leftline,
+  rulecolor=\color{accent},
+  framerule=1.2pt,
+  framesep=8pt,
+  xleftmargin=10pt,
+  xrightmargin=0pt,
+  numbers=none,
+  breaklines=true,
+  breakatwhitespace=false,
+  postbreak=\mbox{\textcolor{muted}{\tiny$\hookrightarrow$}\space},
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  tabsize=2,
+  extendedchars=true,
+  aboveskip=0.9em,
+  belowskip=0.7em,
+  keywordstyle=\bfseries,
+  commentstyle=\color{muted},
+  stringstyle=\relax,
+}
+
+% Boxed environment used by the Markdown converter for highlighted answers.
+\newsavebox{\answerboxbox}
+\newenvironment{answerbox}{%
+  \par\medskip\noindent
+  \setlength{\fboxsep}{10pt}%
+  \begin{lrbox}{\answerboxbox}%
+  \begin{minipage}{\dimexpr\linewidth-2\fboxsep-2\fboxrule\relax}%
+  \vspace{4pt}%
+}{%
+  \vspace{4pt}%
+  \end{minipage}%
+  \end{lrbox}%
+  \fcolorbox{hair}{wash}{\usebox{\answerboxbox}}%
+  \par\medskip
+}
+
+% The bibliography is a numbered section like the rest of the report.
+\defbibheading{bibliography}[\bibname]{\section{#1}}
+\setlength{\bibitemsep}{2pt}
+% babel's Spanish label for a reference URL is "dirección"; the IEEE entries
+% of the mockup read "Disponible en:".
+\DefineBibliographyStrings{spanish}{url={Disponible en}}
+
+% Running header (pages 2+) and footer (all pages), both at the text edges.
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\fancyhead[C]{\sffamily\footnotesize\color{muted}\spaced{\MakeUppercase{Proyecto}\ \,·\,\ \MakeUppercase{{{SUBJECT}}}}}
+\fancyfoot[L]{\sffamily\footnotesize\color{muted}\thepage\,/\,\pageref{LastPage}}
+
+% First page: the letterhead is drawn in the page background, so the header is empty.
+\fancypagestyle{firstpage}{%
+  \fancyhf{}\renewcommand{\headrulewidth}{0pt}
+  \fancyfoot[L]{\sffamily\footnotesize\color{muted}\thepage\,/\,\pageref{LastPage}}
+}
+
+\hypersetup{
+  pdftitle={Proyecto: {{TITLE}}},
+  pdfauthor={{{STUDENT}}},
+  pdfsubject={{{SUBJECT}}},
+  colorlinks=false,
+  pdfborder={0 0 0}
+}
+
+% S4: no paragraph leaves a single line at the foot or the head of a page, so
+% a heading always keeps the first lines of the text that follows it.
+\clubpenalty=10000
+\widowpenalty=10000
+
+% Identification table label cell: the small spaced caps of the AA labels.
+% \leavevmode first: a colour whatsit in vertical mode would become the top of
+% the p-cell and push the label one line below its value.
+\newcommand{\proyectodato}[1]{\leavevmode{\sffamily\fontsize{7.4}{9}\selectfont\color{muted}\spaced{\MakeUppercase{#1}}}}
+% Table caption (S8b): a "Tabla N." line right above a table, set flush, in
+% sans with the label in bold green like the figure captions; the renderer
+% ties it to its table with \nopagebreak.
+\newcommand{\proyectotablecaption}[2]{\par\medskip\noindent{\sffamily\small{\bfseries\color{accent}#1}\ #2\par}}
+% Short tables are tabularx blocks (they never split); same sans body as the
+% breakable xltabular tables.
+\AddToHook{env/tabularx/begin}{\sffamily}
+
+\newlength{\letterheaddrop}\setlength{\letterheaddrop}{1.1cm} % letterhead space above the title
+
+\begin{document}
+\thispagestyle{firstpage}
+
+% Page-1 background: the letterhead (logo + institution) as one group,
+% centred on the page (S5); the logo is centred on the institution lines.
+\AddToShipoutPictureBG*{%
+  \put(\LenToUnit{0.5\paperwidth},\LenToUnit{\dimexpr\paperheight-1.0cm\relax}){%
+    \makebox(0,0)[t]{%
+      $\vcenter{\hbox{\includegraphics[width=4.4cm]{{{APE_LOGO_PATH}}}}}$\hspace{0.6cm}%
+      $\vcenter{\hbox{\sffamily\footnotesize\color{ink}\begin{tabular}{@{}l@{}}
+      \textbf{\spaced{\MakeUppercase{{{UNIVERSITY}}}}}\\[1pt]
+      {{FACULTY}}\\[1pt]
+      {{CAREER}}
+      \end{tabular}}}$}}%
+}
+
+\vspace*{\letterheaddrop}
+\begingroup\parindent=0pt\centering
+{\sffamily\small\bfseries\color{accent}\spaced{PROYECTO\ \,·\ \,\MakeUppercase{{{SUBJECT}}}}\par}
+\vspace{6pt}
+{\serlight\fontsize{32}{36}\selectfont Proyecto\par}
+\vspace{8pt}
+{\itshape\fontsize{14}{18}\selectfont\color{muted}{{TITLE}}\par}
+\vspace{10pt}
+\noindent{\color{hair}\rule{\linewidth}{0.5pt}}\par
+\endgroup
+
+\vspace{8pt}
+{{PROYECTO_DATOS}}
+\vspace{4pt}
+
+{{FRONT_MATTER}}
+
+{{AI_SIGNATURE}}
+
+{{BODY}}
+
+\ifthenelse{\equal{\reporthasbib}{true}}{
+\Needspace{6\baselineskip}
+{{PRINT_BIBLIOGRAPHY}}
+}{}
+
+% The renderer fills AFTER_BIBLIOGRAPHY with the `# Anexos` chunk it split off
+% body.md, so the annexes render after the bibliography, as the last section.
+{{AFTER_BIBLIOGRAPHY}}
+
+% The renderer fills FRONT_MATTER with the very same block it puts in
+% AI_DECLARATION (the plain-report.tex mechanism), so the declaration is
+% printed once above and the duplicate is captured here instead of being
+% typeset twice.
+\long\def\reportaideclarationalias{{{AI_DECLARATION}}}
+
+\end{document}

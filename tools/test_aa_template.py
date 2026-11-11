@@ -94,7 +94,6 @@ FICHA_ROWS = (
     ("Actividad", "practice_number"),
     ("Docente", "teacher"),
     ("Fecha de entrega", "date"),
-    ("Tiempo en el sílabo", "planned_time"),
 )
 
 AA_HEADINGS = (
@@ -603,3 +602,11 @@ def test_ficha_stays_clear_for_every_body_shape(
     crop = _ficha_crop(_page_one_png(pdf, f"variant-{variant}"), rows)
     difference = ImageChops.difference(pixels, crop).getbbox()
     assert difference is None, f"{variant}: something is drawn over the ficha at {difference}"
+
+
+def test_aa_ficha_never_prints_syllabus_time(tmp_path: Path) -> None:
+    """The AA ficha carries no syllabus-time entry, even when `planned_time` is set."""
+    metadata = full_aa_metadata()
+    assert metadata.get("planned_time"), "fixture must carry planned_time"
+    tex = render(tmp_path, metadata=metadata)
+    assert "Tiempo en el sílabo" not in tex
