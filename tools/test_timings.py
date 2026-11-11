@@ -384,7 +384,9 @@ def test_timings_file_does_not_change_the_doc_status_route(tmp_path: Path) -> No
     assert doc_status.render_machine(doc_status.derive(folder)) == before
 
 
-def test_verify_guidance_says_it_runs_in_parallel_with_the_draft_build() -> None:
+def test_verify_guidance_no_longer_starts_a_draft_build() -> None:
+    # S2: no draft approval preview, so verify no longer starts a draft build.
     template = doc_status._GUIDANCE["verify"]
-    assert "parallel" in template and "{draft_command}" in template
+    assert "{draft_command}" not in template
+    assert "report missing and partial findings honestly" in template
     assert "parallel" in doc_status._GUIDANCE["approval"]

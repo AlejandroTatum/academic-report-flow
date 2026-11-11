@@ -58,6 +58,7 @@ def test_malformed_verify_guidance_requests_verifier_and_content_check(tmp_path:
 
 
 def test_failed_verify_guidance_requires_user_orders_and_reapproval(tmp_path: Path) -> None:
+    """S1 (v1): rubric findings alone no longer stop the route; they are shown, never passed."""
     import doc_status
     from conftest import _report, _body, _sources_bib, _rubric, _approval, _content_check
 
@@ -69,12 +70,11 @@ def test_failed_verify_guidance_requires_user_orders_and_reapproval(tmp_path: Pa
     _approval(folder)
     _content_check(folder, result="fail", criteria=[{"id": "objetivo", "status": "flojo"}, {"id": "metodologia", "status": "cumple"}])
     status = doc_status.derive(folder)
-    assert "user's literal edit orders" in status.gate
-    assert "approval_packet.py" in status.gate
-    assert "--open" in status.gate
-    assert "--verify-brief --since verification.yml" in status.gate
-    assert "re-approve" not in status.gate
-    assert "run the check" not in status.gate
+    verify = next(phase for phase in status.phases if phase.name == "verify")
+    assert verify.state == doc_status.DONE
+    assert verify.detail.startswith("rubric findings (not a compliance pass): ")
+    assert status.next_token != "verify"
+    assert "approval_packet.py" not in status.gate
 
 
 import pytest
@@ -110,16 +110,16 @@ def _fresh_draft(folder: Path) -> Path:
 
 
 def test_approval_absent_is_pending_not_blocked(tmp_path: Path) -> None:
-    """A missing marker is ordinary progress, so later phases wait, not abort."""
+    """S2: a missing marker no longer waits; v1 needs no draft approval and none is written."""
     folder = tmp_path / "wf"
     _report(folder)
 
     phase = doc_status._phase_approval(folder, _config(folder), None)
 
     assert phase.name == "approval"
-    assert phase.state == doc_status.PENDING
+    assert phase.state == doc_status.DONE
     assert phase.blocked_reason == ""
-    assert "approval.yml" in phase.detail
+    assert phase.detail == "draft approval is not required; review the formatted report"
     assert not (folder / "approval.yml").exists()
 
 
@@ -140,18 +140,17 @@ def test_approval_current_is_done(tmp_path: Path) -> None:
 
 
 def test_approval_body_hash_mismatch_is_pending_for_reapproval(tmp_path: Path) -> None:
-    """A body edited after approval routes back to approval, never blocks the route."""
+    """S2: a stale legacy marker is reported, never a reason to re-approve the draft."""
     folder = tmp_path / "wf"
     _report(folder)
     _approval(folder, body_sha256="0" * 64)
 
     phase = doc_status._phase_approval(folder, _config(folder), None)
 
-    assert phase.state == doc_status.PENDING
+    assert phase.state == doc_status.DONE
     assert phase.blocked_reason == ""
-    assert "body.md" in phase.detail
-    assert "re-approve" in phase.detail
-    assert phase.state != doc_status.DONE
+    assert "legacy approval.yml stale" in phase.detail and "body.md" in phase.detail
+    assert "re-approve" not in phase.detail
 
 
 def test_approval_unrelated_edit_after_approval_stays_done(tmp_path: Path) -> None:
@@ -169,7 +168,7 @@ def test_approval_unrelated_edit_after_approval_stays_done(tmp_path: Path) -> No
 
 
 def test_approval_body_edited_after_approval_is_pending(tmp_path: Path) -> None:
-    """TRIANGULATE: editing body.md after approval sends the route back to approval."""
+    """TRIANGULATE: editing body.md after a legacy approval never sends the route back."""
     folder = tmp_path / "wf"
     _report(folder)
     _approval(folder)
@@ -177,9 +176,9 @@ def test_approval_body_edited_after_approval_is_pending(tmp_path: Path) -> None:
 
     phase = doc_status._phase_approval(folder, _config(folder), None)
 
-    assert phase.state == doc_status.PENDING
+    assert phase.state == doc_status.DONE
     assert phase.blocked_reason == ""
-    assert "re-approve" in phase.detail
+    assert "legacy approval.yml stale" in phase.detail
 
 
 def test_approval_marker_without_body_hash_is_malformed(tmp_path: Path) -> None:
@@ -189,9 +188,9 @@ def test_approval_marker_without_body_hash_is_malformed(tmp_path: Path) -> None:
 
     phase = doc_status._phase_approval(folder, _config(folder), None)
 
-    assert phase.state == doc_status.BLOCKED
-    assert phase.blocked_reason == "approval_marker_malformed"
-    assert phase.state != doc_status.DONE
+    assert phase.state == doc_status.DONE
+    assert phase.blocked_reason == ""
+    assert "legacy approval.yml malformed" in phase.detail
 
 
 def test_approval_body_missing_with_marker_present_is_malformed(tmp_path: Path) -> None:
@@ -202,8 +201,8 @@ def test_approval_body_missing_with_marker_present_is_malformed(tmp_path: Path) 
 
     phase = doc_status._phase_approval(folder, _config(folder), None)
 
-    assert phase.state == doc_status.BLOCKED
-    assert phase.blocked_reason == "approval_marker_malformed"
+    assert phase.state == doc_status.DONE
+    assert "legacy approval.yml malformed" in phase.detail
 
 
 def test_approval_blank_required_key_is_malformed(tmp_path: Path) -> None:
@@ -213,21 +212,22 @@ def test_approval_blank_required_key_is_malformed(tmp_path: Path) -> None:
 
     phase = doc_status._phase_approval(folder, _config(folder), None)
 
-    assert phase.state == doc_status.BLOCKED
-    assert phase.blocked_reason == "approval_marker_malformed"
-    assert phase.state != doc_status.DONE
+    assert phase.state == doc_status.DONE
+    assert "legacy approval.yml malformed" in phase.detail
 
 
 def test_approval_unparsable_marker_is_malformed_not_absent(tmp_path: Path) -> None:
-    """TRIANGULATE: a bad marker is named, never silently treated as absent."""
+    """TRIANGULATE: a bad marker is named, never silently treated as absent (nor repaired)."""
     folder = tmp_path / "wf"
     _report(folder)
-    _marker_text(folder, "body_sha256: [unclosed\n")
+    marker = _marker_text(folder, "body_sha256: [unclosed\n")
+    before = marker.read_bytes()
 
     phase = doc_status._phase_approval(folder, _config(folder), None)
 
-    assert phase.state == doc_status.BLOCKED
-    assert phase.blocked_reason == "approval_marker_malformed"
+    assert phase.state == doc_status.DONE
+    assert "legacy approval.yml malformed" in phase.detail
+    assert marker.read_bytes() == before
 
 
 def test_approval_derivation_never_repairs_the_marker(tmp_path: Path) -> None:
@@ -514,6 +514,7 @@ def test_an_unverified_draft_routes_to_verify_not_approval(tmp_path: Path) -> No
 
 
 def test_a_verified_draft_routes_to_approval(tmp_path: Path) -> None:
+    """S2: a verified draft goes on to the format answers before v1, not to a draft approval."""
     from conftest import _cited_body, _content_check, _rubric
 
     folder = tmp_path / "wf"
@@ -522,7 +523,7 @@ def test_a_verified_draft_routes_to_approval(tmp_path: Path) -> None:
     _rubric(folder)
     _cited_body(folder)
     _content_check(folder)
-    assert doc_status.derive(folder).next_token == "approval"
+    assert doc_status.derive(folder).next_token == "format"
 
 
 def test_verify_guidance_reuses_the_previous_verification(tmp_path: Path) -> None:
@@ -583,8 +584,9 @@ def test_an_unbounded_edit_after_approval_is_still_pending(tmp_path: Path) -> No
 
     phase = doc_status._phase_approval(folder, None, None)
 
-    assert phase.state == doc_status.PENDING
-    assert "re-approve" in phase.detail
+    assert phase.state == doc_status.DONE
+    assert "legacy approval.yml stale" in phase.detail
+    assert "re-approve" not in phase.detail
 
 
 def test_generate_rebuilds_after_a_carried_edit_but_not_for_an_untouched_body(tmp_path: Path) -> None:

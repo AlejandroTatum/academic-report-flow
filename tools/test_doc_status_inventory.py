@@ -32,25 +32,27 @@ def approval(folder: Path):
 
 
 def test_unmapped_inventory_blocks_approval_and_names_the_items(tmp_path: Path) -> None:
+    """S1/S2 (v1): an unmapped guide item is a visible finding, not a draft-approval gate."""
     folder = verified_with_guide(tmp_path / "wf", CRITERIA)
     phase = approval(folder)
-    assert phase.state == doc_status.BLOCKED and phase.blocked_reason == "guide_inventory_unmapped"
+    assert phase.state == doc_status.DONE and phase.blocked_reason == ""
+    assert "finding: guide inventory items without a criterion or not_applicable entry" in phase.detail
     assert "G5" in phase.detail
-    status = doc_status.derive(folder)
-    assert status.next_token == "approval"
-    assert "rubric_plan.py" in status.gate and "not_applicable" in status.gate
+    assert doc_status.derive(folder).next_token != "approval"
 
 
 def test_mapped_or_not_applicable_inventory_offers_approval(tmp_path: Path) -> None:
     mapped = verified_with_guide(tmp_path / "a", ALL_MAPPED)
-    assert approval(mapped).state == doc_status.CURRENT
+    assert approval(mapped).state == doc_status.DONE
+    assert "finding" not in approval(mapped).detail
     waived = verified_with_guide(tmp_path / "b", CRITERIA)
     path = waived / "rubric.yml"
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     data["not_applicable"] = [{"item": i, "reason": "no aplica"} for i in ("G5", "G6", "G7")]
     path.write_text(yaml.safe_dump(data), encoding="utf-8")
     _content_check(waived)
-    assert approval(waived).state == doc_status.CURRENT
+    assert approval(waived).state == doc_status.DONE
+    assert "finding" not in approval(waived).detail
 
 
 def test_a_report_without_a_guide_is_never_blocked_by_the_inventory(tmp_path: Path) -> None:
@@ -61,7 +63,8 @@ def test_a_report_without_a_guide_is_never_blocked_by_the_inventory(tmp_path: Pa
     _rubric(folder)
     _cited_body(folder)
     _content_check(folder)
-    assert approval(folder).state == doc_status.CURRENT
+    assert approval(folder).state == doc_status.DONE
+    assert "finding" not in approval(folder).detail
 
 
 def test_a_missing_requirement_is_not_a_new_approval_block(tmp_path: Path) -> None:

@@ -59,7 +59,7 @@ def test_standard_flow_and_absent_flow_keep_intake_done(tmp_path: Path) -> None:
     assert _phases(absent)["intake"].state == doc_status.DONE
 
 
-def test_approve_express_records_a_current_marker(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_approve_express_does_not_record_human_approval(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     folder = tmp_path / "wf"
     _express(folder)
     _body(folder)
@@ -67,14 +67,11 @@ def test_approve_express_records_a_current_marker(tmp_path: Path, capsys: pytest
     code = approval_marker.main(["approve", str(folder), "--express"])
 
     out = capsys.readouterr()
-    assert code == 0
-    assert out.out == f"recorded {folder / 'approval.yml'}\n"
-    assert out.err == ""
-    marker = (folder / "approval.yml").read_text(encoding="utf-8")
-    assert 'approved_by: "express flow (no draft gate)"' in marker
-    assert "gate: express\n" in marker
-    assert approval_marker.approval_state(folder).state == "current"
-    assert doc_status._phase_approval(folder, _config(folder), None).state == doc_status.DONE
+    assert code == 1
+    assert out.out == ""
+    assert "automatic draft approval is no longer recorded" in out.err
+    assert not (folder / "approval.yml").exists()
+    assert not (folder / "approved-body.md").exists()
 
 
 @pytest.mark.parametrize(
@@ -137,10 +134,10 @@ def test_express_approval_guidance_never_asks_the_user(tmp_path: Path) -> None:
 
     guidance = doc_status._guidance("approval", folder, _config(folder))
 
-    assert guidance.startswith("express flow: there is no draft gate; do not ask the user and do not build a preview; run ")
-    assert "approval_marker.py" in guidance and f"approve {folder} --express" in guidance
-    assert "ask_user_choice" not in guidance
-    assert "the user sees the document once, at review" in guidance
+    assert "no draft approval" in guidance
+    assert "automatic approval marker" in guidance
+    assert "approval_marker.py" not in guidance
+    assert "review the formatted report" in guidance
 
 
 def test_express_keeps_the_final_review_gate(tmp_path: Path) -> None:

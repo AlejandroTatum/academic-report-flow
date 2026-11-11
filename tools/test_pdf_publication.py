@@ -257,10 +257,11 @@ def test_publish_refuses_absent_stale_malformed_marker(
     source = _validated_pdf(tmp_path)
     documents = tmp_path / "Documents"
 
-    # absent — a work folder that never went through the approval phase
+    # absent — a v1 work folder (S2: no draft approval) still needs the
+    # generated artifact identity of the exact PDF
     absent = tmp_path / "absent"
     absent.mkdir()
-    with pytest.raises(publish_pdf.PublicationError, match="Falta la aprobación humana"):
+    with pytest.raises(publish_pdf.PublicationError, match="identidad del PDF generado"):
         publish_pdf.publish_validated_pdf(
             source, "Tecnicos", "informe", documents, work_folder=absent
         )
@@ -343,17 +344,11 @@ def test_refusal_messages_match_design_verbatim(
         publish_pdf.publish_validated_pdf(
             source, "Tecnicos", "informe", documents, work_folder=absent
         )
-    # The absent message keeps the design sentence verbatim and appends the
-    # minimal clause 1.11 sanctions, so a --validate-only run states that
-    # validation passed before publication was refused for lack of approval.
-    absent_message = str(exc.value)
-    assert absent_message.startswith(
-        "Falta la aprobación humana: no existe approval.yml en "
-        f"{absent}. Ejecutá la fase de aprobación después de revisar "
-        "body.md; no se publica nada."
-    )
-    assert absent_message.endswith(
-        "La validación técnica pasó; falta únicamente la aprobación humana."
+    # S2: without approval.yml the report is a v1; the refusal names the
+    # missing generated artifact identity instead of a draft approval.
+    assert str(exc.value) == (
+        "Falta o está obsoleta la identidad del PDF generado y sus entradas; "
+        "volvé a generar y validar antes de publicar. No se publica nada."
     )
 
     (_approved_work_folder / "body.md").write_text("edited\n", encoding="utf-8")
@@ -515,7 +510,7 @@ def test_gate_refusal_creates_nothing_not_even_the_subject_folder(
     absent = tmp_path / "absent"
     absent.mkdir()
 
-    with pytest.raises(publish_pdf.PublicationError, match="Falta la aprobación humana"):
+    with pytest.raises(publish_pdf.PublicationError, match="identidad del PDF generado"):
         publish_pdf.publish_validated_pdf(
             source, "Academicos", "informe", documents,
             work_folder=absent, subject="sistemas-operativos",

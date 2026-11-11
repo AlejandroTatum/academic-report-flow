@@ -130,7 +130,7 @@ def main() -> None:
     parser.add_argument(
         "--no-approval-check",
         action="store_true",
-        help="Construye sin approval.yml vigente (solo previews; nunca para entrega)",
+        help="Construye una vista previa sin controles de preparación; nunca habilita entrega",
     )
     args = parser.parse_args()
     phase = "validate" if args.validate_only else "generate"
@@ -140,24 +140,26 @@ def main() -> None:
 
 def _run(args: argparse.Namespace) -> None:
     if not (args.validate_only or args.no_approval_check):
-        approval = approval_state(args.folder)
-        if not approval.ok:
-            raise SystemExit(
-                f"APPROVAL REQUIRED: no se construye sin approval.yml vigente para body.md "
-                f"({approval.detail}). Pedí la aprobación explícita del usuario; "
-                "--no-approval-check es solo para previews."
-            )
-        # issue #96: the approved body.md is plain text; the final build renders
-        # its formatted copy, so it waits until typeset passes.
+        # v1 needs no draft approval (rubric findings never block it); the
+        # body.md plain text is still rendered from its formatted copy, so
+        # generation waits until typeset passes. Publication keeps its gates.
         pending_typeset = typeset.build_gate(args.folder)
         if pending_typeset:
             raise SystemExit(
-                f"TYPESET REQUIRED: el body.md aprobado es texto plano y body.typeset.md no está listo "
+                f"TYPESET REQUIRED: body.md es texto plano y body.typeset.md no está listo "
                 f"({pending_typeset}). Corré typeset.py bind, aplicá el formato en body.typeset.md "
                 "y typeset.py check antes de construir."
             )
 
     config = load_report_config(args.folder)
+    generation = not (args.validate_only or args.no_approval_check or args.tex_only)
+    inputs = None
+    if generation and config.output_format == "pdf":
+        try:
+            inputs = approval_marker.generation_inputs(args.folder)
+        except (OSError, ValueError, TypeError, KeyError):
+            # No identity record: publication then refuses this PDF.
+            inputs = None
     print(f"Tipo: {config.type} | backend: {config.backend} | output: {config.output_format}")
 
     # Build step — skipped when --validate-only
@@ -184,6 +186,15 @@ def _run(args: argparse.Namespace) -> None:
         )
     validated_pdf_hash = sha256_file(config.pdf_path) if config.output_format == "pdf" else None
     result = validate(config)
+    findings = [error for error in result.errors if error in set(getattr(result, "findings", []) or [])]
+    if generation and findings:
+        # S1: a rubric check the draft never met is reported, not a reason to
+        # suppress v1; validate_report.py and publication still fail on it.
+        result.errors = [error for error in result.errors if error not in findings]
+        print(
+            "RUBRIC FINDINGS (no es una declaración de cumplimiento; bloquean la publicación):\n- "
+            + "\n- ".join(findings)
+        )
     if result.errors and args.no_approval_check:
         # issue #96: the plain draft has no backend formatting yet, so a preview
         # reports what typeset will fix instead of failing the build.
@@ -208,6 +219,11 @@ def _run(args: argparse.Namespace) -> None:
                 "lecturas de hash; la validación no cubre estos bytes. "
                 "Volvé a generar y validar antes de entregar."
             )
+        if inputs is not None and config.pdf_path.is_file():
+            try:
+                approval_marker.write_generation_record(args.folder, config.pdf_path, inputs, validated_pdf_hash)
+            except (OSError, ValueError) as exc:
+                raise SystemExit(f"GENERATION IDENTITY ERROR: {exc}")
         print(
             f"PDF GENERADO Y VALIDADO: {config.pdf_path} "
             f"(SHA-256: {validated_pdf_hash}). La entrega a ~/Documents es una "

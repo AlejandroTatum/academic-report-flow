@@ -250,6 +250,9 @@ class ReportValidation:
     warnings: list[str] = field(default_factory=list)
     checks: list[str] = field(default_factory=list)
     table_style_receipts: list[SelectionReceipt] = field(default_factory=list)
+    # Errors that are rubric content findings (see rubric_validation_with_findings):
+    # still errors here; only v1 generation reports them without stopping.
+    findings: list[str] = field(default_factory=list)
 
     def add(self, name: str, result: ValidationResult) -> None:
         self.checks.append(name)
@@ -949,17 +952,30 @@ def rubric_validation(config: ReportConfig) -> ValidationResult:
     build. Only losses fail; nothing here scores or compares a threshold. A report
     without a valid ``rubric.yml`` is not checked (a malformed one warns).
     """
+    return rubric_validation_with_findings(config)[0]
+
+
+def rubric_validation_with_findings(config: ReportConfig) -> tuple[ValidationResult, list[str]]:
+    """``rubric_validation`` plus the subset of its errors that are content findings.
+
+    A finding is a check that already fails in ``body.md`` itself (and the PDF
+    "loss" that the same absent text causes): the draft never met it, so no
+    render step lost it. The errors are unchanged -- validation and publication
+    still fail on them -- and only v1 generation reports findings without
+    stopping (``build_report_auto``). Render losses are never findings.
+    """
     import rubric_checks
     import rubric_plan
     import rubric_trace
 
     result = ValidationResult()
+    findings: list[str] = []
     state = rubric_plan.rubric_state(config.folder)
     if state == "absent":
-        return result
+        return result, findings
     if state != "valid":
         result.warnings.append("rubric.yml is malformed: rubric checks not run on the final artifact")
-        return result
+        return result, findings
     criteria = rubric_plan.load_rubric(config.folder)
     body_path = config.body_path
     source = config.folder / "body.md"
@@ -968,15 +984,20 @@ def rubric_validation(config: ReportConfig) -> ValidationResult:
         original = source.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
         result.warnings.append(f"rubric checks not run: {exc}")
-        return result
+        return result, findings
     passed_in_source = {(r.criterion_id, r.check_index) for r in rubric_checks.run_checks(config.folder, criteria, original) if r.ok}
+    failed_in_source: set[tuple[str, int]] = set()
     for item in rubric_checks.run_checks(config.folder, criteria, body):
         if not item.ok:
             lost = " (lost in typeset: it passes in body.md)" if body_path != source and (item.criterion_id, item.check_index) in passed_in_source else ""
-            result.errors.append(
+            message = (
                 f"rubric: criterion '{item.criterion_id}' check {item.check_index} ({item.type}) "
                 f"fails in {body_path.name}{lost}: {item.detail}"
             )
+            result.errors.append(message)
+            if not lost:
+                failed_in_source.add((item.criterion_id, item.check_index))
+                findings.append(message)
     records, _note = rubric_trace._verification(config.folder)
     if body_path != source:
         for record in records or []:
@@ -992,8 +1013,12 @@ def rubric_validation(config: ReportConfig) -> ValidationResult:
         else:
             for criterion in criteria:
                 for loss in rubric_trace.pdf_losses(config.folder, criterion, pdf):
-                    result.errors.append(f"rubric: criterion '{criterion['id']}' {loss} lost in the PDF text")
-    return result
+                    message = f"rubric: criterion '{criterion['id']}' {loss} lost in the PDF text"
+                    result.errors.append(message)
+                    index = re.match(r"check (\d+) ", loss)
+                    if index and (criterion["id"], int(index.group(1))) in failed_in_source:
+                        findings.append(message)
+    return result, findings
 
 
 def asset_validation(_config: ReportConfig) -> ValidationResult:
@@ -1594,7 +1619,9 @@ def validate(config: ReportConfig) -> ReportValidation:
     if validators.get("ieee", True):
         validation.add("ieee", validate_ieee(config))
     if rubric_state_present(config):
-        validation.add("rubric", rubric_validation(config))
+        rubric_result, rubric_findings = rubric_validation_with_findings(config)
+        validation.add("rubric", rubric_result)
+        validation.findings.extend(rubric_findings)
     if validators.get("latex", False):
         validation.add("source_layout", source_layout_validation(config))
     if validators.get("latex_log", False):

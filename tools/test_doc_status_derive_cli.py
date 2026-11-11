@@ -161,7 +161,7 @@ def test_derive_resolves_the_work_folder_so_guidance_is_absolute(
 def test_derive_keeps_focus_on_stale_approval_and_forces_later_phases_pending(
     tmp_path: Path,
 ) -> None:
-    """A stale approval keeps the route waiting at approval, not blocked."""
+    """S2: a stale legacy approval no longer holds the route; later phases still wait."""
     folder = _working_folder(tmp_path / "wf")
     _approval(folder, body_sha256="0" * 64)
     _pdf(folder)
@@ -169,11 +169,10 @@ def test_derive_keeps_focus_on_stale_approval_and_forces_later_phases_pending(
     status = doc_status.derive(folder)
 
     states = {phase.name: phase.state for phase in status.phases}
-    assert states["approval"] == doc_status.CURRENT
+    assert states["approval"] == doc_status.DONE
     assert status.blocked_reasons == ()
-    assert status.current == "approval"
-    assert status.next_token == "approval"
-    assert status.gate.startswith("approval pending - ")
+    assert status.current != "approval"
+    assert not status.gate.startswith("approval pending - ")
     assert all(
         states[name] == doc_status.PENDING for name in ("generate", "validate", "deliver")
     )

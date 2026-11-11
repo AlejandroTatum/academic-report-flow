@@ -18,13 +18,17 @@ if TOOLS_DIR not in sys.path:
     sys.path.insert(0, TOOLS_DIR)
 
 from build_report_auto import UNSUPPORTED_BUILDER_MESSAGES, build_backend, main
+from typeset import build_gate as _REAL_BUILD_GATE
 
 
 @pytest.fixture(autouse=True)
 def _approved_body():
-    """Router tests use fake folders; the real approval guard has its own tests."""
+    """Router tests use fake folders; the real generation guard (typeset) has its own tests."""
     current = MagicMock(state="current")
-    with patch("build_report_auto.approval_state", return_value=current):
+    with (
+        patch("build_report_auto.approval_state", return_value=current),
+        patch("typeset.build_gate", return_value=None),
+    ):
         yield
 
 
@@ -616,22 +620,24 @@ class TestApprovalGuard:
             patch("build_report_auto.validate", return_value=FakeValidation()),
             patch("build_report_auto.sha256_file", return_value="h"),
             patch("build_report_auto.approval_state", wraps=__import__("approval_marker").approval_state),
+            patch("typeset.build_gate", wraps=_REAL_BUILD_GATE),
         ):
             main()
         return mock_build
 
-    def test_missing_approval_refuses_to_build(self, tmp_path: Path) -> None:
+    def test_missing_approval_builds_once_the_typeset_is_ready_v1(self, tmp_path: Path) -> None:
+        """S2: no draft approval is needed for v1; the formatted copy still is."""
         (tmp_path / "body.md").write_text("# A\n", encoding="utf-8")
-        with pytest.raises(SystemExit, match="approval"):
+        with pytest.raises(SystemExit, match="^TYPESET REQUIRED: body.md es texto plano"):
             self._run(tmp_path)
+        assert not (tmp_path / "approval.yml").exists()
 
-    def test_stale_approval_refuses_to_build(self, tmp_path: Path) -> None:
+    def test_stale_legacy_approval_no_longer_blocks_the_build(self, tmp_path: Path) -> None:
         from conftest import _approval
 
         _approval(tmp_path)
         (tmp_path / "body.md").write_text("# Changed\n", encoding="utf-8")
-        with pytest.raises(SystemExit, match="approval"):
-            self._run(tmp_path)
+        self._run(tmp_path).assert_called_once()
 
     def test_current_approval_builds(self, tmp_path: Path) -> None:
         from conftest import _approval
