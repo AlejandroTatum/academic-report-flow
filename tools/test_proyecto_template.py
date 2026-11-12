@@ -492,6 +492,93 @@ def test_s8b_a_tabla_line_without_a_table_stays_a_paragraph(tmp_path: Path) -> N
     assert "Tabla 3. Ver anexo." in tex
 
 
+AI_DECLARATION = (
+    "Declaro el uso de IA.\n\n"
+    "Tabla A. Herramientas utilizadas\n\n"
+    "| Herramienta | Uso |\n|---|---|\n| ChatGPT | Revisión |\n\n"
+    "Tabla B. Prompts por iteración\n\n"
+    "| Iteración | Prompt |\n|---|---|\n| 1 | Resume el texto |\n"
+)
+
+
+def render_with_declaration(tmp_path: Path, text: str = AI_DECLARATION, *, fmt: str = "proyecto") -> str:
+    """Render with a markdown AI declaration after the bibliography, as the format guidance writes it."""
+    config = make_config(tmp_path, fmt=fmt)
+    raw = yaml.safe_load((config.folder / "report.yml").read_text(encoding="utf-8"))
+    raw["ai_declaration"] = {"format": "markdown", "text": text}
+    raw["ai_declaration_position"] = "after_bibliography"
+    (config.folder / "report.yml").write_text(yaml.safe_dump(raw, allow_unicode=True), encoding="utf-8")
+    return build_latex_report.render_tex(ReportConfig.load(config.folder))
+
+
+def test_s8_letter_labelled_ai_declaration_tables_get_the_caption_style(tmp_path: Path) -> None:
+    tex = render_with_declaration(tmp_path)
+    declaration = tex[tex.index(r"\section*{Declaración de uso de IA generativa}"):]
+    for label, caption in (("Tabla A.", "Herramientas utilizadas"), ("Tabla B.", "Prompts por iteración")):
+        line = rf"\proyectotablecaption{{{label}}}{{{caption}}}"
+        assert line in declaration, label
+        # Kept with its table like "Tabla N.": tied below, no look-ahead of its own for the table.
+        gap = _between(declaration, line, r"\begin{tabularx}")
+        assert r"\nopagebreak" in gap and r"\Needspace" not in gap, label
+        assert f"\n{label} {caption}\n" not in declaration, "no longer a body paragraph"
+
+
+def test_s8_a_letter_labelled_tabla_line_without_a_table_stays_a_paragraph(tmp_path: Path) -> None:
+    text = "Tabla A. Ver anexo.\n\nOtro texto.\n\nTabla AB. No es una etiqueta\n\n| A | B |\n|---|---|\n| 1 | 2 |\n"
+    tex = render_with_declaration(tmp_path, text)
+    declaration = tex[tex.index(r"\section*{Declaración de uso de IA generativa}"):]
+    assert r"\proyectotablecaption{" not in declaration
+    assert "\nTabla A. Ver anexo.\n" in declaration
+    assert "\nTabla AB. No es una etiqueta\n" in declaration
+
+
+def test_s8_other_formats_render_the_ai_declaration_as_before(tmp_path: Path) -> None:
+    tex = render_with_declaration(tmp_path, fmt="aa")
+    start = tex.index(r"\Needspace{5\baselineskip}" + "\n" + r"\section*{Declaración de uso de IA generativa}")
+    end = tex.index(r"\end{xltabular}", tex.index("Resume el texto")) + len(r"\end{xltabular}")
+    assert tex[start:end] == "\n".join([
+        r"\Needspace{5\baselineskip}",
+        r"\section*{Declaración de uso de IA generativa}",
+        r"\addcontentsline{toc}{section}{Declaración de uso de IA generativa}",
+        "",
+        "Declaro el uso de IA.",
+        "",
+        "Tabla A. Herramientas utilizadas",
+        "",
+        r"\Needspace{4\baselineskip}",
+        r"\begingroup",
+        r"\small",
+        r"\renewcommand{\arraystretch}{1.2}",
+        r"\begin{xltabular}{\textwidth}{@{}>{\hsize=1.0\hsize\raggedright\arraybackslash}X "
+        r">{\hsize=1.0\hsize\centering\arraybackslash}X@{}}",
+        r"\toprule",
+        r"\reporttablehead{Herramienta} & \reporttablehead{Uso} \\",
+        r"\midrule",
+        r"\endhead",
+        r"ChatGPT & Revisión \\",
+        r"\bottomrule",
+        r"\end{xltabular}",
+        r"\endgroup",
+        "",
+        "Tabla B. Prompts por iteración",
+        "",
+        r"\Needspace{4\baselineskip}",
+        r"\begingroup",
+        r"\small",
+        r"\renewcommand{\arraystretch}{1.2}",
+        r"\begin{xltabular}{\textwidth}{@{}>{\hsize=0.696\hsize\raggedright\arraybackslash}X "
+        r">{\hsize=1.304\hsize\raggedright\arraybackslash}X@{}}",
+        r"\toprule",
+        r"\reporttablehead{Iteración} & \reporttablehead{Prompt} \\",
+        r"\midrule",
+        r"\endhead",
+        r"1 & Resume el texto \\",
+        r"\bottomrule",
+        r"\end{xltabular}",
+    ])
+    assert r"\proyectotablecaption" not in tex
+
+
 def test_s8c_iso_date_prints_in_spanish_long_form(tmp_path: Path) -> None:
     table = datos_table(render(tmp_path, metadata={**required_metadata(), "date": "2026-11-11"}))
     assert r"\proyectodato{Fecha de entrega} & 11 de noviembre de 2026 \\" in table

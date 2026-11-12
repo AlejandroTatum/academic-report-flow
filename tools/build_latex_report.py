@@ -967,6 +967,9 @@ def markdown_to_latex(
     # its text, len(output) right after it]; a table that starts there turns
     # the paragraph into its caption.
     caption_slot: list = [-1, "", "", -2]
+    # A single capital letter is a table label too ("Tabla A." of the AI
+    # declaration) where captions are styled; elsewhere only numbers are.
+    table_label = r"(?:\d+|[A-Z])" if (keep_blocks_together or emphasised_tables) else r"\d+"
 
     def look_ahead(lines_needed: int, chain_lines: int = 0) -> None:
         """Reserve room before a block, or tie it to the heading/caption above."""
@@ -1194,7 +1197,7 @@ def markdown_to_latex(
             text = " ".join(item.strip() for item in paragraph)
             # A "Tabla N." caption or a "**Código N.**" listing label must not be
             # stranded at a page foot apart from its table or listing.
-            caption = bool(re.match(r"^(Tabla|Table)\s+\d+\.|^\*\*(Código|Listing)\s+\S+?\.\*\*", text))
+            caption = bool(re.match(rf"^(Tabla|Table)\s+{table_label}\.|^\*\*(Código|Listing)\s+\S+?\.\*\*", text))
             if caption:
                 look_ahead(8, 2)
             # CommonMark hard break: a line ending in one backslash ends a
@@ -1209,7 +1212,7 @@ def markdown_to_latex(
                 else:
                     segments[-1].append(line)
             output.append("\\\\\n".join(convert_inline(" ".join(segment)) for segment in segments))
-            table_caption = re.fullmatch(r"((?:Tabla|Table)\s+\d+\.)\s*(.*)", text)
+            table_caption = re.fullmatch(rf"((?:Tabla|Table)\s+{table_label}\.)\s*(.*)", text)
             if emphasised_tables and table_caption and len(segments) == 1:
                 caption_slot[:] = [len(output) - 1, table_caption.group(1), table_caption.group(2), len(output) + 1]
             output.append("")
