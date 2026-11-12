@@ -12,6 +12,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[2]
 SKILL_ROOT = ROOT / "skills" / "academic-report-flow"
 REFS = SKILL_ROOT / "references"
@@ -59,3 +61,51 @@ def test_portal_tool_table_lists_timings() -> None:
     table = (ROOT / "docs" / "portal" / "herramientas.qmd").read_text(encoding="utf-8")
     row = next((line for line in table.splitlines() if line.startswith("| `timings.py`")), "")
     assert "timings.yml" in row
+
+
+# faster-verify-loop S1: a preview build runs while the verifier works, and its
+# visual findings join the verifier's in ONE edit round; v1 is the build after it.
+PREVIEW_SENTENCE = (
+    "right after launching the verifier, while it works, decide the format, typeset and run "
+    "{build} as a preview build and inspect every page; the preview is not v1: fix its visual "
+    "findings together with the verifier's in ONE edit round, and v1 is the build made after that "
+    "round, presented only once verify is done"
+)
+
+
+def test_verify_guidance_runs_a_preview_build_while_the_verifier_works(tmp_path: Path) -> None:
+    sys.path.insert(0, str(TOOLS_DIR))
+    import doc_status
+
+    folder = tmp_path / "wf"
+    folder.mkdir()
+    (folder / "report.yml").write_text("type: ensayo\nroute: academic\n", encoding="utf-8")
+    guidance = doc_status._guidance("verify", folder)
+    build = doc_status._tool_command("build.py", folder)
+    assert PREVIEW_SENTENCE.format(build=build) in guidance
+    assert "--verify-brief --since verification.yml when it exists" in guidance
+    assert "report missing and partial findings honestly" in guidance
+
+
+def test_the_preview_build_removes_no_gate() -> None:
+    sys.path.insert(0, str(TOOLS_DIR))
+    import doc_status
+
+    assert doc_status.PHASES.index("verify") < doc_status.PHASES.index("format") < doc_status.PHASES.index(
+        "typeset") < doc_status.PHASES.index("generate")
+    production = _flat(REFS / "production.md")
+    assert "Runs once `verify`, `format` and `typeset` are `done`" in production
+
+
+@pytest.mark.parametrize("name", ["SKILL.md", "references/production.md", "references/approval.md"])
+def test_skill_docs_run_the_preview_build_in_parallel_with_the_verifier(name: str) -> None:
+    flat = _flat(SKILL_ROOT / name)
+    assert "while the verifier works" in flat
+    assert "ONE edit round" in flat
+    assert "v1 is the build made after that round" in flat
+
+
+def test_production_generate_step_names_the_preview_build() -> None:
+    generate = _flat(REFS / "production.md").split("## Generate", 1)[1].split("## Validate", 1)[0]
+    assert "preview build" in generate and "while the verifier works" in generate
+    assert "v1 is the build made after that round" in generate

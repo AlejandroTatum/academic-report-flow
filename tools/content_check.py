@@ -1272,8 +1272,11 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
     renames headings is still bounded when the outline keeps its count, order
     and levels (``_headings_only_renamed``), the changed words, heading words
     included, stay within the limit, every criterion's ``section`` still
-    resolves (same ``section_sha256`` keys) and the rubric checks also pass on
-    the new bytes.
+    resolves (same ``section_sha256`` keys) to the heading at the same
+    position (``_section_positions``), the only lines that changed are real
+    headings before and after with the same level, every other line being
+    identical (``_only_heading_lines_retitled``), and the rubric checks also
+    pass on the new bytes.
     """
     snapshot = folder / CHECKED_SNAPSHOT_NAME
     try:
@@ -1294,6 +1297,10 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
             criteria = rubric_plan.load_rubric(folder)
             if section_hashes(old, criteria).keys() != section_hashes(new, criteria).keys():
                 return False
+            if not _only_heading_lines_retitled(old, new):
+                return False
+            if _section_positions(old, criteria) != _section_positions(new, criteria):
+                return False
             renamed = True
         requirements = data.get("requirements")
         if isinstance(requirements, list) and downgrade_unquoted_evidence(requirements, new)[1]:
@@ -1304,17 +1311,56 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
         return False
 
 
+def _only_heading_lines_retitled(old: str, new: str) -> bool:
+    """True when the two bodies differ only in the titles of real headings.
+
+    Line for line: every line that changed is a heading for the section lookup
+    (``concision.heading_lines``) before and after, with the same level, and
+    every other line is identical. ``heading_outline`` and the lookup do not
+    agree on what a heading is (a ``##Title`` line, an indented or fenced
+    heading, a setext title), so nothing may start or stop being a heading
+    and no body text may change along with a rename.
+    """
+    before, after = old.splitlines(), new.splitlines()
+    if len(before) != len(after):
+        return False
+    was, now = concision.heading_lines(old), concision.heading_lines(new)
+    for index, (old_line, new_line) in enumerate(zip(before, after)):
+        if old_line == new_line:
+            continue
+        if index not in was or index not in now or was[index][0] != now[index][0]:
+            return False
+    return True
+
+
+def _section_positions(body_text: str, criteria: list[dict]) -> list[int | None]:
+    """The heading each criterion's ``section`` resolves to, by position in the outline.
+
+    Title matching alone cannot tell whether a rename moved a criterion onto
+    other text (closing ATX hashes, a title that appears twice), so the
+    resolved position is compared instead.
+    """
+    return [
+        concision.section_position(body_text, c["section"]) if isinstance(c.get("section"), str) else None
+        for c in criteria
+    ]
+
+
 def _headings_only_renamed(old: str, new: str) -> bool:
     """True when the headings keep their count, order and levels and only titles change.
 
     A position whose new title is another heading's old title is a move, not a
-    rename, so swapping two headings fails.
+    rename, so swapping two headings fails. Titles are compared the way a
+    criterion's ``section`` is looked up (case and accents folded), so a swap
+    that also changes case or accents is still a move.
     """
     before, after = heading_outline(old), heading_outline(new)
     if [level for level, _ in before] != [level for level, _ in after]:
         return False
-    titles = {title for _, title in before}
-    return all(was == now or now[1] not in titles for was, now in zip(before, after))
+    was_titles = [concision._fold(title) for _, title in before]
+    now_titles = [concision._fold(title) for _, title in after]
+    known = set(was_titles)
+    return all(was == now or now not in known for was, now in zip(was_titles, now_titles))
 
 
 _BODY_CHECK_MECHANICAL = ("citations_resolve", "eligible_sources_cited")

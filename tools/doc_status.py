@@ -138,7 +138,12 @@ _GUIDANCE = {
         VERIFIER_LAUNCH + " for {rubric} with the brief from {check_command} "
         "--verify-brief (add --verify-brief --since verification.yml when it exists, so only "
         "changed sections are re-checked), save its matrix as verification.yml; run {check_command} "
-        "--verification verification.yml, then re-run doc_status; report missing and partial findings honestly"
+        "--verification verification.yml, then re-run doc_status; report missing and partial findings honestly; "
+        # faster-verify-loop S1: the build is a preview; phase order and gates are unchanged.
+        "right after launching the verifier, while it works, decide the format, typeset and run "
+        "{build_command} as a preview build and inspect every page; the preview is not v1: fix its visual "
+        "findings together with the verifier's in ONE edit round, and v1 is the build made after that "
+        "round, presented only once verify is done"
     ),
     "format": (
         "before building v1, ask only the missing format " 

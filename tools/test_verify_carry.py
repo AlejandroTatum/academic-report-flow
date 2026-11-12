@@ -79,11 +79,12 @@ RENAME_BODY = (
 )
 
 
-def _renamed(folder: Path, criteria: tuple[dict, ...] | None = None) -> tuple[Path, bytes, bytes]:
+def _renamed(folder: Path, criteria: tuple[dict, ...] | None = None,
+             body: str = RENAME_BODY) -> tuple[Path, bytes, bytes]:
     _report(folder)
     _sources_bib(folder)
     _rubric(folder, criteria=criteria)
-    _cited_body(folder, RENAME_BODY)
+    _cited_body(folder, body)
     assert content_check.main([str(folder), "--verification", str(_verification(folder))]) == 0
     assert content_check.content_check_state(folder) == "pass"
     return (folder, (folder / content_check.CONTENT_CHECK_NAME).read_bytes(),
@@ -122,6 +123,73 @@ def test_heading_swap_is_stale(tmp_path: Path) -> None:
     _unchanged(folder, marker, snapshot)
 
 
+def test_heading_swap_with_a_case_or_accent_change_is_stale(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+    text = RENAME_BODY.replace("## Objetivos", "## TMP").replace("## Metodologia", "## OBJETIVOS")
+    _body(folder, text.replace("## TMP", "## Metodología"))
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_rename_that_takes_a_criterion_title_with_closing_hashes_is_stale(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+
+    _edit(folder, "# Informe\n", "# Objetivos #\n")
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_rename_that_moves_a_criterion_to_a_duplicate_title_is_stale(tmp_path: Path) -> None:
+    body = RENAME_BODY.replace("### Referencias", "### Objetivos")
+    folder, marker, snapshot = _renamed(tmp_path / "wf", body=body)
+
+    _body(folder, body.replace("## Objetivos\n\nMedir", "## Metas\n\nMedir"))
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_rename_that_turns_a_non_heading_line_into_a_criterion_heading_is_stale(tmp_path: Path) -> None:
+    body = (
+        "# Informe\n\nCuerpo con fuentes [@key1] y [@key2], mas [@key3], [@key4] y [@key5].\n\n"
+        "## Metodologia\n\nSe midio dos veces.\n\n##Objetivos\n\nTexto no verificado.\n\n"
+        "## Objetivos\n\nMedir la deriva.\n"
+    )
+    folder, marker, snapshot = _renamed(tmp_path / "wf", body=body)
+
+    _body(folder, body.replace("##Objetivos\n", "## Objetivos\n"))
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_swapping_a_malformed_heading_line_with_the_real_heading_is_stale(tmp_path: Path) -> None:
+    body = (
+        "# Informe\n\nCuerpo con fuentes [@key1] y [@key2], mas [@key3], [@key4] y [@key5].\n\n"
+        "## Metodologia\n\nSe midio dos veces.\n\n##Objetivos\n\nTexto no verificado.\n\n"
+        "## Objetivos\n\nMedir la deriva.\n"
+    )
+    folder, marker, snapshot = _renamed(tmp_path / "wf", body=body)
+
+    swapped = body.replace("## Objetivos\n", "##TMP\n").replace("##Objetivos\n", "## Objetivos\n")
+    _body(folder, swapped.replace("##TMP\n", "##Objetivos\n"))
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_heading_rename_with_a_body_edit_is_stale(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+
+    _edit(folder, "### Referencias", "### Fuentes de la decision")
+    _edit(folder, "Lista de fuentes.", "Lista breve de fuentes.")
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
 def test_added_heading_is_stale(tmp_path: Path) -> None:
     folder, marker, snapshot = _renamed(tmp_path / "wf")
 
@@ -144,8 +212,7 @@ def test_removed_heading_is_stale(tmp_path: Path) -> None:
 def test_heading_rename_counts_heading_words_in_the_limit(tmp_path: Path, extra: int, state: str) -> None:
     folder, marker, snapshot = _renamed(tmp_path / "wf")
     # The rename alone changes 5 words: 1 deleted, 4 inserted.
-    _edit(folder, "### Referencias\n\nLista de fuentes.",
-          "### Fuentes de la decision\n\nLista de fuentes. " + "palabra " * extra)
+    _edit(folder, "### Referencias\n", "### Fuentes de la decision" + " palabra" * extra + "\n")
 
     assert content_check.content_check_state(folder) == state
     _unchanged(folder, marker, snapshot)
