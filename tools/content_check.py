@@ -56,6 +56,9 @@ verifier's assignment. Length is the body check's (``word_budget``: prose words,
 tables excluded): the brief tells the verifier not to count words or report
 length, and the ``--verification`` output prints the same ``word_budget`` line
 the body check prints, outside the marker and the verdict (faster-verify-loop S3).
+The plan's ``needs_person`` items (S5) are listed in the brief, and a ``partial``
+whose gap is one of their reasons is printed as ``waiting for a person``; it
+stays ``partial`` and the verdict stays ``fail`` until a person accepts it.
 """
 from __future__ import annotations
 
@@ -358,6 +361,34 @@ def _flatten_finding(item: object) -> str | None:
     return "; ".join(f"{k}: {item[k]}" for k in sorted(item, key=str))
 
 
+WAITING_FOR_PERSON = "waiting for a person"
+
+
+def _needs_person_section(entries: list[dict]) -> str:
+    """Brief block naming the plan's ``needs_person`` items (faster-verify-loop S5); empty without any."""
+    if not entries:
+        return ""
+    return ("Items only a person can close (rubric needs_person): when body.md only states the plan for one "
+            "of them, report its requirement as partial with the recorded reason, verbatim, as gap; do not "
+            "spend a finding or a prose_findings entry on it.\n"
+            + "".join(f"- {entry['item']}: {entry['reason']}\n" for entry in entries))
+
+
+def waiting_for_person(requirements: list, entries: list[dict]) -> list[dict]:
+    """The ``partial`` requirements whose gap is a ``needs_person`` reason (whitespace-normalized).
+
+    A label only: the requirement stays ``partial``, the criterion ``falta`` and the
+    verdict ``fail`` until a person accepts the gap with ``accepted_gaps.py``.
+    """
+    reasons = {" ".join(str(entry["reason"]).split()) for entry in entries}
+    return [r for r in requirements if isinstance(r, dict) and r.get("status") == "partial"
+            and " ".join(str(r.get("gap") or "").split()) in reasons]
+
+
+def waiting_label(record: dict) -> str:
+    return f"{WAITING_FOR_PERSON}: {record.get('requirement')} (gap: {record.get('gap')})"
+
+
 def _criteria_section(criteria: list[dict]) -> str:
     lines = ["Rubric criteria (every one needs at least one requirement):"]
     for criterion in criteria:
@@ -481,6 +512,7 @@ def verify_brief(folder: Path, since: Path | None = None) -> str:
             + WORD_BUDGET_NOTE
             + f"Citations [@key] in body.md render in {config.citation_style.upper()} format at build time from sources.bib; citation keys are expected, not a formatting defect. Check that cited keys exist in sources.bib instead.\n"
             + _criteria_section(criteria)
+            + _needs_person_section(rubric_plan.load_needs_person(folder))
             + incremental
             + _already_run_checks_section(folder, criteria, body_text)
             + "Allowed input paths (absolute):\n"
@@ -1423,6 +1455,9 @@ def main(argv: list[str] | None = None, fetcher: link_check.Fetcher | None = Non
         print(f"  [{'ok' if budget['ok'] else 'FAIL'}] {budget['check']}: {budget['detail']}")
     for finding in outcome.marker["findings"]:
         print(f"  finding: {finding}")
+    # faster-verify-loop S5: a needs_person partial is labelled apart from the fixable findings.
+    for record in waiting_for_person(outcome.marker["requirements"], rubric_plan.load_needs_person(args.folder)):
+        print(f"  {waiting_label(record)}")
     for paragraph in outcome.marker["unmapped_paragraphs"]:
         print(f"  unmapped paragraph (deletion candidate): {paragraph}")
     return 0 if outcome.result == "pass" else 1
