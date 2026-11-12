@@ -1308,13 +1308,17 @@ def _headings_only_renamed(old: str, new: str) -> bool:
     """True when the headings keep their count, order and levels and only titles change.
 
     A position whose new title is another heading's old title is a move, not a
-    rename, so swapping two headings fails.
+    rename, so swapping two headings fails. Titles are compared the way a
+    criterion's ``section`` is looked up (case and accents folded), so a swap
+    that also changes case or accents is still a move.
     """
     before, after = heading_outline(old), heading_outline(new)
     if [level for level, _ in before] != [level for level, _ in after]:
         return False
-    titles = {title for _, title in before}
-    return all(was == now or now[1] not in titles for was, now in zip(before, after))
+    was_titles = [concision._fold(title) for _, title in before]
+    now_titles = [concision._fold(title) for _, title in after]
+    known = set(was_titles)
+    return all(was == now or now not in known for was, now in zip(was_titles, now_titles))
 
 
 _BODY_CHECK_MECHANICAL = ("citations_resolve", "eligible_sources_cited")

@@ -122,6 +122,15 @@ def test_heading_swap_is_stale(tmp_path: Path) -> None:
     _unchanged(folder, marker, snapshot)
 
 
+def test_heading_swap_with_a_case_or_accent_change_is_stale(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+    text = RENAME_BODY.replace("## Objetivos", "## TMP").replace("## Metodologia", "## OBJETIVOS")
+    _body(folder, text.replace("## TMP", "## Metodología"))
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
 def test_added_heading_is_stale(tmp_path: Path) -> None:
     folder, marker, snapshot = _renamed(tmp_path / "wf")
 
