@@ -332,3 +332,60 @@ def test_bounded_edit_with_accepted_gaps_is_stale(tmp_path: Path) -> None:
     _edit(folder, "mas [@key3]", "ademas de [@key3]")
 
     assert content_check.content_check_state(folder) == "stale"
+
+
+# A bounded edit that touches no heading for `bounded_edit` can still move a
+# criterion's section, because `bounded_edit` and the section lookup disagree
+# on what a heading is. The plain bounded path keeps the verification only
+# when the lookup sees the same headings and no criterion's section changed
+# by more than the word limit.
+_HEAD = "# Informe\n\nCuerpo con fuentes [@key1] y [@key2], mas [@key3], [@key4] y [@key5].\n\n"
+
+
+def test_unindenting_a_heading_onto_a_criterion_section_is_stale(tmp_path: Path) -> None:
+    body = (
+        _HEAD + "## Metodologia\n\nSe midio dos veces.\n\n    ## Objetivos\n\nTexto no verificado.\n\n"
+        "## Objetivos\n\nMedir la deriva.\n"
+    )
+    folder, marker, snapshot = _renamed(tmp_path / "wf", body=body)
+
+    _body(folder, body.replace("    ## Objetivos\n", "## Objetivos\n"))
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_removing_a_fence_around_a_criterion_heading_is_stale(tmp_path: Path) -> None:
+    body = (
+        _HEAD + "## Metodologia\n\nSe midio dos veces.\n\n```\n## Objetivos\n```\n\nTexto no verificado.\n\n"
+        "## Objetivos\n\nMedir la deriva.\n"
+    )
+    folder, marker, snapshot = _renamed(tmp_path / "wf", body=body)
+
+    _body(folder, body.replace("```\n## Objetivos\n```\n", "## Objetivos\n"))
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+@pytest.mark.parametrize(("words", "state"), [(40, "pass"), (41, "stale")])
+def test_moving_a_heading_over_text_counts_the_words_that_change_section(
+    tmp_path: Path, words: int, state: str
+) -> None:
+    paragraph = "palabra " * (words - 1) + "fin.\n\n"
+    body = _HEAD + "## Metodologia\n\nSe midio dos veces.\n\n" + paragraph + "## Objetivos\n\nMedir la deriva.\n"
+    folder, marker, snapshot = _renamed(tmp_path / "wf", body=body)
+
+    _body(folder, _HEAD + "## Metodologia\n\nSe midio dos veces.\n\n## Objetivos\n\n" + paragraph + "Medir la deriva.\n")
+
+    assert content_check.content_check_state(folder) == state
+    _unchanged(folder, marker, snapshot)
+
+
+def test_bounded_edit_inside_a_criterion_section_keeps_a_pass(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+
+    _edit(folder, "Se midio dos veces.", "Se midio tres veces seguidas.")
+
+    assert content_check.content_check_state(folder) == "pass"
+    _unchanged(folder, marker, snapshot)

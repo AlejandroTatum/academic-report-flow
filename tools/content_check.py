@@ -80,7 +80,7 @@ import timings
 import yaml
 import accepted_gaps
 from approval_marker import BODY_NAME, sha256_file
-from bounded_edit import LIMIT, bounded, heading_outline
+from bounded_edit import LIMIT, bounded, heading_outline, word_diff
 from report_config import ReportConfig, read_yaml
 from validate_report import SECTION_SPECS, bold_pseudo_heading_lines, section_structure_validation
 from source_count import MIN_ACADEMIC_SOURCES, all_entry_keys, effective_min_sources, eligible_entry_keys
@@ -1277,6 +1277,11 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
     headings before and after with the same level, every other line being
     identical (``_only_heading_lines_retitled``), and the rubric checks also
     pass on the new bytes.
+
+    An edit that touches no heading for ``bounded_edit`` must also leave every
+    criterion on its section (``_sections_hold``): ``bounded_edit`` and the
+    section lookup do not agree on what a heading is, so such an edit can
+    still move a criterion onto text the verifier never checked.
     """
     snapshot = folder / CHECKED_SNAPSHOT_NAME
     try:
@@ -1302,6 +1307,8 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
             if _section_positions(old, criteria) != _section_positions(new, criteria):
                 return False
             renamed = True
+        elif not _sections_hold(old, new, rubric_plan.load_rubric(folder)):
+            return False
         requirements = data.get("requirements")
         if isinstance(requirements, list) and downgrade_unquoted_evidence(requirements, new)[1]:
             return False
@@ -1309,6 +1316,31 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
         return all(check["ok"] for check in body_check_results(folder) if check["check"] in required)
     except Exception:
         return False
+
+
+def _sections_hold(old: str, new: str, criteria: list[dict]) -> bool:
+    """True when a bounded edit leaves every criterion on the section that was checked.
+
+    The section lookup must see the same headings, in order, with the same
+    levels and folded titles (``concision.section_headings``): unindenting a
+    heading or moving a code fence around one changes nothing for
+    ``bounded_edit`` but changes where a ``section`` resolves. And no
+    criterion's section may change by more than ``LIMIT`` words: moving a
+    heading over a paragraph costs only the heading's words in the whole-body
+    diff, however much text changes section.
+    """
+    if concision.section_headings(old) != concision.section_headings(new):
+        return False
+    for criterion in criteria:
+        section = criterion.get("section")
+        if not isinstance(section, str):
+            continue
+        was, now = concision.section_text(old, section), concision.section_text(new, section)
+        if (was is None) != (now is None):
+            return False
+        if was is not None and word_diff(was, now) > LIMIT:
+            return False
+    return True
 
 
 def _only_heading_lines_retitled(old: str, new: str) -> bool:
