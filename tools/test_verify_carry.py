@@ -151,6 +151,20 @@ def test_rename_that_moves_a_criterion_to_a_duplicate_title_is_stale(tmp_path: P
     _unchanged(folder, marker, snapshot)
 
 
+def test_rename_that_turns_a_non_heading_line_into_a_criterion_heading_is_stale(tmp_path: Path) -> None:
+    body = (
+        "# Informe\n\nCuerpo con fuentes [@key1] y [@key2], mas [@key3], [@key4] y [@key5].\n\n"
+        "## Metodologia\n\nSe midio dos veces.\n\n##Objetivos\n\nTexto no verificado.\n\n"
+        "## Objetivos\n\nMedir la deriva.\n"
+    )
+    folder, marker, snapshot = _renamed(tmp_path / "wf", body=body)
+
+    _body(folder, body.replace("##Objetivos\n", "## Objetivos\n"))
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
 def test_added_heading_is_stale(tmp_path: Path) -> None:
     folder, marker, snapshot = _renamed(tmp_path / "wf")
 

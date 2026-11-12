@@ -221,14 +221,13 @@ def section_text(body: str, title: str) -> str | None:
     return "\n".join(lines[start:]) if start is not None else None
 
 
-def section_position(body: str, title: str) -> int | None:
-    """Ordinal of the heading ``section_text`` resolves ``title`` to, or None when absent.
+def section_headings(body: str) -> list[tuple[int, str]]:
+    """The headings ``section_text`` sees, in order, as ``(level, folded title)``.
 
-    Counts the headings ``section_text`` sees (fenced blocks skipped), so two
-    bodies with the same outline shape resolve a title to the same section
-    exactly when the positions are equal.
+    Fenced blocks are skipped and titles are folded exactly as the section
+    lookup does, so this is the outline a criterion's ``section`` resolves in.
     """
-    position = -1
+    found: list[tuple[int, str]] = []
     fence: str | None = None
     for line in body.splitlines():
         marker = _FENCE.match(line)
@@ -242,10 +241,20 @@ def section_position(body: str, title: str) -> int | None:
         if fence:
             continue
         match = _HEADING.match(line)
-        if not match:
-            continue
-        position += 1
-        if _fold(match.group(2).strip()) == _fold(title.strip()):
+        if match:
+            found.append((len(match.group(1)), _fold(match.group(2).strip())))
+    return found
+
+
+def section_position(body: str, title: str) -> int | None:
+    """Ordinal of the heading ``section_text`` resolves ``title`` to, or None when absent.
+
+    Two bodies whose ``section_headings`` have the same levels resolve a title
+    to the same section exactly when the positions are equal.
+    """
+    wanted = _fold(title.strip())
+    for position, (_, folded) in enumerate(section_headings(body)):
+        if folded == wanted:
             return position
     return None
 

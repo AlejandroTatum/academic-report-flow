@@ -1273,8 +1273,9 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
     and levels (``_headings_only_renamed``), the changed words, heading words
     included, stay within the limit, every criterion's ``section`` still
     resolves (same ``section_sha256`` keys) to the heading at the same
-    position of the outline (``_section_positions``) and the rubric checks
-    also pass on the new bytes.
+    position (``_section_positions``) of an outline the section lookup sees
+    with the same shape (``_section_levels``) and the rubric checks also pass
+    on the new bytes.
     """
     snapshot = folder / CHECKED_SNAPSHOT_NAME
     try:
@@ -1295,6 +1296,8 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
             criteria = rubric_plan.load_rubric(folder)
             if section_hashes(old, criteria).keys() != section_hashes(new, criteria).keys():
                 return False
+            if _section_levels(old) != _section_levels(new):
+                return False
             if _section_positions(old, criteria) != _section_positions(new, criteria):
                 return False
             renamed = True
@@ -1305,6 +1308,17 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
         return all(check["ok"] for check in body_check_results(folder) if check["check"] in required)
     except Exception:
         return False
+
+
+def _section_levels(body_text: str) -> list[int]:
+    """Levels of the headings the section lookup sees, in order.
+
+    ``heading_outline`` and the section lookup do not agree on what a heading
+    is (a ``##Title`` line, an indented or fenced heading), so the outline the
+    lookup resolves in must keep its shape too; otherwise equal positions
+    could name different sections.
+    """
+    return [level for level, _ in concision.section_headings(body_text)]
 
 
 def _section_positions(body_text: str, criteria: list[dict]) -> list[int | None]:
