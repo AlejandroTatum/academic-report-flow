@@ -2059,3 +2059,144 @@ def test_verification_output_prints_the_body_check_word_budget_line(
     marker = yaml.safe_load((folder / "content-check.yml").read_text(encoding="utf-8"))
     assert {check["check"] for check in marker["mechanical"]} == content_check.MECHANICAL_NAMES
     assert content_check.content_check_state(folder) == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Frozen rubric: a ceilings-only change keeps the --since carry (faster-verify-loop S4)
+# ---------------------------------------------------------------------------
+
+STALE_RUBRIC_DETAIL = (
+    "content-check.yml is stale: rubric.yml changed since the check; the rubric is frozen once the "
+    "draft starts (fix the draft, not the rubric; change it only on the user's instruction); re-run the verifier"
+)
+
+
+def _ceilings(folder: Path, total: int | None, per: int | None = None, source: str = "guia de la catedra") -> None:
+    """Rewrite rubric.yml with the default criteria and the given word ceilings."""
+    criteria = tuple(dict(c, **({"max_words": per} if per else {})) for c in DEFAULT_RUBRIC_CRITERIA)
+    _rubric(folder, criteria=criteria, source=source)
+    if total:
+        rubric = folder / "rubric.yml"
+        rubric.write_text(rubric.read_text(encoding="utf-8") + f"max_words: {total}\n", encoding="utf-8")
+
+
+def _checked_with_ceilings(folder: Path, legacy: bool = False) -> Path:
+    """A passing check of SECTIONED_BODY under a rubric with ceilings; returns the verification."""
+    _verify_folder(folder)
+    _body(folder, SECTIONED_BODY)
+    _ceilings(folder, 400, 200)
+    hashes = content_check.section_hashes(SECTIONED_BODY, content_check.rubric_plan.load_rubric(folder))
+    previous = _verification(
+        folder, requirements=[_req("objetivo", evidence="Medir la deriva"), _req("metodologia", evidence="Se usaron")],
+        section_sha256=hashes)
+    assert _run(folder, previous) == 0
+    if legacy:
+        import yaml
+
+        path = folder / "content-check.yml"
+        marker = yaml.safe_load(path.read_text(encoding="utf-8"))
+        del marker["rubric_matrix_sha256"]
+        path.write_text(yaml.safe_dump(marker, sort_keys=False), encoding="utf-8")
+    return previous
+
+
+CEILING_CHANGES = {"total": (500, 200), "per_criterion": (400, 250), "dropped": (None, None)}
+
+
+def test_check_records_the_rubric_matrix_hash(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    _checked_with_ceilings(folder)
+    recorded = _marker(folder)["rubric_matrix_sha256"]
+    assert recorded == content_check.rubric_plan.rubric_matrix_sha256(folder)
+    _ceilings(folder, 500, 250)
+    assert content_check.rubric_plan.rubric_matrix_sha256(folder) == recorded
+    _ceilings(folder, 400, 200, source="otra guia")
+    assert content_check.rubric_plan.rubric_matrix_sha256(folder) != recorded
+
+
+@pytest.mark.parametrize("change", CEILING_CHANGES)
+def test_since_brief_after_a_ceilings_only_change_carries_unchanged_sections(tmp_path: Path, change: str) -> None:
+    folder = tmp_path / "wf"
+    previous = _checked_with_ceilings(folder)
+    _ceilings(folder, *CEILING_CHANGES[change])
+    _body(folder, SECTIONED_BODY.replace("Se usaron", "Se midieron con"))
+
+    brief = content_check.verify_brief(folder, since=previous)
+    assert "full verify" not in brief
+    assert "Re-check only these criteria: metodologia" in brief
+    assert "Carried over unchanged (the tool merges them from the previous check; do not list them): objetivo" in brief
+
+
+@pytest.mark.parametrize("change", CEILING_CHANGES)
+def test_check_carries_requirements_after_a_ceilings_only_change(tmp_path: Path, change: str) -> None:
+    folder = tmp_path / "wf"
+    _checked_with_ceilings(folder)
+    _ceilings(folder, *CEILING_CHANGES[change])
+    edited = SECTIONED_BODY.replace("Se usaron", "Se midieron con")
+    answer = _recheck(folder, edited, [_req("metodologia", evidence="Se midieron con")])
+
+    assert _run(folder, answer) == 0
+    marker = _marker(folder)
+    assert marker["carried_criteria"] == ["objetivo"]
+    assert [(r["criterion"], r["evidence"]) for r in marker["requirements"]] == [
+        ("metodologia", "Se midieron con"), ("objetivo", "Medir la deriva")]
+    assert content_check.content_check_state(folder) == "pass"
+
+
+def test_ceilings_only_change_still_stales_the_marker(tmp_path: Path) -> None:
+    import doc_status
+
+    folder = tmp_path / "wf"
+    _checked_with_ceilings(folder)
+    before = (folder / "content-check.yml").read_bytes()
+    _ceilings(folder, 500, 250)
+
+    assert content_check.content_check_state(folder) == "stale"
+    verify = doc_status._phase_verify(folder, None, None)
+    assert (verify.state, verify.detail, verify.blocked_reason) == (
+        doc_status.PENDING, STALE_RUBRIC_DETAIL, "content_check_stale")
+    assert (folder / "content-check.yml").read_bytes() == before
+
+
+def test_stale_marker_after_a_body_edit_keeps_the_generic_detail(tmp_path: Path) -> None:
+    import doc_status
+
+    folder = tmp_path / "wf"
+    _checked_with_ceilings(folder)
+    _body(folder, SECTIONED_BODY + "\n" + "palabra " * 41 + "\n")
+
+    verify = doc_status._phase_verify(folder, None, None)
+    assert (verify.state, verify.detail, verify.blocked_reason) == (
+        doc_status.PENDING, "content-check.yml is stale: inputs changed or legacy marker; re-run the verifier",
+        "content_check_stale")
+
+
+def test_ceilings_and_another_rubric_change_is_still_a_full_verify(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    previous = _checked_with_ceilings(folder)
+    _ceilings(folder, 500, 250, source="otra guia")
+    edited = SECTIONED_BODY.replace("Se usaron", "Se midieron con")
+    _body(folder, edited)
+
+    brief = content_check.verify_brief(folder, since=previous)
+    assert "Incremental re-verify" not in brief
+    assert "full verify: the rubric changed since" in brief
+    answer = _recheck(folder, edited, [_req("metodologia", evidence="Se midieron con")])
+    assert _run(folder, answer) == 1
+    assert [r["criterion"] for r in _marker(folder)["requirements"]] == ["metodologia"]
+
+
+def test_marker_without_the_matrix_hash_forces_a_full_verify_after_a_ceilings_change(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    previous = _checked_with_ceilings(folder, legacy=True)
+    assert content_check.content_check_state(folder) == "pass"
+    _ceilings(folder, 500, 250)
+    edited = SECTIONED_BODY.replace("Se usaron", "Se midieron con")
+    _body(folder, edited)
+
+    brief = content_check.verify_brief(folder, since=previous)
+    assert "Incremental re-verify" not in brief
+    assert "full verify: the rubric changed since" in brief
+    answer = _recheck(folder, edited, [_req("metodologia", evidence="Se midieron con")])
+    assert _run(folder, answer) == 1
+    assert [r["criterion"] for r in _marker(folder)["requirements"]] == ["metodologia"]

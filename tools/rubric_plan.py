@@ -13,13 +13,17 @@ folder-level predicate (``absent|malformed|valid``) status tools consume, and
 evidence-coverage check against the guide inventory (``guide_facts.py``): every
 inventory item (``G1``...) must be named by some criterion's ``deliverables:`` or
 ``covers:`` (an id, or the item's text) or by a top-level ``not_applicable:``
-entry ``{item, reason}``; it never judges whether the criterion is good enough. Like every marker
+entry ``{item, reason}``; it never judges whether the criterion is good enough.
+``rubric_matrix_sha256`` hashes the plan without its ``max_words`` ceilings, so a
+ceilings-only change is recognizable after the plan is frozen. Like every marker
 predicate in this repo, ``rubric_state`` never raises and never writes: an
 unreadable, non-UTF-8 or non-mapping file is ``malformed`` data the caller can
 report, never a crash and never something this module "repairs".
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import sys
 import unicodedata
@@ -281,6 +285,35 @@ def load_max_words(report_dir: Path) -> int | None:
         return None
     value = data.get("max_words")
     return value if _is_positive_int(value) else None
+
+
+def rubric_matrix_sha256(report_dir: Path) -> str:
+    """Hash of the parsed plan without its word ceilings (faster-verify-loop S4).
+
+    ``max_words`` (top level and per criterion) never changes the requirement
+    matrix, so two plans that differ only there hash the same. The exact
+    ``rubric_sha256`` binding and its staleness rule are untouched: this hash only
+    lets ``content_check --since`` carry unchanged sections across a ceilings-only
+    change. ``""`` for a plan that is not valid. Never raises, never writes.
+    """
+    folder = Path(report_dir)
+    if rubric_state(folder) != "valid":
+        return ""
+    try:
+        data = dict(read_yaml(folder / RUBRIC_NAME))
+    except Exception:
+        return ""
+    data.pop("max_words", None)
+    data["criteria"] = [
+        {key: value for key, value in criterion.items() if key != "max_words"} if isinstance(criterion, dict)
+        else criterion
+        for criterion in data["criteria"]
+    ]
+    try:
+        canonical = json.dumps(data, sort_keys=True, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return ""
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 _ITEM_ID = re.compile(r"\bG\d+\b")
