@@ -55,7 +55,8 @@ def test_grade_writes_the_table_in_the_working_folder_only(tmp_path: Path) -> No
     assert written == {"rubric-grade.yml", "rubric-grade.md"}
     assert list(delivery.iterdir()) == []
     md = (folder / "rubric-grade.md").read_text(encoding="utf-8")
-    assert md.startswith("# Rubric grade") and "| Criterion | Weight | Evidence | Estimated score | Gap |" in md
+    # coverage is no longer called a grade (guide-vs-teacher-rubric T4, S7)
+    assert md.startswith("# Rubric report") and "| Criterion | Weight | Evidence | Covered | Gap |" in md
 
 
 def test_grade_never_touches_the_verification_inputs(tmp_path: Path) -> None:

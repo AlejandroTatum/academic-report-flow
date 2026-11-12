@@ -31,6 +31,7 @@ from pathlib import Path
 
 import accepted_gaps
 import content_check
+import course_memory
 import final_review_marker
 import rubric_plan
 import typeset
@@ -295,7 +296,38 @@ def _phase_research(folder: Path, config: ReportConfig, _documents_root: Path | 
     return PhaseState("research", DONE, sources.reason)
 
 
-def _phase_plan(folder: Path, _config: ReportConfig, _documents_root: Path | None) -> PhaseState:
+def _course_rubric_warning(config: ReportConfig) -> str:
+    """A warning when the course stores a teacher rubric the plan does not carry (S5); never a gate."""
+    count = course_memory.course_rubric_count(config)
+    if not count:
+        return ""
+    noun = "criterion" if count == 1 else "criteria"
+    return (
+        f"; warning: the course rubric has {count} {noun} (academic-sources/{course_memory.course_slug(config)}/rubrics/) "
+        "and rubric.yml has no teacher criterion; run course_memory.py and add them with origin: teacher"
+    )
+
+
+def _teacher_rubric_note(folder: Path, config: ReportConfig) -> str:
+    """What a valid plan holds of the teacher's grading rubric: a note or a warning, never a gate."""
+    status = rubric_plan.teacher_rubric_status(folder)
+    if status == "none_confirmed":
+        return "no teacher rubric (confirmed by the user)" + _course_rubric_warning(config)
+    if status != "teacher":
+        return (
+            "warning: guide-only plan, no teacher rubric (add the teacher's criteria with origin: teacher, "
+            "or record teacher_rubric: none once the user confirms there is none)"
+        ) + _course_rubric_warning(config)
+    criteria = rubric_plan.teacher_criteria(folder)
+    bare = [str(c.get("id")) for c in criteria if not rubric_plan.criterion_levels(c)]
+    noun = "criterion" if len(criteria) == 1 else "criteria"
+    note = f"teacher rubric: {len(criteria)} {noun}, {len(criteria) - len(bare)} with levels"
+    if bare:
+        note += "; warning: teacher criteria without levels: " + ", ".join(bare)
+    return note
+
+
+def _phase_plan(folder: Path, config: ReportConfig, _documents_root: Path | None) -> PhaseState:
     """Map the rubric-plan predicate onto one phase state (new-report-flow T3).
 
     A valid ``rubric.yml`` is the plan artifact; an absent one is ordinary
@@ -309,7 +341,9 @@ def _phase_plan(folder: Path, _config: ReportConfig, _documents_root: Path | Non
         count = len(criteria)
         noun = "criterion" if count == 1 else "criteria"
         checked = rubric_plan.count_checked_criteria(criteria)
-        return PhaseState("plan", DONE, f"rubric.yml valid ({count} {noun}, {checked} with checks)")
+        detail = f"rubric.yml valid ({count} {noun}, {checked} with checks)"
+        warnings = "".join(f"; warning: {w}" for w in rubric_plan.load_rubric_warnings(folder))
+        return PhaseState("plan", DONE, f"{detail}; {_teacher_rubric_note(folder, config)}{warnings}")
     if state == "absent":
         return PhaseState("plan", PENDING, "rubric.yml missing")
     return PhaseState("plan", BLOCKED, "rubric.yml malformed", "rubric_malformed")
@@ -1047,8 +1081,10 @@ def _guidance(
         if rubric_plan.rubric_state(folder) == "valid":
             template += ("; with the PDF, run "
                          + _tool_command("rubric_grade.py", folder).replace("{", "{{").replace("}", "}}")
-                         + " and present {rubric_grade} unchanged (a mechanical estimate, not the teacher's grade; "
-                         "the verifier never scores; it never blocks review)")
+                         + " and present {rubric_grade} unchanged (guide coverage is a mechanical estimate, "
+                         "not the teacher's grade; the leveled grade comes from leveled-grade.yml written by the "
+                         "independent strict grader; relay every warning; the verifier never scores; "
+                         "it never blocks review)")
     if phase_name == "research" and _uncited_bibliography(config):
         template = (
             "write at least 1 entry (any type) to {sources}, the exact list to print "

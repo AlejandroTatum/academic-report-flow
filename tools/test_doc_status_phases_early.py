@@ -295,7 +295,7 @@ def test_plan_valid_rubric_is_done(tmp_path: Path) -> None:
 
     assert phase.name == "plan"
     assert phase.state == doc_status.DONE
-    assert phase.detail == "rubric.yml valid (2 criteria, 0 with checks)"
+    assert phase.detail.startswith("rubric.yml valid (2 criteria, 0 with checks); ")
 
 
 def test_plan_missing_rubric_is_pending(tmp_path: Path) -> None:

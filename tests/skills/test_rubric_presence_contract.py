@@ -64,3 +64,27 @@ def test_approval_gate_blocks_on_unmapped_inventory_not_on_a_score() -> None:
     approval = flat(REFS / "approval.md")
     assert "guide_inventory_unmapped" in approval
     assert "never a score" in approval
+
+
+def test_plan_keeps_guide_criteria_apart_from_the_teacher_s_grading_rubric() -> None:
+    content = flat(REFS / "content.md")
+    assert "`origin: guide`" in content and "`origin: teacher`" in content
+    assert "`levels:` copied verbatim" in content
+    assert "`teacher_rubric: none`" in content
+    assert "warning: guide-only plan, no teacher rubric" in content
+    assert "it never blocks" in content
+    data = flat(REFS / "data.md")
+    assert "`teacher rubric: not received`" in data and "only warns" in data
+
+
+def test_course_memory_feeds_the_plan_and_records_the_grade() -> None:
+    content = flat(REFS / "content.md")
+    assert "tools/course_memory.py" in content
+    assert "`origin: teacher` block" in content and "relay every `warning:` line" in content
+    data = flat(REFS / "data.md")
+    assert "academic-sources/<course-slug>/rubrics/" in data and "academic.course-rubric/v1" in data
+    assert "`ai_declaration: include|omit`" in data
+    delivery = flat(REFS / "delivery.md")
+    assert "--add-delivery" in delivery and "feedback.yml" in delivery
+    for text in (content, data, delivery):
+        assert "never blocks" in text
