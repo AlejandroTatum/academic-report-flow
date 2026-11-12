@@ -224,18 +224,40 @@ def section_hashes(body_text: str, criteria: list[dict]) -> dict[str, str]:
     return hashes
 
 
-def _incremental_section(since: Path, criteria: list[dict], hashes: dict[str, str], rubric_hash: str) -> str:
+def _same_matrix(folder: Path, previous_rubric: object, rubric_hash: str) -> bool:
+    """The rubric is unchanged, or changed only in ``max_words`` (faster-verify-loop S4).
+
+    A ceilings-only change is recognized only through the ``rubric_matrix_sha256``
+    the previous ``content-check.yml`` recorded for that same ``rubric_sha256``;
+    a marker without it (written before this field) behaves as before.
+    """
+    if previous_rubric == rubric_hash:
+        return True
+    try:
+        marker = yaml.safe_load((folder / CONTENT_CHECK_NAME).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        return False
+    if not isinstance(marker, dict) or marker.get("rubric_sha256") != previous_rubric:
+        return False
+    recorded = marker.get("rubric_matrix_sha256")
+    return isinstance(recorded, str) and bool(recorded) and recorded == rubric_plan.rubric_matrix_sha256(folder)
+
+
+def _incremental_section(folder: Path, since: Path, criteria: list[dict], hashes: dict[str, str],
+                         rubric_hash: str) -> str:
     """Brief block for a re-verify after an edit (verify-concise-drafts T7, S2).
 
     A criterion whose mapped section hashes the same as in the previous
     verification is carried over verbatim; the verifier re-checks only the
-    rest. Carried quotes are still checked against body.md by run_check.
+    rest. Carried quotes are still checked against body.md by run_check. A
+    rubric change forces a full verify, except one that only touches
+    ``max_words`` (``_same_matrix``).
     """
     previous, errors = parse_verification(since)
     if errors:
         raise ValueError(errors[0])
     name = Path(since).name
-    if previous["rubric_sha256"] != rubric_hash:
+    if not _same_matrix(folder, previous["rubric_sha256"], rubric_hash):
         return f"Previous verification {name}: full verify: the rubric changed since it was written.\n"
     old = previous["section_sha256"]
     carried = [str(c.get("id")) for c in criteria
@@ -352,8 +374,9 @@ def _carried_requirements(folder: Path, criteria: list[dict], rubric_hash: str, 
     """Requirements the previous content-check.yml settled and the verifier skipped.
 
     A criterion is carried only when the verifier gave it no requirement, the
-    rubric is unchanged and its mapped section hashes the same as when the
-    previous marker verified it, so an incremental answer lists only what
+    rubric is unchanged (or changed only in ``max_words``, recognized through the
+    marker's ``rubric_matrix_sha256``) and its mapped section hashes the same as
+    when the previous marker verified it, so an incremental answer lists only what
     changed. Legacy markers without ``section_sha256`` carry nothing.
     """
     try:
@@ -361,7 +384,7 @@ def _carried_requirements(folder: Path, criteria: list[dict], rubric_hash: str, 
     except (OSError, UnicodeDecodeError, yaml.YAMLError):
         return []
     if (not isinstance(previous, dict) or previous.get("schema") != CONTENT_CHECK_SCHEMA
-            or previous.get("rubric_sha256") != rubric_hash
+            or not _same_matrix(folder, previous.get("rubric_sha256"), rubric_hash)
             or not isinstance(previous.get("section_sha256"), dict)
             or not isinstance(previous.get("requirements"), list)):
         return []
@@ -435,7 +458,7 @@ def verify_brief(folder: Path, since: Path | None = None) -> str:
         "findings": [],
         "prose_findings": [],
     }
-    incremental = (_incremental_section(since, criteria, schema["section_sha256"], schema["rubric_sha256"])
+    incremental = (_incremental_section(folder, since, criteria, schema["section_sha256"], schema["rubric_sha256"])
                    if since is not None else "")
     return ("You are an independent read-only verifier. Verify only from these inputs; "
             "do not use the drafting conversation or any other files. Do not edit any file.\n"
@@ -1014,6 +1037,9 @@ def run_check(
         "schema": CONTENT_CHECK_SCHEMA,
         "body_sha256": sha256_file(body_path),
         "rubric_sha256": _sha256_or_empty(folder / rubric_plan.RUBRIC_NAME),
+        # The plan without its max_words ceilings (faster-verify-loop S4): lets the
+        # next --since carry sections across a ceilings-only change. Not a binding.
+        "rubric_matrix_sha256": rubric_plan.rubric_matrix_sha256(folder),
         "bib_sha256": _sha256_or_empty(config.bib_path),
         # Optional binding (report-flow-hardening T11): recorded only when the
         # report declares a guide, so pre-guide markers keep their old shape.
@@ -1045,6 +1071,23 @@ def run_check(
         yaml.safe_dump(marker, sort_keys=False, allow_unicode=False),
     )
     return CheckOutcome(str(marker["result"]), marker, ())
+
+
+def rubric_changed_since_check(report_dir: Path) -> bool:
+    """True when ``content-check.yml`` records a ``rubric_sha256`` other than the current rubric's.
+
+    Lets ``doc_status`` name the rubric as the stale input. Never raises, never writes.
+    """
+    folder = Path(report_dir)
+    try:
+        data = read_yaml(folder / CONTENT_CHECK_NAME)
+    except Exception:
+        return False
+    if not isinstance(data, dict) or not isinstance(data.get("rubric_sha256"), str):
+        return False
+    rubric_path = folder / rubric_plan.RUBRIC_NAME
+    current = _sha256_or_empty(rubric_path if rubric_path.is_file() else None)
+    return data["rubric_sha256"].strip().lower() != current
 
 
 def content_check_state(report_dir: Path) -> str:

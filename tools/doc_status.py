@@ -374,11 +374,20 @@ def _phase_approval(folder: Path, _config: ReportConfig, _documents_root: Path |
     return PhaseState("approval", DONE, detail)
 
 
+STALE_RUBRIC_DETAIL = (
+    "content-check.yml is stale: rubric.yml changed since the check; the rubric is frozen once the "
+    "draft starts (fix the draft, not the rubric; change it only on the user's instruction); re-run the verifier"
+)
+
+
 def _phase_verify(folder: Path, _config: ReportConfig, _documents_root: Path | None) -> PhaseState:
     """Map the content-check predicate onto one phase state (new-report-flow T3/T5).
 
     ``pass`` is ``done``; absent and stale (the draft, the rubric or the bib
     changed since the check) are ordinary progress -- the check simply reruns.
+    A stale marker whose ``rubric_sha256`` no longer matches says the rubric
+    changed (``STALE_RUBRIC_DETAIL``, faster-verify-loop S4): it is frozen once
+    the draft starts.
     A recorded fail is ``blocked`` with ``content_check_failed``: the findings
     must be fixed through the user's edit orders, never silently polished. A
     malformed marker is ``blocked`` too. The check is never run or repaired
@@ -400,12 +409,10 @@ def _phase_verify(folder: Path, _config: ReportConfig, _documents_root: Path | N
     if state == "absent":
         return PhaseState("verify", PENDING, "content-check.yml missing")
     if state == "stale":
-        return PhaseState(
-            "verify",
-            PENDING,
-            "content-check.yml is stale: inputs changed or legacy marker; re-run the verifier",
-            "content_check_stale",
-        )
+        # faster-verify-loop S4: the rubric is frozen once the draft starts, so say when it moved.
+        detail = (STALE_RUBRIC_DETAIL if content_check.rubric_changed_since_check(folder)
+                  else "content-check.yml is stale: inputs changed or legacy marker; re-run the verifier")
+        return PhaseState("verify", PENDING, detail, "content_check_stale")
     if state == "fail":
         marker = read_yaml(folder / content_check.CONTENT_CHECK_NAME)
         mechanical = marker.get("mechanical", [])
