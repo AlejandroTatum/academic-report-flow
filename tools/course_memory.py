@@ -8,18 +8,23 @@ its memory lives in the content root under ``academic-sources/<course-slug>/``:
                     {id, title, weight, levels[{points, descriptor}]}
     feedback.yml    schema academic.course-feedback/v1: optional
                     ai_declaration: include|omit, deliveries[] of
-                    {work, date, grade, max, comments[]}
+                    {work, date, grade, max, comments[], predicted?}
 
 ``course_memory.py <work-folder>`` is read-only: it prints the course's teacher criteria
 as a ready ``origin: teacher`` block for rubric.yml, the graded deliveries with their
 comments and the AI declaration decision. Anything missing or malformed is a
 ``warning:`` line and the exit code is always 0 (S2: it informs, it never blocks).
-``--add-delivery`` appends one graded delivery to feedback.yml, its only write.
+``--add-delivery`` appends one graded delivery to feedback.yml, its only write;
+``--predicted`` stores the leveled grade /10 the report had at delivery, and the read
+prints the mean absolute difference between predicted and teacher grades (S8,
+orientative calibration, never a gate).
 """
 from __future__ import annotations
 
 import argparse
+import math
 import sys
+from fractions import Fraction
 from pathlib import Path
 
 import yaml
@@ -113,6 +118,23 @@ def _valid_delivery(entry: object) -> bool:
     return all(isinstance(entry.get(k), (int, float)) and not isinstance(entry.get(k), bool) for k in ("grade", "max"))
 
 
+def _predicted(entry: dict) -> float | None:
+    value = entry.get("predicted")
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _calibration(entries: list[dict]) -> list[str]:
+    """Mean absolute difference between the predicted leveled grade and the teacher's, both /10."""
+    pairs = [(Fraction(str(_predicted(e))), Fraction(str(e["grade"])) * 10 / Fraction(str(e["max"])))
+             for e in entries if _predicted(e) is not None and e["max"]]
+    if not pairs:
+        return []
+    mean = sum((abs(p - g) for p, g in pairs), Fraction(0)) / len(pairs)
+    rounded = math.floor(mean * 10 + Fraction(1, 2)) / 10
+    return [f"calibration: mean absolute difference {rounded:.1f}/10 between the leveled grade and the teacher's grade "
+            f"(n={len(pairs)}; orientative, never a gate)"]
+
+
 def _ai_lines(decision: str | None, config: ReportConfig) -> list[str]:
     """The course decision and how report.yml compares; informs only, changes nothing."""
     from doc_status import _ai_declaration_decided
@@ -179,12 +201,15 @@ def report(folder: Path) -> list[str]:
                 lines.append(f"warning: feedback.yml delivery {index} malformed (needs work, date, grade, max)")
         lines.append(f"deliveries: {len(good)} in feedback.yml")
         for entry in good:
-            lines.append(f"- {entry['work']} {entry['date']}: {entry['grade']}/{entry['max']}")
+            predicted = f" (predicted {_predicted(entry)})" if _predicted(entry) is not None else ""
+            lines.append(f"- {entry['work']} {entry['date']}: {entry['grade']}/{entry['max']}{predicted}")
             lines += [f"  comment: {c}" for c in entry.get("comments") or [] if isinstance(c, str)]
+        lines += _calibration(good)
     return lines + _ai_lines((feedback or {}).get("ai_declaration"), config)
 
 
-def add_delivery(folder: Path, work: str | None, date: str | None, grade: str | None, maximum: str, comments: list[str]) -> list[str]:
+def add_delivery(folder: Path, work: str | None, date: str | None, grade: str | None, maximum: str,
+                 comments: list[str], predicted: str | None = None) -> list[str]:
     """Append one graded delivery to the course's feedback.yml; warn and write nothing on bad input."""
     config = _config(folder)
     slug = course_slug(config)
@@ -196,6 +221,10 @@ def add_delivery(folder: Path, work: str | None, date: str | None, grade: str | 
         points = top = None
     if not date or points is None:
         return ["warning: --add-delivery needs --date and a numeric --grade; delivery not recorded"]
+    try:
+        leveled = float(predicted) if predicted is not None else None
+    except ValueError:
+        return ["warning: --predicted must be a number (the leveled grade /10); delivery not recorded"]
     path = course_dir(slug) / "feedback.yml"
     data, error = _load_feedback(path)
     if error:
@@ -204,10 +233,12 @@ def add_delivery(folder: Path, work: str | None, date: str | None, grade: str | 
     work = work or folder.name
     data["deliveries"] = list(data.get("deliveries") or []) + [
         {"work": work, "date": date, "grade": points, "max": top, "comments": list(comments)}
+        | ({"predicted": leveled} if leveled is not None else {})
     ]
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
-    return [f"recorded: {work} {date} {points}/{top:g} in academic-sources/{slug}/feedback.yml"]
+    note = f" (predicted {leveled})" if leveled is not None else ""
+    return [f"recorded: {work} {date} {points}/{top:g}{note} in academic-sources/{slug}/feedback.yml"]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -218,11 +249,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--date")
     parser.add_argument("--grade")
     parser.add_argument("--max", default="10")
+    parser.add_argument("--predicted", help="the leveled grade /10 at delivery (rubric-grade.md), for calibration")
     parser.add_argument("--comment", action="append", default=[], help="one teacher comment (repeatable)")
     args = parser.parse_args(argv)
     folder = args.folder.expanduser().resolve()
     if args.add_delivery:
-        lines = add_delivery(folder, args.work, args.date, args.grade, args.max, args.comment)
+        lines = add_delivery(folder, args.work, args.date, args.grade, args.max, args.comment, args.predicted)
     else:
         lines = report(folder)
     print("\n".join(lines))

@@ -235,3 +235,39 @@ def test_plan_detail_is_unchanged_without_a_course_rubric(root: Path) -> None:
         "(add the teacher's criteria with origin: teacher, or record teacher_rubric: none once the user "
         "confirms there is none)"
     )
+
+
+# --- calibration (guide-vs-teacher-rubric T4, S8) ---------------------------
+
+S8 = [("fase-1", 6.0, 7.0), ("fase-2", 9.0, 7.5), ("ape-3", 6.0, 7.5), ("ape-4", 5.0, 6.0), ("ape-5", 8.5, 7.5)]
+
+
+def test_add_delivery_stores_the_predicted_leveled_grade(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = _work(root)
+    course = _course(root, feedback=FEEDBACK)
+
+    lines = _run(capsys, str(folder), "--add-delivery", "--date", "2026-11-01", "--grade", "8.5", "--predicted", "7.5")
+
+    assert lines == [f"recorded: ape-1 2026-11-01 8.5/10 (predicted 7.5) in academic-sources/{SLUG}/feedback.yml"]
+    data = yaml.safe_load((course / "feedback.yml").read_text(encoding="utf-8"))
+    assert data["deliveries"][0] == FEEDBACK["deliveries"][0]
+    assert data["deliveries"][1]["predicted"] == 7.5
+    bad = _run(capsys, str(folder), "--add-delivery", "--date", "2026-11-02", "--grade", "8", "--predicted", "x")
+    assert bad == ["warning: --predicted must be a number (the leveled grade /10); delivery not recorded"]
+    assert len(yaml.safe_load((course / "feedback.yml").read_text(encoding="utf-8"))["deliveries"]) == 2
+
+
+def test_calibration_prints_the_mean_absolute_difference_of_the_redes_u1_case(
+    root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = _work(root, "ai_declaration: \"Se uso Claude.\"\n")
+    deliveries = [{"work": w, "date": "2026-10-01", "grade": g, "max": 10, "comments": [], "predicted": p} for w, g, p in S8]
+    deliveries.append({"work": "fase-0", "date": "2026-09-01", "grade": 7.0, "max": 10, "comments": []})
+    _course(root, feedback={**FEEDBACK, "deliveries": deliveries})
+
+    lines = _run(capsys, str(folder))
+
+    assert "- fase-2 2026-10-01: 9.0/10 (predicted 7.5)" in lines
+    assert "- fase-0 2026-09-01: 7.0/10" in lines
+    assert ("calibration: mean absolute difference 1.2/10 between the leveled grade and the teacher's grade "
+            "(n=5; orientative, never a gate)") in lines

@@ -1,15 +1,23 @@
 #!/usr/bin/env python3
-"""Final rubric grade table: a mechanical estimate over the verified requirements (skill-rubric-improvements T3, S2).
+"""Final rubric report: guide coverage and the leveled grade, apart (skill-rubric-improvements T3; guide-vs-teacher-rubric T4).
 
 ``rubric_grade.py <folder>`` writes ``rubric-grade.yml`` and ``rubric-grade.md`` in the
-working folder (never the delivery folder) and prints the table. Per criterion:
+working folder (never the delivery folder) and prints them in two parts.
+
+Guide coverage, a mechanical estimate over the criteria that are not ``origin: teacher``
+(a legacy plan is all coverage). Per criterion:
 weight, evidence location (body section and, when the final PDF exists, its page),
 estimated score ``weight * (found + 0.5 * partial) / total`` over the requirements of
 the current verification, and the gap. A red deterministic check zeroes its criterion.
 The total is shown over the rubric total and as a share in %.
 
-The verifier never scores; this tool computes the score from the matrix the verifier
-recorded. It is informational: nothing blocks on it, and it is not the teacher's grade.
+The verifier never scores; this tool computes the coverage from the matrix the verifier
+recorded. Coverage measures what the body covers, never how well: it is not a grade.
+
+Teacher rubric (leveled): the ``origin: teacher`` criteria at the level the independent
+strict grader recorded in ``leveled-grade.yml`` (``leveled_grade.py``), the weighted total
+and its /10 equivalent, with ``warning:``/``note:`` lines. Both parts are informational:
+nothing blocks on them and neither is the teacher's grade.
 Exit codes: 0 written (or no rubric to grade), 2 input error.
 """
 from __future__ import annotations
@@ -18,9 +26,11 @@ import argparse
 import hashlib
 import math
 import sys
+from dataclasses import replace
 from fractions import Fraction
 from pathlib import Path
 
+import leveled_grade
 import rubric_plan
 import rubric_trace
 import yaml
@@ -29,7 +39,12 @@ from report_config import TYPESET_BODY_NAME, ReportConfig, read_yaml, typeset_bi
 GRADE_SCHEMA = "academic.rubric-grade/v1"
 GRADE_YML = "rubric-grade.yml"
 GRADE_MD = "rubric-grade.md"
-LABEL = "This is a mechanical estimate, not the teacher's grade: the tool computes it from the verifier's requirement matrix."
+LABEL = ("Guide coverage is a mechanical estimate, not the teacher's grade: the tool computes it from the "
+         "verifier's requirement matrix; it measures what the body covers, never how well.")
+LEVELED_LABEL = ("Leveled by the independent strict grader against the teacher's levels; "
+                 "orientative, not the teacher's grade.")
+NO_TEACHER = "No teacher criteria in rubric.yml: guide coverage only, no leveled grade."
+EQUAL_NOTE = "equal weights: rubric.yml has no weight on every criterion"
 
 
 def round_half_up(value: Fraction, places: int) -> float:
@@ -69,8 +84,34 @@ def _evidence_text(entries: list[dict]) -> str:
     return "; ".join(e["section"] + (f", p. {e['page']}" if e["page"] else "") for e in entries) or "-"
 
 
+def guide_coverage(folder: Path, trace: rubric_trace.Trace) -> rubric_trace.Trace:
+    """The trace without the teacher criteria, reweighted over the guide criteria (a legacy plan is unchanged)."""
+    teacher = {str(c["id"]) for c in rubric_plan.teacher_criteria(folder)}
+    if not teacher:
+        return trace
+    guide = [c for c in rubric_trace.load_criteria(folder) if str(c["id"]) not in teacher]
+    weights, source = rubric_trace.effective_weights(guide)
+    notes = [n for n in trace.notes if n != EQUAL_NOTE]
+    if source == "equal" and guide:
+        notes.insert(0, "equal weights: the guide criteria do not all carry a weight")
+    criteria = [replace(c, weight=weights[c.id]) for c in trace.criteria if c.id not in teacher]
+    return replace(trace, weights=source, criteria=criteria, notes=notes)
+
+
+def leveled_section(leveled: dict | None) -> dict | None:
+    if leveled is None:
+        return None
+    total = leveled["total"]
+    return {
+        "grader": leveled["grader"], "weights": leveled["weights"],
+        "score": round_half_up(leveled["score"], 2), "total": round_half_up(total, 2),
+        "out_of_10": round_half_up(leveled["score"] / total * 10, 1) if total else 0.0,
+        "criteria": [{**row, "weight": float(row["weight"])} for row in leveled["criteria"]],
+    }
+
+
 def build_grade(folder: Path, trace: rubric_trace.Trace, pdf_path: Path | None,
-                pdf: rubric_trace.PdfText | None) -> dict:
+                pdf: rubric_trace.PdfText | None, leveled: dict | None = None) -> dict:
     total_weight = sum((c.weight for c in trace.criteria), Fraction(0))
     scores = [_score(c) for c in trace.criteria]
     score = sum(scores, Fraction(0))
@@ -92,19 +133,44 @@ def build_grade(folder: Path, trace: rubric_trace.Trace, pdf_path: Path | None,
         "total": round_half_up(total_weight, 2),
         "percentage": round_half_up(score / total_weight * 100, 1) if total_weight else 0.0,
         "criteria": rows,
+        "leveled": leveled_section(leveled),
     }
 
 
-def render_md(grade: dict, folder: Path, notes: list[str]) -> str:
-    lines = [f"# Rubric grade: {folder.name}", "", LABEL, "",
-             "| Criterion | Weight | Evidence | Estimated score | Gap |", "|---|---|---|---|---|"]
+def _leveled_lines(grade: dict, teacher: bool, lines: list[str]) -> list[str]:
+    out = ["", "## Teacher rubric (leveled)", ""]
+    leveled = grade["leveled"]
+    if not teacher:
+        return out + [NO_TEACHER]
+    if leveled is not None:
+        fmt = rubric_trace.format_number
+        out += [LEVELED_LABEL + (f" Grader: {leveled['grader']}." if leveled["grader"] else ""), "",
+                "| Criterion | Weight | Level | Matched descriptor | Missing for the top level |",
+                "|---|---|---|---|---|"]
+        for c in leveled["criteria"]:
+            level = (fmt(Fraction(str(c["points"]))) if c["points"] is not None else "-") + "/" + fmt(Fraction(str(c["top"])))
+            cells = [f"{c['title']} ({c['id']})", fmt(Fraction(str(c["weight"]))), level,
+                     c["descriptor"] or "-", c["missing"] or "-"]
+            out.append("| " + " | ".join(rubric_trace._cell(cell) for cell in cells) + " |")
+        out += ["", f"Leveled grade: {leveled['score']:.2f} / {leveled['total']:.2f} ({leveled['out_of_10']:.1f}/10)"]
+    return out + ([""] + lines if lines else [])
+
+
+def render_md(grade: dict, folder: Path, notes: list[str], teacher: bool = False,
+              leveled_lines: list[str] | None = None) -> str:
+    lines = [f"# Rubric report: {folder.name}", "", "## Guide coverage", "", LABEL, ""]
+    if not grade["criteria"]:
+        lines.append("No guide criteria in rubric.yml: nothing to cover mechanically.")
+    else:
+        lines += ["| Criterion | Weight | Evidence | Covered | Gap |", "|---|---|---|---|---|"]
     for c in grade["criteria"]:
         cells = [f"{c['title']} ({c['id']})", rubric_trace.format_number(Fraction(str(c["weight"]))),
                  _evidence_text(c["evidence"]), f"{c['score']:.2f}", c["gap"]]
         lines.append("| " + " | ".join(rubric_trace._cell(cell) for cell in cells) + " |")
-    lines += ["", f"Score: {grade['score']:.2f} / {grade['total']:.2f} ({grade['percentage']:.1f}%)", "",
+    lines += ["", f"Coverage: {grade['score']:.2f} / {grade['total']:.2f} ({grade['percentage']:.1f}%)", "",
               f"Body: {grade['body']}. PDF: {grade['pdf'] or 'none yet (pages need the final PDF)'}; pages are PDF pages."]
     lines += [f"Note: {note}" for note in notes]
+    lines += _leveled_lines(grade, teacher, leveled_lines or [])
     return "\n".join(lines) + "\n"
 
 
@@ -127,7 +193,7 @@ def _inside_delivery(folder: Path, config: ReportConfig | None) -> bool:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Write the mechanical rubric grade table in the working folder.")
+    parser = argparse.ArgumentParser(description="Write guide coverage and the leveled grade in the working folder.")
     parser.add_argument("folder", type=Path)
     parser.add_argument("--body", help="body to run the checks on, relative to the folder "
                                        "(default: body.typeset.md while bound, else body.md)")
@@ -162,12 +228,14 @@ def main(argv: list[str] | None = None) -> int:
     pdf_path = args.pdf or (config.pdf_path if config is not None and config.output_format == "pdf" else None)
     pdf_path = pdf_path if pdf_path is not None and Path(pdf_path).is_file() else None
     pdf = rubric_trace.PdfText(rubric_trace.pdf_pages(pdf_path)) if pdf_path else None
-    trace = rubric_trace.build_trace(folder, body_text, body_name=body_name, evidence_text=evidence_text, pdf=None)
+    trace = guide_coverage(folder, rubric_trace.build_trace(
+        folder, body_text, body_name=body_name, evidence_text=evidence_text, pdf=None))
     notes = list(trace.notes)
     if pdf is not None and not pdf.available:
         notes.append("PDF text unavailable: evidence located by section only")
-    grade = build_grade(folder, trace, pdf_path, pdf)
-    text = render_md(grade, folder, notes)
+    leveled, leveled_lines = leveled_grade.evaluate(folder)
+    grade = build_grade(folder, trace, pdf_path, pdf, leveled)
+    text = render_md(grade, folder, notes, bool(rubric_plan.teacher_criteria(folder)), leveled_lines)
     (folder / GRADE_YML).write_text(yaml.safe_dump(grade, sort_keys=False, allow_unicode=True), encoding="utf-8")
     (folder / GRADE_MD).write_text(text, encoding="utf-8")
     print(text, end="")

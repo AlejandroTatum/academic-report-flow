@@ -1080,8 +1080,10 @@ def _guidance(
         if rubric_plan.rubric_state(folder) == "valid":
             template += ("; with the PDF, run "
                          + _tool_command("rubric_grade.py", folder).replace("{", "{{").replace("}", "}}")
-                         + " and present {rubric_grade} unchanged (a mechanical estimate, not the teacher's grade; "
-                         "the verifier never scores; it never blocks review)")
+                         + " and present {rubric_grade} unchanged (guide coverage is a mechanical estimate, "
+                         "not the teacher's grade; the leveled grade comes from leveled-grade.yml written by the "
+                         "independent strict grader; relay every warning; the verifier never scores; "
+                         "it never blocks review)")
     if phase_name == "research" and _uncited_bibliography(config):
         template = (
             "write at least 1 entry (any type) to {sources}, the exact list to print "

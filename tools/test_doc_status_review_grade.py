@@ -26,3 +26,12 @@ def test_review_guidance_is_unchanged_without_a_rubric(tmp_path: Path) -> None:
     _report(folder)
     guidance = doc_status._guidance("review", folder, _config(folder))
     assert "rubric_grade" not in guidance and "rubric-grade" not in guidance
+
+
+def test_review_guidance_names_guide_coverage_and_the_leveled_grade(tmp_path: Path) -> None:
+    folder = tmp_path / "wf"
+    _report(folder)
+    _rubric(folder)
+    guidance = doc_status._guidance("review", folder, _config(folder))
+    assert "guide coverage is a mechanical estimate" in guidance
+    assert "leveled-grade.yml" in guidance and "independent strict grader" in guidance
