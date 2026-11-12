@@ -225,19 +225,28 @@ def main(argv: list[str] | None = None) -> int:
     ):
         commands.add_parser(name, help=text).add_argument("folder", type=Path)
     args = parser.parse_args(argv)
-    if args.command == "bind":
+    return run(args.command, args.folder)[0]
+
+
+def run(command: str, folder: Path) -> tuple[int, list[dict] | None]:
+    """Run one ``typeset.py`` command with its printed output.
+
+    Returns the exit status and the check results, ``None`` when nothing was
+    checked (a refused bind, which wrote nothing, or an input error).
+    """
+    if command == "bind":
         try:
-            target = bind(args.folder)
+            target = bind(folder)
         except (ValueError, OSError) as exc:
             print(f"typeset not bound: {exc}", file=sys.stderr)
-            return 1
+            return 1, None
         print(f"bound {target} to {BODY_NAME}; format it there, never in {BODY_NAME}")
-    if args.command == "auto":
+    if command == "auto":
         try:
-            target, counts = auto(args.folder)
+            target, counts = auto(folder)
         except (ValueError, OSError) as exc:
             print(f"typeset not bound: {exc}", file=sys.stderr)
-            return 1
+            return 1, None
         if counts is None:
             print(
                 f"bound {target} to {BODY_NAME}; {TYPESET_BODY_NAME} already differs from {BODY_NAME}, "
@@ -252,16 +261,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  left for you: {item}")
     try:
         # A refused bind wrote nothing and returned above; only a real check is timed.
-        with timings.timed(args.folder, "typeset", "typeset.py"):
-            results = check_results(args.folder)
+        with timings.timed(folder, "typeset", "typeset.py"):
+            results = check_results(folder)
     except (OSError, ValueError, TypeError) as exc:
         print(f"typeset check input error: {exc}", file=sys.stderr)
-        return 2
+        return 2, None
     for item in results:
         print(f"  [{'ok' if item['ok'] else 'FAIL'}] {item['check']}: {item['detail']}")
-    if args.command in ("bind", "auto"):
-        return 0
-    return 0 if all(item["ok"] for item in results) else 1
+    if command in ("bind", "auto"):
+        return 0, results
+    return (0 if all(item["ok"] for item in results) else 1), results
 
 
 if __name__ == "__main__":

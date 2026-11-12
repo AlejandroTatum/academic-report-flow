@@ -203,7 +203,7 @@ def test_gate_names_the_runnable_generate_entrypoint_without_publication(tmp_pat
     """Generate names the build entrypoint and still promises no publication."""
     folder = _build_ready(tmp_path / "wf")
     status = doc_status.derive(folder)
-    entrypoint = doc_status.ROOT / "tools" / "build_report_auto.py"
+    entrypoint = doc_status.ROOT / "tools" / "build.py"
 
     gate = _human_gate(doc_status.render_human(status))
 
@@ -554,7 +554,7 @@ def test_printed_generate_command_names_a_runnable_interpreter_and_tool(tmp_path
     argv = _printed_command(_human_gate(doc_status.render_human(status)))
 
     assert argv[0] == sys.executable
-    assert argv[1] == str(doc_status.ROOT / "tools" / "build_report_auto.py")
+    assert argv[1] == str(doc_status.ROOT / "tools" / "build.py")
     assert argv[2] == str(status.work_folder)
     # The interpreter/tool pair is executed; the full build is not run here because
     # the deliver command above already exercises the folder argument end to end.

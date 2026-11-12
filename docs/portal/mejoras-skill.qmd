@@ -80,7 +80,7 @@ Hallazgos que fundamentan las propuestas:
 3. **Automatizar `typeset`.** Hoy el agente edita `body.typeset.md` a mano (`references/production.md:23-26`). Un modo `typeset.py auto` convertiría de forma determinista tablas desde líneas `a; b`, líneas `Figura: ...`, URL desnudas y fórmulas simples, y dejaría al agente solo los casos ambiguos. **Hecho** (`tools/typeset_auto.py`): `typeset.py auto` convierte tablas, figuras y URL; deja la cabecera de cada tabla vacía (el borrador no trae nombres de columna) y `typeset.py check` la exige con `table_headers`; las fórmulas solo se señalan.
 4. **Fases visibles agrupadas** (conservando artefactos y recibos):
    - `format` desaparece como fase propia: ya "normalmente queda `done` sin parada" (`references/approval.md:41`).
-   - `typeset + generate + validate` se presentan como una sola fase `build` con un único comando que encadena las tres.
+   - `typeset + generate + validate` se presentan como una sola fase `build` con un único comando que encadena las tres. **Hecho, solo el comando** (`tools/build.py`): ejecuta `typeset.py auto`, no construye nada mientras falle un control de typeset y, si pasa, ejecuta `build_report_auto.py` con sus mismos mensajes y salida; al terminar indica lo que queda para `validate` (revisar cada página y registrar `validation.yml`, que nunca escribe). Las fases de `doc_status` no cambian.
    - `deliver` se ejecuta automáticamente tras el OK de `review`.
 
    Resultado: 12 → 8 fases visibles (intake, research, plan, draft+verify, approval, build, review, deliver) sin quitar ninguna decisión humana.

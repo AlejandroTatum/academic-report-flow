@@ -143,7 +143,8 @@ _GUIDANCE = {
     "format": (
         "before building v1, ask only the missing format " 
         "fields named by doc_status, never re-ask what {report_yml} records: use ask_user_choice "
-        "for APE, AA, ACD or libre, PDF or DOCX, and each remaining metadata gap with suggested "
+        "for APE, AA, ACD or libre, plus Proyecto for a project report, PDF or DOCX, and each remaining "
+        "metadata gap with suggested "
         "options (never free text); decide group work and members here; "
         "record the answer in {report_yml}, then re-run doc_status; when ai_declaration is missing "
         "it is not a question: write it yourself in {report_yml} for every work, as "
@@ -154,12 +155,13 @@ _GUIDANCE = {
         "explicitly orders removing it"
     ),
     "typeset": (
-        "run {typeset_bind_command} (it copies {body} to {typeset_body} when missing, binds it and "
-        "formats what needs no judgement: `- a; b; c` lines as tables, `Figura:` lines as "
-        "`![caption](path)`, bare URLs as `<url>`), then finish the backend formatting there and never "
+        "run {build_command} (its typeset step is typeset.py auto: it copies {body} to {typeset_body} "
+        "when missing, binds it and formats what needs no judgement: `- a; b; c` lines as tables, `Figura:` lines as "
+        "`![caption](path)`, bare URLs as `<url>`; it builds nothing while the typeset checks fail), "
+        "then finish the backend formatting there and never "
         "in {body}: what it lists as left for you (table column names, formulas as math), the format's "
-        "fixed headings; keep every word and [@key] of {body}; run {typeset_check_command} until it "
-        "passes, then re-run doc_status"
+        "fixed headings; keep every word and [@key] of {body}; run {build_command} again until it "
+        "builds, then re-run doc_status"
     ),
     "generate": "build with {build_command}, then re-run doc_status",
     "validate": "record {validation} for the final PDF, then re-run doc_status",
@@ -455,7 +457,8 @@ def _has_final_build(folder: Path, config: ReportConfig) -> bool:
 # they are given, so a request for changes reopens only the body approval.
 _APPROVAL_FORMAT_BATCH = (
     "; in the same batch use ask_user_choice "
-    "(suggested options, never free text) for the document format APE, AA, ACD or libre (libre also "
+    "(suggested options, never free text) for the document format APE, AA, ACD or libre, plus "
+    "Proyecto for a project report (libre also "
     "needs format_spec: options 'documento sobrio sin portada' or 'con portada'), the "
     "delivery format PDF or DOCX, and any metadata that format still needs; never infer "
     "an answer, no defaults"
@@ -567,7 +570,10 @@ def _phase_format(folder: Path, config: ReportConfig, documents_root: Path | Non
     """
     chosen = config.format
     if chosen is None:
-        return PhaseState("format", PENDING, "format not chosen: ask the user APE, AA, ACD or libre")
+        return PhaseState(
+            "format", PENDING,
+            "format not chosen: ask the user APE, AA, ACD or libre, plus Proyecto for a project report",
+        )
     if not config.format_is_known:
         return PhaseState("format", BLOCKED, f"format={chosen} not recognized", "unknown_format")
     output = str(config.raw.get("output") or "").strip()
@@ -1053,12 +1059,10 @@ def _guidance(
         express_approve_command=shlex.join(
             [sys.executable, str(ROOT / "tools" / "approval_marker.py"), "approve", str(folder), "--express"]
         ),
-        build_command=_tool_command("build_report_auto.py", folder),
+        build_command=_tool_command("build.py", folder),
         draft_command=_tool_command("draft_pdf.py", folder),
         draft_pdf=draft_preview_path(folder),
         deliver_command=_tool_command("deliver_report.py", folder),
-        typeset_bind_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "auto", str(folder)]),
-        typeset_check_command=shlex.join([sys.executable, str(ROOT / "tools" / "typeset.py"), "check", str(folder)]),
         typeset_body=folder / "body.typeset.md",
     )
 

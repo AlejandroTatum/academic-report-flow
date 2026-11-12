@@ -223,7 +223,7 @@ def test_status_template_gate_guidance_is_ascii_and_absolute() -> None:
     block = human_template(read(ROUTING_MD))
 
     assert all(ord(char) < 128 for char in block)
-    for phase, script in (("generate", "build_report_auto.py"), ("deliver", "deliver_report.py")):
+    for phase, script in (("generate", "build.py"), ("deliver", "deliver_report.py")):
         entrypoint = doc_status.ROOT / "tools" / script
         assert entrypoint.is_file(), "documented entrypoints must exist"
         assert str(entrypoint) in doc_status._guidance(phase, Path("/wf"))
