@@ -74,7 +74,7 @@ import timings
 import yaml
 import accepted_gaps
 from approval_marker import BODY_NAME, sha256_file
-from bounded_edit import bounded
+from bounded_edit import LIMIT, bounded, heading_outline
 from report_config import ReportConfig, read_yaml
 from validate_report import SECTION_SPECS, bold_pseudo_heading_lines, section_structure_validation
 from source_count import MIN_ACADEMIC_SOURCES, all_entry_keys, effective_min_sources, eligible_entry_keys
@@ -1042,7 +1042,8 @@ def content_check_state(report_dir: Path) -> str:
     be read or is missing required keys is ``malformed``; a marker whose
     ``body_sha256``, ``rubric_sha256`` or ``bib_sha256`` no longer matches the
     folder is ``stale`` (the draft, the rubric or the bib changed since the
-    check; a bounded draft edit keeps the marker, see ``_bounded_since_check``), as is a recorded ``guide_sha256`` that no longer matches the
+    check; a bounded draft edit, or a bounded heading rename, keeps the marker, see
+    ``_bounded_since_check``), as is a recorded ``guide_sha256`` that no longer matches the
     guide the report declares (or the guide is gone). A marker without
     ``guide_sha256`` predates guide binding and stays valid. A marker with a
     ``verifier`` is a single-verify marker; one without is the legacy two-judge
@@ -1179,6 +1180,13 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
     mechanical checks must still pass on the new bytes; otherwise the verifier
     reruns as before. Accepted gaps bind the exact body, so with
     ``accepted-gaps.yml`` present any edit stales the marker. Never raises.
+
+    Heading renames (faster-verify-loop S2, this marker only): an edit that
+    renames headings is still bounded when the outline keeps its count, order
+    and levels (``_headings_only_renamed``), the changed words, heading words
+    included, stay within the limit, every criterion's ``section`` still
+    resolves (same ``section_sha256`` keys) and the rubric checks also pass on
+    the new bytes.
     """
     snapshot = folder / CHECKED_SNAPSHOT_NAME
     try:
@@ -1191,15 +1199,35 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
             return False
         old = snapshot_bytes.decode("utf-8")
         new = (folder / BODY_NAME).read_text(encoding="utf-8")
-        if not bounded(old, new)[0]:
-            return False
+        is_bounded, words = bounded(old, new)
+        renamed = False
+        if not is_bounded:
+            if words > LIMIT or not _headings_only_renamed(old, new):
+                return False
+            criteria = rubric_plan.load_rubric(folder)
+            if section_hashes(old, criteria).keys() != section_hashes(new, criteria).keys():
+                return False
+            renamed = True
         requirements = data.get("requirements")
         if isinstance(requirements, list) and downgrade_unquoted_evidence(requirements, new)[1]:
             return False
-        return all(check["ok"] for check in body_check_results(folder)
-                   if check["check"] in _BODY_CHECK_MECHANICAL)
+        required = _BODY_CHECK_MECHANICAL + (("rubric_checks",) if renamed else ())
+        return all(check["ok"] for check in body_check_results(folder) if check["check"] in required)
     except Exception:
         return False
+
+
+def _headings_only_renamed(old: str, new: str) -> bool:
+    """True when the headings keep their count, order and levels and only titles change.
+
+    A position whose new title is another heading's old title is a move, not a
+    rename, so swapping two headings fails.
+    """
+    before, after = heading_outline(old), heading_outline(new)
+    if [level for level, _ in before] != [level for level, _ in after]:
+        return False
+    titles = {title for _, title in before}
+    return all(was == now or now[1] not in titles for was, now in zip(before, after))
 
 
 _BODY_CHECK_MECHANICAL = ("citations_resolve", "eligible_sources_cited")

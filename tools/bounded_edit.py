@@ -8,6 +8,10 @@ diff between the bytes the human saw and the bytes on disk: an edit is bounded
 when at most ``LIMIT`` words change (inserted plus deleted) and no Markdown
 heading line is added, removed or edited.
 
+``heading_outline`` exposes the same headings as ``(level, title)`` pairs for
+the verification marker, which alone carries a heading rename (faster-verify-loop
+S2); ``bounded`` keeps treating any heading change as unbounded.
+
 The module is pure: no I/O, no clock, same two texts -- same answer.
 """
 from __future__ import annotations
@@ -46,6 +50,23 @@ def _headings(text: str) -> list[str]:
         elif index and _SETEXT_UNDERLINE.match(line) and lines[index - 1].strip():
             found.append(f"{lines[index - 1].strip()}\n{line.strip()[0]}")
     return found
+
+
+def heading_outline(text: str) -> list[tuple[int, str]]:
+    """The headings ``_headings`` finds as ``(level, title)``, in order.
+
+    An ATX level is its run of ``#``; a setext heading is level 1 over ``===``
+    and level 2 over ``---``.
+    """
+    outline: list[tuple[int, str]] = []
+    for heading in _headings(text):
+        if "\n" in heading:
+            title, underline = heading.split("\n")
+            outline.append((1 if underline == "=" else 2, title))
+        else:
+            marks = len(heading) - len(heading.lstrip("#"))
+            outline.append((marks, heading[marks:].strip()))
+    return outline
 
 
 def headings_changed(old: str, new: str) -> bool:

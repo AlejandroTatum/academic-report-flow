@@ -434,6 +434,16 @@ def test_carry_is_stale_after_a_heading_change(tmp_path: Path) -> None:
     assert final_review_marker.final_review_state(folder, pdf).state == "stale"
 
 
+def test_carry_is_still_stale_after_a_heading_only_rename(tmp_path: Path) -> None:
+    # S2 (faster-verify-loop): the verification carries a heading rename; the final review does not.
+    folder = tmp_path / "wf"
+    body, pdf = _reviewed(folder)
+    body.write_text(REVIEW_BODY.replace("## Resultados", "## Fuentes de la decision"), encoding="utf-8")
+    _rebuild(pdf)
+    _validation(folder, pdf)
+    assert final_review_marker.final_review_state(folder, pdf).state == "stale"
+
+
 def test_carry_is_stale_when_the_snapshot_is_missing_or_tampered(tmp_path: Path) -> None:
     folder = tmp_path / "wf"
     body, pdf = _reviewed(folder)
