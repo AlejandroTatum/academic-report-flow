@@ -14,7 +14,9 @@ evidence-coverage check against the guide inventory (``guide_facts.py``): every
 inventory item (``G1``...) must be named by some criterion's ``deliverables:`` or
 ``covers:`` (an id, or the item's text) or by a top-level ``not_applicable:``
 entry ``{item, reason}``; it never judges whether the criterion is good enough.
-``rubric_matrix_sha256`` hashes the plan without its ``max_words`` ceilings, so a
+An optional top-level ``needs_person:`` (same ``{item, reason}`` shape as
+``not_applicable``, never both for one item) names demands only a person can
+close; ``load_needs_person`` returns them. ``rubric_matrix_sha256`` hashes the plan without its ``max_words`` ceilings, so a
 ceilings-only change is recognizable after the plan is frozen. Like every marker
 predicate in this repo, ``rubric_state`` never raises and never writes: an
 unreadable, non-UTF-8 or non-mapping file is ``malformed`` data the caller can
@@ -160,12 +162,13 @@ def _text_list_errors(value: object, label: str) -> list[str]:
     return []
 
 
-def _not_applicable_errors(entries: object) -> list[str]:
+def _not_applicable_errors(entries: object, key_name: str = "not_applicable") -> list[str]:
+    """``{item, reason}`` list errors; shared by ``not_applicable`` and ``needs_person``."""
     if not isinstance(entries, list):
-        return [f"{RUBRIC_NAME} not_applicable must be a list of {{item, reason}} mappings"]
+        return [f"{RUBRIC_NAME} {key_name} must be a list of {{item, reason}} mappings"]
     errors = []
     for index, entry in enumerate(entries, start=1):
-        label = f"{RUBRIC_NAME} not_applicable {index}"
+        label = f"{RUBRIC_NAME} {key_name} {index}"
         if not isinstance(entry, dict):
             errors.append(f"{label} must be a mapping with item and reason")
             continue
@@ -175,6 +178,20 @@ def _not_applicable_errors(entries: object) -> list[str]:
         for key in entry.keys() - {"item", "reason"}:
             errors.append(f"{label} unexpected key '{key}'")
     return errors
+
+
+def _both_lists_errors(data: dict) -> list[str]:
+    """An item is either closed by a person (``needs_person``) or not a demand (``not_applicable``)."""
+    waived = data.get("not_applicable")
+    people = data.get("needs_person")
+    if not isinstance(waived, list) or not isinstance(people, list):
+        return []
+    names = {_fold(e["item"]) for e in waived if isinstance(e, dict) and isinstance(e.get("item"), str)}
+    return [
+        f"{RUBRIC_NAME} needs_person {index} item '{entry['item']}' is also listed under not_applicable"
+        for index, entry in enumerate(people, start=1)
+        if isinstance(entry, dict) and isinstance(entry.get("item"), str) and _fold(entry["item"]) in names
+    ]
 
 
 def _is_positive_int(value: object) -> bool:
@@ -197,6 +214,9 @@ def validate_rubric(data: object) -> list[str]:
 
     if "not_applicable" in data:
         errors.extend(_not_applicable_errors(data["not_applicable"]))
+    if "needs_person" in data:
+        errors.extend(_not_applicable_errors(data["needs_person"], "needs_person"))
+        errors.extend(_both_lists_errors(data))
 
     criteria = data.get("criteria")
     if not isinstance(criteria, list) or not criteria:
@@ -285,6 +305,22 @@ def load_max_words(report_dir: Path) -> int | None:
         return None
     value = data.get("max_words")
     return value if _is_positive_int(value) else None
+
+
+def load_needs_person(report_dir: Path) -> list[dict]:
+    """The plan's ``needs_person`` entries ``{item, reason}``: demands only a person can close.
+
+    Empty for a plan without the key or a plan that is not valid. They label a
+    ``partial`` as waiting for a person (faster-verify-loop S5); they never accept it.
+    """
+    folder = Path(report_dir)
+    if rubric_state(folder) != "valid":
+        return []
+    try:
+        data = read_yaml(folder / RUBRIC_NAME)
+    except Exception:
+        return []
+    return [{"item": e["item"], "reason": e["reason"]} for e in data.get("needs_person") or []]
 
 
 def rubric_matrix_sha256(report_dir: Path) -> str:

@@ -387,7 +387,9 @@ def _phase_verify(folder: Path, _config: ReportConfig, _documents_root: Path | N
     changed since the check) are ordinary progress -- the check simply reruns.
     A stale marker whose ``rubric_sha256`` no longer matches says the rubric
     changed (``STALE_RUBRIC_DETAIL``, faster-verify-loop S4): it is frozen once
-    the draft starts.
+    the draft starts. In a recorded fail, a ``partial`` whose gap is a rubric
+    ``needs_person`` reason is listed last as ``waiting for a person``, apart from
+    the fixable findings; it still keeps the verdict ``fail`` (S5).
     A recorded fail is ``blocked`` with ``content_check_failed``: the findings
     must be fixed through the user's edit orders, never silently polished. A
     malformed marker is ``blocked`` too. The check is never run or repaired
@@ -424,9 +426,13 @@ def _phase_verify(folder: Path, _config: ReportConfig, _documents_root: Path | N
             return PhaseState("verify", BLOCKED, f"content check technical failure: {detail}", "content_check_failed")
         findings = marker.get("findings") or []
         requirements = marker.get("requirements") or []
+        # faster-verify-loop S5: a needs_person partial waits for a person, apart from fixable findings.
+        waiting = content_check.waiting_for_person(requirements, rubric_plan.load_needs_person(folder))
         gaps = [f"{item.get('status')}: {item.get('requirement')}"
-                for item in requirements if item.get("status") in ("missing", "partial")]
-        detail = "; ".join(str(item) for item in [*gaps, *findings]) or "rubric findings remain"
+                for item in requirements if item.get("status") in ("missing", "partial")
+                and not any(item is record for record in waiting)]
+        labels = [content_check.waiting_label(record) for record in waiting]
+        detail = "; ".join(str(item) for item in [*gaps, *findings, *labels]) or "rubric findings remain"
         return PhaseState("verify", DONE, f"rubric findings (not a compliance pass): {detail}")
     return PhaseState("verify", BLOCKED, "content-check.yml malformed", "content_check_malformed")
 

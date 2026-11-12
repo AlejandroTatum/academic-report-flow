@@ -10,7 +10,9 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
+import accepted_gaps
 import approval_marker
 import build_report_auto
 import content_check
@@ -40,9 +42,15 @@ def _build(folder: Path, monkeypatch: pytest.MonkeyPatch, validation: _Validatio
 
 
 def _v1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, *, body: str = BODY,
-        requirements: list[dict] = REQUIREMENTS, review: bool = True) -> tuple[Path, Path]:
+        requirements: list[dict] = REQUIREMENTS, review: bool = True,
+        needs_person: list[dict] | None = None) -> tuple[Path, Path]:
     """A v1 built without draft approval, validated and (optionally) reviewed."""
     folder = planned_folder(tmp_path, body=body)
+    if needs_person is not None:
+        rubric = folder / "rubric.yml"
+        data = yaml.safe_load(rubric.read_text(encoding="utf-8"))
+        data["needs_person"] = needs_person
+        rubric.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
     _declared_format(folder, "libre")
     content_check.main([str(folder), "--verification", str(_verification(folder, requirements=requirements))])
     assert typeset.main(["bind", str(folder)]) == 0
@@ -201,6 +209,31 @@ def test_publication_refuses_unresolved_rubric_failures_without_an_accepted_gap(
         "accepted_gaps.py; no se publica nada.\n"
         "No se publicó nada. Resolvé lo indicado y volvé a ejecutar deliver_report.py.\n"
     )
+
+
+def test_publication_still_refuses_a_needs_person_partial_until_a_person_accepts_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    # faster-verify-loop S5: needs_person only labels the partial; it never accepts it.
+    gap = "the ADR must be versioned in the repository; only the student can push it"
+    partial = {"criterion": "metodologia", "requirement": "Includes a network diagram", "status": "partial",
+               "location": "Metodologia", "evidence": "Se configuro la topologia", "gap": gap}
+    folder, _ = _v1(tmp_path, monkeypatch, capsys, requirements=[*FOUND_ONLY, partial],
+                    needs_person=[{"item": "G26", "reason": gap}])
+    err = _deliver_refused(folder, tmp_path / "docs", capsys)
+    assert err == (
+        "DELIVERY REFUSED: Hay fallas de rúbrica sin resolver y sin brecha aceptada "
+        "(partial: Includes a network diagram). "
+        "Corregí el informe o, solo si el usuario lo decide, registrá la brecha parcial con "
+        "accepted_gaps.py; no se publica nada.\n"
+        "No se publicó nada. Resolvé lo indicado y volvé a ejecutar deliver_report.py.\n"
+    )
+    assert accepted_gaps.main(["accept", str(folder), "--by", "Ana Perez", "--requirement",
+                               "Includes a network diagram", "--reason", "pushed by the student"]) == 0
+    capsys.readouterr()
+    documents = tmp_path / "docs"
+    assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 0
+    assert len(list(documents.rglob("*.pdf"))) == 1
 
 
 def test_publication_refuses_unresolved_citations(
