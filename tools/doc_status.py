@@ -31,6 +31,7 @@ from pathlib import Path
 
 import accepted_gaps
 import content_check
+import course_memory
 import final_review_marker
 import rubric_plan
 import typeset
@@ -295,16 +296,28 @@ def _phase_research(folder: Path, config: ReportConfig, _documents_root: Path | 
     return PhaseState("research", DONE, sources.reason)
 
 
-def _teacher_rubric_note(folder: Path) -> str:
+def _course_rubric_warning(config: ReportConfig) -> str:
+    """A warning when the course stores a teacher rubric the plan does not carry (S5); never a gate."""
+    count = course_memory.course_rubric_count(config)
+    if not count:
+        return ""
+    noun = "criterion" if count == 1 else "criteria"
+    return (
+        f"; warning: the course rubric has {count} {noun} (academic-sources/{course_memory.course_slug(config)}/rubrics/) "
+        "and rubric.yml has no teacher criterion; run course_memory.py and add them with origin: teacher"
+    )
+
+
+def _teacher_rubric_note(folder: Path, config: ReportConfig) -> str:
     """What a valid plan holds of the teacher's grading rubric: a note or a warning, never a gate."""
     status = rubric_plan.teacher_rubric_status(folder)
     if status == "none_confirmed":
-        return "no teacher rubric (confirmed by the user)"
+        return "no teacher rubric (confirmed by the user)" + _course_rubric_warning(config)
     if status != "teacher":
         return (
             "warning: guide-only plan, no teacher rubric (add the teacher's criteria with origin: teacher, "
             "or record teacher_rubric: none once the user confirms there is none)"
-        )
+        ) + _course_rubric_warning(config)
     criteria = rubric_plan.teacher_criteria(folder)
     bare = [str(c.get("id")) for c in criteria if not c.get("levels")]
     noun = "criterion" if len(criteria) == 1 else "criteria"
@@ -314,7 +327,7 @@ def _teacher_rubric_note(folder: Path) -> str:
     return note
 
 
-def _phase_plan(folder: Path, _config: ReportConfig, _documents_root: Path | None) -> PhaseState:
+def _phase_plan(folder: Path, config: ReportConfig, _documents_root: Path | None) -> PhaseState:
     """Map the rubric-plan predicate onto one phase state (new-report-flow T3).
 
     A valid ``rubric.yml`` is the plan artifact; an absent one is ordinary
@@ -329,7 +342,7 @@ def _phase_plan(folder: Path, _config: ReportConfig, _documents_root: Path | Non
         noun = "criterion" if count == 1 else "criteria"
         checked = rubric_plan.count_checked_criteria(criteria)
         detail = f"rubric.yml valid ({count} {noun}, {checked} with checks)"
-        return PhaseState("plan", DONE, f"{detail}; {_teacher_rubric_note(folder)}")
+        return PhaseState("plan", DONE, f"{detail}; {_teacher_rubric_note(folder, config)}")
     if state == "absent":
         return PhaseState("plan", PENDING, "rubric.yml missing")
     return PhaseState("plan", BLOCKED, "rubric.yml malformed", "rubric_malformed")
