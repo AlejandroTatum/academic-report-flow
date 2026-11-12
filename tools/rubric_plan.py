@@ -16,7 +16,11 @@ inventory item (``G1``...) must be named by some criterion's ``deliverables:`` o
 entry ``{item, reason}``; it never judges whether the criterion is good enough.
 An optional top-level ``needs_person:`` (same ``{item, reason}`` shape as
 ``not_applicable``, never both for one item) names demands only a person can
-close; ``load_needs_person`` returns them. ``rubric_matrix_sha256`` hashes the plan without its ``max_words`` ceilings, so a
+close; ``load_needs_person`` returns them. A criterion may say whose demand it is with
+``origin: guide|teacher``; a teacher criterion may carry the grading ``levels``
+(``{points, descriptor}``), and ``teacher_rubric_status`` tells a plan that holds the
+teacher's rubric from a guide-only one (a warning for the caller, never a gate).
+``rubric_matrix_sha256`` hashes the plan without its ``max_words`` ceilings, so a
 ceilings-only change is recognizable after the plan is frozen. Like every marker
 predicate in this repo, ``rubric_state`` never raises and never writes: an
 unreadable, non-UTF-8 or non-mapping file is ``malformed`` data the caller can
@@ -199,6 +203,40 @@ def _is_positive_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
 
+ORIGINS = ("guide", "teacher")
+
+
+def _is_positive_number(value: object) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and value > 0
+
+
+def _origin_errors(criterion: dict, index: int) -> list[str]:
+    """``origin`` and ``levels`` errors: whose demand a criterion is and how the teacher scores it."""
+    label = f"{RUBRIC_NAME} criterion {index}"
+    errors = []
+    if "origin" in criterion and criterion["origin"] not in ORIGINS:
+        errors.append(f"{label} origin must be 'guide' or 'teacher'")
+    if "levels" not in criterion:
+        return errors
+    if criterion.get("origin") != "teacher":
+        return errors + [f"{label} levels need origin: teacher"]
+    levels = criterion["levels"]
+    if not isinstance(levels, list) or len(levels) < 2 or not all(isinstance(lv, dict) for lv in levels):
+        return errors + [f"{label} levels must be a list of at least 2 {{points, descriptor}} mappings"]
+    seen: set[float] = set()
+    for level_index, level in enumerate(levels, start=1):
+        points = level.get("points")
+        if not _is_positive_number(points):
+            errors.append(f"{label} level {level_index} points must be a number greater than 0")
+        elif points in seen:
+            errors.append(f"{label} levels repeat points {points}")
+        else:
+            seen.add(points)
+        if not _is_text(level.get("descriptor")):
+            errors.append(f"{label} level {level_index} descriptor must be a non-empty string")
+    return errors
+
+
 def validate_rubric(data: object) -> list[str]:
     """Return the schema errors of a parsed ``rubric.yml`` (empty = valid)."""
     if not isinstance(data, dict):
@@ -211,6 +249,10 @@ def validate_rubric(data: object) -> list[str]:
         errors.append(f"{RUBRIC_NAME} source must be a non-empty string")
     if "max_words" in data and not _is_positive_int(data["max_words"]):
         errors.append(f"{RUBRIC_NAME} max_words must be a positive integer")
+    if "teacher_rubric" in data and data["teacher_rubric"] != "none":
+        errors.append(
+            f"{RUBRIC_NAME} teacher_rubric must be 'none' (the user confirmed there is no teacher rubric)"
+        )
 
     if "not_applicable" in data:
         errors.extend(_not_applicable_errors(data["not_applicable"]))
@@ -247,6 +289,7 @@ def validate_rubric(data: object) -> list[str]:
                 errors.append(f"{RUBRIC_NAME} criterion {index} weight must be greater than 0")
         if "max_words" in criterion and not _is_positive_int(criterion["max_words"]):
             errors.append(f"{RUBRIC_NAME} criterion {index} max_words must be a positive integer")
+        errors.extend(_origin_errors(criterion, index))
         if "covers" in criterion:
             errors.extend(_text_list_errors(criterion["covers"], f"{RUBRIC_NAME} criterion {index} covers"))
         if "deliverables" in criterion:
@@ -292,6 +335,31 @@ def load_rubric(report_dir: Path) -> list[dict]:
         return []
     criteria = data.get("criteria")
     return [criterion for criterion in criteria if isinstance(criterion, dict)]
+
+
+def teacher_criteria(report_dir: Path) -> list[dict]:
+    """The criteria the teacher grades with (``origin: teacher``), in file order."""
+    return [criterion for criterion in load_rubric(report_dir) if criterion.get("origin") == "teacher"]
+
+
+def teacher_rubric_status(report_dir: Path) -> str:
+    """Whether a valid plan holds the teacher's grading rubric (guide-vs-teacher-rubric S3).
+
+    ``teacher`` when a criterion has ``origin: teacher``; ``none_confirmed`` when the plan
+    records ``teacher_rubric: none`` (the user confirmed there is none); ``guide_only``
+    otherwise, which is every plan written before ``origin`` existed; ``""`` for a plan
+    that is not valid. It informs a warning and gates nothing. Never raises, never writes.
+    """
+    folder = Path(report_dir)
+    if rubric_state(folder) != "valid":
+        return ""
+    if teacher_criteria(folder):
+        return "teacher"
+    try:
+        confirmed = read_yaml(folder / RUBRIC_NAME).get("teacher_rubric") == "none"
+    except Exception:
+        return ""
+    return "none_confirmed" if confirmed else "guide_only"
 
 
 def load_max_words(report_dir: Path) -> int | None:

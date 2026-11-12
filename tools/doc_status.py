@@ -295,6 +295,25 @@ def _phase_research(folder: Path, config: ReportConfig, _documents_root: Path | 
     return PhaseState("research", DONE, sources.reason)
 
 
+def _teacher_rubric_note(folder: Path) -> str:
+    """What a valid plan holds of the teacher's grading rubric: a note or a warning, never a gate."""
+    status = rubric_plan.teacher_rubric_status(folder)
+    if status == "none_confirmed":
+        return "no teacher rubric (confirmed by the user)"
+    if status != "teacher":
+        return (
+            "warning: guide-only plan, no teacher rubric (add the teacher's criteria with origin: teacher, "
+            "or record teacher_rubric: none once the user confirms there is none)"
+        )
+    criteria = rubric_plan.teacher_criteria(folder)
+    bare = [str(c.get("id")) for c in criteria if not c.get("levels")]
+    noun = "criterion" if len(criteria) == 1 else "criteria"
+    note = f"teacher rubric: {len(criteria)} {noun}, {len(criteria) - len(bare)} with levels"
+    if bare:
+        note += "; warning: teacher criteria without levels: " + ", ".join(bare)
+    return note
+
+
 def _phase_plan(folder: Path, _config: ReportConfig, _documents_root: Path | None) -> PhaseState:
     """Map the rubric-plan predicate onto one phase state (new-report-flow T3).
 
@@ -309,7 +328,8 @@ def _phase_plan(folder: Path, _config: ReportConfig, _documents_root: Path | Non
         count = len(criteria)
         noun = "criterion" if count == 1 else "criteria"
         checked = rubric_plan.count_checked_criteria(criteria)
-        return PhaseState("plan", DONE, f"rubric.yml valid ({count} {noun}, {checked} with checks)")
+        detail = f"rubric.yml valid ({count} {noun}, {checked} with checks)"
+        return PhaseState("plan", DONE, f"{detail}; {_teacher_rubric_note(folder)}")
     if state == "absent":
         return PhaseState("plan", PENDING, "rubric.yml missing")
     return PhaseState("plan", BLOCKED, "rubric.yml malformed", "rubric_malformed")

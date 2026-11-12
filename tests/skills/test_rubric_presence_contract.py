@@ -64,3 +64,14 @@ def test_approval_gate_blocks_on_unmapped_inventory_not_on_a_score() -> None:
     approval = flat(REFS / "approval.md")
     assert "guide_inventory_unmapped" in approval
     assert "never a score" in approval
+
+
+def test_plan_keeps_guide_criteria_apart_from_the_teacher_s_grading_rubric() -> None:
+    content = flat(REFS / "content.md")
+    assert "`origin: guide`" in content and "`origin: teacher`" in content
+    assert "`levels:` copied verbatim" in content
+    assert "`teacher_rubric: none`" in content
+    assert "warning: guide-only plan, no teacher rubric" in content
+    assert "it never blocks" in content
+    data = flat(REFS / "data.md")
+    assert "`teacher rubric: not received`" in data and "only warns" in data
