@@ -221,15 +221,16 @@ def section_text(body: str, title: str) -> str | None:
     return "\n".join(lines[start:]) if start is not None else None
 
 
-def section_headings(body: str) -> list[tuple[int, str]]:
-    """The headings ``section_text`` sees, in order, as ``(level, folded title)``.
+def heading_lines(body: str) -> dict[int, tuple[int, str]]:
+    """The heading lines ``section_text`` sees: line index -> ``(level, folded title)``.
 
     Fenced blocks are skipped and titles are folded exactly as the section
-    lookup does, so this is the outline a criterion's ``section`` resolves in.
+    lookup does, so these are the only lines a criterion's ``section`` can
+    resolve to.
     """
-    found: list[tuple[int, str]] = []
+    found: dict[int, tuple[int, str]] = {}
     fence: str | None = None
-    for line in body.splitlines():
+    for index, line in enumerate(body.splitlines()):
         marker = _FENCE.match(line)
         if marker:
             token = marker.group(1)
@@ -242,8 +243,13 @@ def section_headings(body: str) -> list[tuple[int, str]]:
             continue
         match = _HEADING.match(line)
         if match:
-            found.append((len(match.group(1)), _fold(match.group(2).strip())))
+            found[index] = (len(match.group(1)), _fold(match.group(2).strip()))
     return found
+
+
+def section_headings(body: str) -> list[tuple[int, str]]:
+    """The headings ``section_text`` sees, in order, as ``(level, folded title)``."""
+    return list(heading_lines(body).values())
 
 
 def section_position(body: str, title: str) -> int | None:

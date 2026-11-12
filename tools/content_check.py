@@ -1273,9 +1273,10 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
     and levels (``_headings_only_renamed``), the changed words, heading words
     included, stay within the limit, every criterion's ``section`` still
     resolves (same ``section_sha256`` keys) to the heading at the same
-    position (``_section_positions``) of an outline the section lookup sees
-    with the same shape (``_section_levels``) and the rubric checks also pass
-    on the new bytes.
+    position (``_section_positions``), the only lines that changed are real
+    headings before and after with the same level, every other line being
+    identical (``_only_heading_lines_retitled``), and the rubric checks also
+    pass on the new bytes.
     """
     snapshot = folder / CHECKED_SNAPSHOT_NAME
     try:
@@ -1296,7 +1297,7 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
             criteria = rubric_plan.load_rubric(folder)
             if section_hashes(old, criteria).keys() != section_hashes(new, criteria).keys():
                 return False
-            if _section_levels(old) != _section_levels(new):
+            if not _only_heading_lines_retitled(old, new):
                 return False
             if _section_positions(old, criteria) != _section_positions(new, criteria):
                 return False
@@ -1310,15 +1311,26 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
         return False
 
 
-def _section_levels(body_text: str) -> list[int]:
-    """Levels of the headings the section lookup sees, in order.
+def _only_heading_lines_retitled(old: str, new: str) -> bool:
+    """True when the two bodies differ only in the titles of real headings.
 
-    ``heading_outline`` and the section lookup do not agree on what a heading
-    is (a ``##Title`` line, an indented or fenced heading), so the outline the
-    lookup resolves in must keep its shape too; otherwise equal positions
-    could name different sections.
+    Line for line: every line that changed is a heading for the section lookup
+    (``concision.heading_lines``) before and after, with the same level, and
+    every other line is identical. ``heading_outline`` and the lookup do not
+    agree on what a heading is (a ``##Title`` line, an indented or fenced
+    heading, a setext title), so nothing may start or stop being a heading
+    and no body text may change along with a rename.
     """
-    return [level for level, _ in concision.section_headings(body_text)]
+    before, after = old.splitlines(), new.splitlines()
+    if len(before) != len(after):
+        return False
+    was, now = concision.heading_lines(old), concision.heading_lines(new)
+    for index, (old_line, new_line) in enumerate(zip(before, after)):
+        if old_line == new_line:
+            continue
+        if index not in was or index not in now or was[index][0] != now[index][0]:
+            return False
+    return True
 
 
 def _section_positions(body_text: str, criteria: list[dict]) -> list[int | None]:
