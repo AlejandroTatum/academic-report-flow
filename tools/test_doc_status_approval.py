@@ -314,7 +314,8 @@ def test_approval_guidance_records_format_answers_even_when_changes_are_requeste
 
 
 def test_unchosen_format_offers_ape_aa_acd_or_libre(tmp_path: Path) -> None:
-    """aa-acd-templates S5: every format prompt offers APE, AA, ACD or libre."""
+    """aa-acd-templates S5: every format prompt offers APE, AA, ACD or libre;
+    build-command S9: plus Proyecto, in the wording of references/approval.md."""
     folder = tmp_path / "wf"
     _report(folder)
     _body(folder)
@@ -327,7 +328,11 @@ def test_unchosen_format_offers_ape_aa_acd_or_libre(tmp_path: Path) -> None:
 
     assert "document format APE, AA, ACD or libre" in approval
     assert "for APE, AA, ACD or libre" in fmt
-    assert state.detail == "format not chosen: ask the user APE, AA, ACD or libre"
+    for text in (approval, fmt, state.detail):
+        assert "APE, AA, ACD or libre, plus Proyecto for a project report" in text
+    assert state.detail == (
+        "format not chosen: ask the user APE, AA, ACD or libre, plus Proyecto for a project report"
+    )
 
 
 def test_approval_guidance_asks_only_approval_once_the_format_is_recorded(tmp_path: Path) -> None:

@@ -143,7 +143,8 @@ _GUIDANCE = {
     "format": (
         "before building v1, ask only the missing format " 
         "fields named by doc_status, never re-ask what {report_yml} records: use ask_user_choice "
-        "for APE, AA, ACD or libre, PDF or DOCX, and each remaining metadata gap with suggested "
+        "for APE, AA, ACD or libre, plus Proyecto for a project report, PDF or DOCX, and each remaining "
+        "metadata gap with suggested "
         "options (never free text); decide group work and members here; "
         "record the answer in {report_yml}, then re-run doc_status; when ai_declaration is missing "
         "it is not a question: write it yourself in {report_yml} for every work, as "
@@ -456,7 +457,8 @@ def _has_final_build(folder: Path, config: ReportConfig) -> bool:
 # they are given, so a request for changes reopens only the body approval.
 _APPROVAL_FORMAT_BATCH = (
     "; in the same batch use ask_user_choice "
-    "(suggested options, never free text) for the document format APE, AA, ACD or libre (libre also "
+    "(suggested options, never free text) for the document format APE, AA, ACD or libre, plus "
+    "Proyecto for a project report (libre also "
     "needs format_spec: options 'documento sobrio sin portada' or 'con portada'), the "
     "delivery format PDF or DOCX, and any metadata that format still needs; never infer "
     "an answer, no defaults"
@@ -568,7 +570,10 @@ def _phase_format(folder: Path, config: ReportConfig, documents_root: Path | Non
     """
     chosen = config.format
     if chosen is None:
-        return PhaseState("format", PENDING, "format not chosen: ask the user APE, AA, ACD or libre")
+        return PhaseState(
+            "format", PENDING,
+            "format not chosen: ask the user APE, AA, ACD or libre, plus Proyecto for a project report",
+        )
     if not config.format_is_known:
         return PhaseState("format", BLOCKED, f"format={chosen} not recognized", "unknown_format")
     output = str(config.raw.get("output") or "").strip()
