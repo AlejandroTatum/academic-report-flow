@@ -1272,8 +1272,9 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
     renames headings is still bounded when the outline keeps its count, order
     and levels (``_headings_only_renamed``), the changed words, heading words
     included, stay within the limit, every criterion's ``section`` still
-    resolves (same ``section_sha256`` keys) and the rubric checks also pass on
-    the new bytes.
+    resolves (same ``section_sha256`` keys) to the heading at the same
+    position of the outline (``_section_positions``) and the rubric checks
+    also pass on the new bytes.
     """
     snapshot = folder / CHECKED_SNAPSHOT_NAME
     try:
@@ -1294,6 +1295,8 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
             criteria = rubric_plan.load_rubric(folder)
             if section_hashes(old, criteria).keys() != section_hashes(new, criteria).keys():
                 return False
+            if _section_positions(old, criteria) != _section_positions(new, criteria):
+                return False
             renamed = True
         requirements = data.get("requirements")
         if isinstance(requirements, list) and downgrade_unquoted_evidence(requirements, new)[1]:
@@ -1302,6 +1305,19 @@ def _bounded_since_check(folder: Path, recorded: str, data: dict) -> bool:
         return all(check["ok"] for check in body_check_results(folder) if check["check"] in required)
     except Exception:
         return False
+
+
+def _section_positions(body_text: str, criteria: list[dict]) -> list[int | None]:
+    """The heading each criterion's ``section`` resolves to, by position in the outline.
+
+    Title matching alone cannot tell whether a rename moved a criterion onto
+    other text (closing ATX hashes, a title that appears twice), so the
+    resolved position is compared instead.
+    """
+    return [
+        concision.section_position(body_text, c["section"]) if isinstance(c.get("section"), str) else None
+        for c in criteria
+    ]
 
 
 def _headings_only_renamed(old: str, new: str) -> bool:

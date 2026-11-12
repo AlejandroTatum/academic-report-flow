@@ -221,6 +221,35 @@ def section_text(body: str, title: str) -> str | None:
     return "\n".join(lines[start:]) if start is not None else None
 
 
+def section_position(body: str, title: str) -> int | None:
+    """Ordinal of the heading ``section_text`` resolves ``title`` to, or None when absent.
+
+    Counts the headings ``section_text`` sees (fenced blocks skipped), so two
+    bodies with the same outline shape resolve a title to the same section
+    exactly when the positions are equal.
+    """
+    position = -1
+    fence: str | None = None
+    for line in body.splitlines():
+        marker = _FENCE.match(line)
+        if marker:
+            token = marker.group(1)
+            if fence is None:
+                fence = token
+            elif token[0] == fence[0] and len(token) >= len(fence):
+                fence = None
+            continue
+        if fence:
+            continue
+        match = _HEADING.match(line)
+        if not match:
+            continue
+        position += 1
+        if _fold(match.group(2).strip()) == _fold(title.strip()):
+            return position
+    return None
+
+
 def _positive_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 

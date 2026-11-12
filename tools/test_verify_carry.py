@@ -79,11 +79,12 @@ RENAME_BODY = (
 )
 
 
-def _renamed(folder: Path, criteria: tuple[dict, ...] | None = None) -> tuple[Path, bytes, bytes]:
+def _renamed(folder: Path, criteria: tuple[dict, ...] | None = None,
+             body: str = RENAME_BODY) -> tuple[Path, bytes, bytes]:
     _report(folder)
     _sources_bib(folder)
     _rubric(folder, criteria=criteria)
-    _cited_body(folder, RENAME_BODY)
+    _cited_body(folder, body)
     assert content_check.main([str(folder), "--verification", str(_verification(folder))]) == 0
     assert content_check.content_check_state(folder) == "pass"
     return (folder, (folder / content_check.CONTENT_CHECK_NAME).read_bytes(),
@@ -126,6 +127,25 @@ def test_heading_swap_with_a_case_or_accent_change_is_stale(tmp_path: Path) -> N
     folder, marker, snapshot = _renamed(tmp_path / "wf")
     text = RENAME_BODY.replace("## Objetivos", "## TMP").replace("## Metodologia", "## OBJETIVOS")
     _body(folder, text.replace("## TMP", "## Metodología"))
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_rename_that_takes_a_criterion_title_with_closing_hashes_is_stale(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+
+    _edit(folder, "# Informe\n", "# Objetivos #\n")
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_rename_that_moves_a_criterion_to_a_duplicate_title_is_stale(tmp_path: Path) -> None:
+    body = RENAME_BODY.replace("### Referencias", "### Objetivos")
+    folder, marker, snapshot = _renamed(tmp_path / "wf", body=body)
+
+    _body(folder, body.replace("## Objetivos\n\nMedir", "## Metas\n\nMedir"))
 
     assert content_check.content_check_state(folder) == "stale"
     _unchanged(folder, marker, snapshot)
