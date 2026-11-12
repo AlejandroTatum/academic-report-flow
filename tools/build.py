@@ -8,6 +8,9 @@
    When the bind is refused or a typeset check fails nothing is built: finish
    ``body.typeset.md`` by hand and run the same command again. A report that
    does not use typeset (an ``approval.yml`` that predates it) skips the step.
+   The run that creates ``body.typeset.md`` also stops when ``auto`` left
+   items for the agent (possible formulas, two-column lists): the checks do
+   not cover them, so they are reviewed once before anything is built.
 2. generate and validate: the same code as ``build_report_auto.py <folder>``
    (same messages, refusals and exit status; it records the ``generate``
    timing). No option skips a gate.
@@ -25,6 +28,7 @@ from pathlib import Path
 
 import build_report_auto
 import typeset
+import typeset_auto
 from approval_marker import BODY_NAME
 from report_config import TYPESET_BODY_NAME, load_report_config
 
@@ -35,9 +39,24 @@ def _typeset(folder: Path) -> bool:
         print(f"step 1/2: typeset skipped: this report renders {BODY_NAME} (approval.yml predates typeset)")
         return True
     print("step 1/2: typeset")
+    target = folder / TYPESET_BODY_NAME
+    created = not target.is_file()
     status, results = typeset.run("auto", folder)
     if status == 0 and results is not None and all(item["ok"] for item in results):
+        if created and typeset_auto.pending(target.read_text(encoding="utf-8")):
+            print(
+                f"build stopped: typeset left items for you (listed above). Review them in {target} "
+                f"(never {BODY_NAME}), then run build.py {folder} again; nothing was built.",
+                file=sys.stderr,
+            )
+            return False
         return True
+    if not target.is_file():
+        print(
+            f"build stopped: typeset could not bind {BODY_NAME} (see the message above); nothing was built.",
+            file=sys.stderr,
+        )
+        return False
     print(
         f"build stopped: typeset is not finished. Finish {folder / TYPESET_BODY_NAME} "
         f"(never {BODY_NAME}), then run build.py {folder} again; nothing was built.",
@@ -75,7 +94,8 @@ def main(argv: list[str] | None = None) -> int:
     folder = args.folder
     if not _typeset(folder):
         return 1
-    print("step 2/2: generate and validate")
+    # Flush so the build's subprocess output cannot overtake the step lines when piped.
+    print("step 2/2: generate and validate", flush=True)
     status = _generate(folder)
     if status != 0:
         return status

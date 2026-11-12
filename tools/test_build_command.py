@@ -294,3 +294,37 @@ def test_help_docstring_and_docs_describe_the_command(capsys: pytest.CaptureFixt
     assert '"$REPORT_PYTHON" "$REPORT_AUTOMATION_ROOT/tools/build.py" "$REPORT_CONTENT_ROOT/reports/<work-folder>/"' in production
     portal = PORTAL_MD.read_text(encoding="utf-8")
     assert "`tools/build.py`" in portal
+
+
+def test_first_build_stops_once_for_items_the_checks_do_not_cover(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    built = _stub_build(monkeypatch)
+    folder = _folder(tmp_path, BODY + "\nEl error es e = |x1 - x0| / |x1|.\n")
+
+    assert build.main([str(folder)]) == 1
+
+    captured = capsys.readouterr()
+    assert "left for you: " in captured.out and "possible formula: write it as math" in captured.out
+    assert (
+        f"build stopped: typeset left items for you (listed above). Review them in "
+        f"{folder / 'body.typeset.md'} (never body.md), then run build.py {folder} again; nothing was built."
+    ) in captured.err
+    assert built == []
+    assert not (folder / "build").exists()
+
+    assert build.main([str(folder)]) == 0
+
+    assert built != []
+    assert "build stopped" not in capsys.readouterr().err
+
+
+def test_refused_bind_says_the_body_could_not_be_bound(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = _folder(tmp_path)
+    (folder / "body.md").unlink()
+
+    assert build.main([str(folder)]) == 1
+
+    err = capsys.readouterr().err
+    assert "build stopped: typeset could not bind body.md (see the message above); nothing was built." in err
+    assert "Finish" not in err
