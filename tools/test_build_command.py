@@ -328,3 +328,22 @@ def test_refused_bind_says_the_body_could_not_be_bound(tmp_path: Path, capsys: p
     err = capsys.readouterr().err
     assert "build stopped: typeset could not bind body.md (see the message above); nothing was built." in err
     assert "Finish" not in err
+
+
+def test_build_stops_once_when_auto_formats_a_copy_that_bind_created(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    built = _stub_build(monkeypatch)
+    body = BODY + "\nVer https://example.org/datos\n\nEl error es e = |x1 - x0| / |x1|.\n"
+    folder = _folder(tmp_path, body)
+    assert typeset.main(["bind", str(folder)]) == 0
+    capsys.readouterr()
+
+    assert build.main([str(folder)]) == 1
+
+    assert "build stopped: typeset left items for you (listed above)." in capsys.readouterr().err
+    assert built == []
+
+    assert build.main([str(folder)]) == 0
+
+    assert built != []
