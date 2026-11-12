@@ -1,6 +1,6 @@
 # Approval and format - Decision 2 (format before v1, no draft approval)
 
-Phases `approval` (legacy, never waits) and `format`; the `typeset` phase that follows them is in `production.md`. There is no draft approval: once verify and format are `done`, the first formatted build is v1, generated with every rubric finding shown honestly, and generation is not a compliance claim. The human reviews the formatted version (`delivery.md`, Review), then asks for v2, v3 or gives an explicit instruction to publish; publication keeps its own gates (`delivery.md`, Deliver).
+Phases `approval` (legacy, never waits) and `format`; the `typeset` phase that follows them is in `production.md`. There is no draft approval: once verify and format are `done`, the first formatted build is v1, generated with every rubric finding shown honestly, and generation is not a compliance claim. The format is decided, and a preview build made with `build.py`, while the verifier works (`production.md`, Verify): its visual findings and the verifier's are fixed in ONE edit round, and v1 is the build made after that round. The human reviews the formatted version (`delivery.md`, Review), then asks for v2, v3 or gives an explicit instruction to publish; publication keeps its own gates (`delivery.md`, Deliver).
 
 ## Legacy approval phase
 
