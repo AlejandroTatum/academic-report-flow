@@ -208,6 +208,21 @@ def test_add_delivery_never_overwrites_a_malformed_log(root: Path, capsys: pytes
     assert _snapshot(root) == before and (course / "feedback.yml").exists()
 
 
+def test_add_delivery_warns_when_the_log_cannot_be_written(
+    root: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = _work(root)
+    _course(root, feedback=FEEDBACK)
+
+    def denied(*_args: object, **_kwargs: object) -> None:
+        raise PermissionError("read-only")
+
+    monkeypatch.setattr(Path, "write_text", denied)
+    lines = _run(capsys, str(folder), "--add-delivery", "--date", "2026-11-01", "--grade", "7")
+
+    assert lines == ["warning: feedback.yml could not be written (PermissionError); delivery not recorded"]
+
+
 def _plan(folder: Path) -> doc_status.PhaseState:
     return doc_status._phase_plan(folder, _config(folder), None)
 

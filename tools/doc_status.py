@@ -319,7 +319,7 @@ def _teacher_rubric_note(folder: Path, config: ReportConfig) -> str:
             "or record teacher_rubric: none once the user confirms there is none)"
         ) + _course_rubric_warning(config)
     criteria = rubric_plan.teacher_criteria(folder)
-    bare = [str(c.get("id")) for c in criteria if not c.get("levels")]
+    bare = [str(c.get("id")) for c in criteria if not rubric_plan.criterion_levels(c)]
     noun = "criterion" if len(criteria) == 1 else "criteria"
     note = f"teacher rubric: {len(criteria)} {noun}, {len(criteria) - len(bare)} with levels"
     if bare:
@@ -342,7 +342,8 @@ def _phase_plan(folder: Path, config: ReportConfig, _documents_root: Path | None
         noun = "criterion" if count == 1 else "criteria"
         checked = rubric_plan.count_checked_criteria(criteria)
         detail = f"rubric.yml valid ({count} {noun}, {checked} with checks)"
-        return PhaseState("plan", DONE, f"{detail}; {_teacher_rubric_note(folder, config)}")
+        warnings = "".join(f"; warning: {w}" for w in rubric_plan.load_rubric_warnings(folder))
+        return PhaseState("plan", DONE, f"{detail}; {_teacher_rubric_note(folder, config)}{warnings}")
     if state == "absent":
         return PhaseState("plan", PENDING, "rubric.yml missing")
     return PhaseState("plan", BLOCKED, "rubric.yml malformed", "rubric_malformed")

@@ -123,3 +123,19 @@ def test_guide_only_absent_or_malformed_plan_is_one_line(tmp_path: Path, capsys:
 def test_usage_error_still_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
     assert rubric_conflicts.main([]) == 0
     assert capsys.readouterr().out.splitlines() == ["usage: rubric_conflicts.py <work-folder>"]
+
+
+def test_malformed_levels_never_raise_and_read_as_no_levels(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    broken = {**TOOLS, "levels": [{"points": "dos", "descriptor": "x"}, {"descriptor": "y"}]}
+    folder = _folder(tmp_path, [broken])
+    lines = _cli(capsys, folder)
+    assert lines[0] == "rubric_conflicts: 1 teacher criterion; the draft must evidence each top level"
+    assert "warning: herramientas: no levels; copy the teacher's levels into rubric.yml to plan for the top level" in lines
+
+    def boom(_folder: Path) -> None:
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(rubric_conflicts, "_guide_stems", boom)
+    assert _cli(capsys, folder) == ["warning: rubric_conflicts could not finish (RuntimeError); no conflict list"]

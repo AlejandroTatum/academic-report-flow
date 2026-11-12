@@ -72,7 +72,7 @@ def evaluate(folder: Path) -> tuple[dict | None, list[str]]:
 
 
 def _evaluate(folder: Path) -> tuple[dict | None, list[str]]:
-    leveled = [c for c in rubric_plan.teacher_criteria(folder) if isinstance(c.get("levels"), list)]
+    leveled = [c for c in rubric_plan.teacher_criteria(folder) if rubric_plan.criterion_levels(c)]
     if not leveled:
         return None, []
     path = folder / FILE
@@ -99,7 +99,7 @@ def _evaluate(folder: Path) -> tuple[dict | None, list[str]]:
     score = total = Fraction(0)
     for criterion in leveled:
         cid = str(criterion["id"])
-        points_set = [lv["points"] for lv in criterion["levels"]]
+        points_set = [lv["points"] for lv in rubric_plan.criterion_levels(criterion)]
         top = max(points_set)
         entry = entries.get(cid)
         points = entry.get("points") if entry else None

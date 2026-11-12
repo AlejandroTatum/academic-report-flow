@@ -124,3 +124,18 @@ def test_a_legacy_plan_keeps_its_numbers_and_has_no_leveled_grade(
     assert not any(line.startswith(("warning:", "Score:")) for line in lines)
     grade = yaml.safe_load((folder / "rubric-grade.yml").read_text(encoding="utf-8"))
     assert (grade["score"], grade["total"], grade["percentage"], grade["leveled"]) == (75.0, 100.0, 75.0, None)
+
+
+def test_rubric_grade_treats_malformed_levels_as_no_levels_and_warns(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """S2: a mistyped levels list never blocks the grade; the criterion simply has no levels."""
+    broken = ({**TEACHER[1], "levels": LEVELS[:1]},)
+    folder = verified_folder(tmp_path, CRITERIA + TEACHER[:1] + broken)
+    _grade(folder, [_entry("analisis", 4)])
+    assert rubric_grade.main([str(folder)]) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert "warning: rubric.yml criterion 5 levels must be a list of at least 2 {points, descriptor} mappings" in lines
+    assert "Coverage: 75.00 / 100.00 (75.0%)" in lines
+    grade = yaml.safe_load((folder / "rubric-grade.yml").read_text(encoding="utf-8"))
+    assert [c["id"] for c in grade["leveled"]["criteria"]] == ["analisis"]

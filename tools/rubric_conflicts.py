@@ -55,8 +55,8 @@ def _terms(text: str) -> list[str]:
 
 
 def _top_level(criterion: dict) -> dict | None:
-    levels = criterion.get("levels")
-    if not isinstance(levels, list) or not levels:
+    levels = rubric_plan.criterion_levels(criterion)
+    if not levels:
         return None
     return max(levels, key=lambda level: level["points"])
 
@@ -79,7 +79,13 @@ def _guide_stems(folder: Path) -> set[str] | None:
 
 def conflicts(report_dir: Path) -> list[str]:
     """The lines ``rubric_conflicts.py`` prints for a work folder. Never raises, never writes."""
-    folder = Path(report_dir)
+    try:
+        return _conflicts(Path(report_dir))
+    except Exception as exc:  # S2: an unexpected input is a warning, never a crash
+        return [f"warning: rubric_conflicts could not finish ({exc.__class__.__name__}); no conflict list"]
+
+
+def _conflicts(folder: Path) -> list[str]:
     criteria = rubric_plan.teacher_criteria(folder)
     if not criteria:
         return [f"{PREFIX} no teacher criteria in rubric.yml (absent, malformed or guide-only); nothing to compare"]
@@ -95,7 +101,7 @@ def conflicts(report_dir: Path) -> list[str]:
         top = _top_level(criterion)
         found = []
         if top is not None:
-            highest = max(level["points"] for level in criterion["levels"])
+            highest = top["points"]
             lines.append(f"{cid}: top level {top['points']:g} of {highest:g}: {top['descriptor']}")
             if not _has_evidence(criterion):
                 found.append(

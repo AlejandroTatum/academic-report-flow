@@ -234,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
     if pdf is not None and not pdf.available:
         notes.append("PDF text unavailable: evidence located by section only")
     leveled, leveled_lines = leveled_grade.evaluate(folder)
+    leveled_lines = [f"warning: {w}" for w in rubric_plan.load_rubric_warnings(folder)] + leveled_lines
     grade = build_grade(folder, trace, pdf_path, pdf, leveled)
     text = render_md(grade, folder, notes, bool(rubric_plan.teacher_criteria(folder)), leveled_lines)
     (folder / GRADE_YML).write_text(yaml.safe_dump(grade, sort_keys=False, allow_unicode=True), encoding="utf-8")

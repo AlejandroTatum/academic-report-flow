@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import doc_status
 import rubric_plan
 from conftest import DEFAULT_RUBRIC_CRITERIA, RUBRIC_SCHEMA, _config, _report, _rubric, _yaml
@@ -43,35 +45,61 @@ def test_validate_accepts_origin_and_teacher_levels() -> None:
     assert rubric_plan.validate_rubric(_data(GUIDE, TEACHER)) == []
 
 
-def test_validate_rejects_an_unknown_origin() -> None:
-    errors = rubric_plan.validate_rubric(_data({**GUIDE, "origin": "docente"}))
-
-    assert errors == ["rubric.yml criterion 1 origin must be 'guide' or 'teacher'"]
-
-
-def test_validate_rejects_levels_on_a_criterion_that_is_not_the_teacher_s() -> None:
-    errors = rubric_plan.validate_rubric(_data({**GUIDE, "levels": LEVELS}))
-
-    assert errors == ["rubric.yml criterion 1 levels need origin: teacher"]
+def _check(data: dict) -> tuple[list[str], list[str]]:
+    """S2: a mistyped new key is a warning, never a schema error."""
+    return rubric_plan.validate_rubric(data), rubric_plan.rubric_warnings(data)
 
 
-def test_validate_rejects_malformed_levels() -> None:
-    single = rubric_plan.validate_rubric(_data({**TEACHER, "levels": LEVELS[:1]}))
-    shape = rubric_plan.validate_rubric(_data({**TEACHER, "levels": [{"points": 4}, {"points": 0, "descriptor": "x"}]}))
-    repeated = rubric_plan.validate_rubric(_data({**TEACHER, "levels": [LEVELS[0], LEVELS[0]]}))
+def test_an_unknown_origin_is_a_warning_not_an_error() -> None:
+    assert _check(_data({**GUIDE, "origin": "docente"})) == (
+        [], ["rubric.yml criterion 1 origin must be 'guide' or 'teacher'"]
+    )
 
-    assert single == ["rubric.yml criterion 1 levels must be a list of at least 2 {points, descriptor} mappings"]
-    assert shape == [
+
+def test_levels_on_a_criterion_that_is_not_the_teacher_s_are_a_warning() -> None:
+    assert _check(_data({**GUIDE, "levels": LEVELS})) == ([], ["rubric.yml criterion 1 levels need origin: teacher"])
+
+
+def test_malformed_levels_are_warnings_and_count_as_no_levels() -> None:
+    single = _data({**TEACHER, "levels": LEVELS[:1]})
+    shape = _data({**TEACHER, "levels": [{"points": 4}, {"points": 0, "descriptor": "x"}]})
+    repeated = _data({**TEACHER, "levels": [LEVELS[0], LEVELS[0]]})
+
+    assert _check(single) == (
+        [], ["rubric.yml criterion 1 levels must be a list of at least 2 {points, descriptor} mappings"]
+    )
+    assert _check(shape) == ([], [
         "rubric.yml criterion 1 level 1 descriptor must be a non-empty string",
         "rubric.yml criterion 1 level 2 points must be a number greater than 0",
-    ]
-    assert repeated == ["rubric.yml criterion 1 levels repeat points 4"]
+    ])
+    assert _check(repeated) == ([], ["rubric.yml criterion 1 levels repeat points 4"])
+    for data in (single, shape, repeated):
+        assert rubric_plan.criterion_levels(data["criteria"][0]) == []
+    assert rubric_plan.criterion_levels({**TEACHER, "levels": "x"}) == []
+    assert rubric_plan.criterion_levels(TEACHER) == LEVELS
+    assert rubric_plan.rubric_warnings(_data(GUIDE, TEACHER)) == []
+    assert rubric_plan.rubric_warnings("not a mapping") == []
 
 
-def test_validate_rejects_a_teacher_rubric_value_other_than_none() -> None:
-    assert rubric_plan.validate_rubric(_data(GUIDE, teacher_rubric="none")) == []
-    assert rubric_plan.validate_rubric(_data(GUIDE, teacher_rubric="pending")) == [
-        "rubric.yml teacher_rubric must be 'none' (the user confirmed there is no teacher rubric)"
+def test_a_teacher_rubric_value_other_than_none_is_a_warning() -> None:
+    assert _check(_data(GUIDE, teacher_rubric="none")) == ([], [])
+    assert _check(_data(GUIDE, teacher_rubric="pending")) == (
+        [], ["rubric.yml teacher_rubric must be 'none' (the user confirmed there is no teacher rubric)"]
+    )
+
+
+def test_a_plan_with_mistyped_new_keys_stays_valid_and_the_cli_warns(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write(tmp_path, _data({**GUIDE, "origin": "docente"}, {**TEACHER, "levels": LEVELS[:1]}, teacher_rubric="x"))
+
+    assert rubric_plan.rubric_state(tmp_path) == "valid"
+    assert rubric_plan.main([str(tmp_path)]) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "warning: rubric.yml teacher_rubric must be 'none' (the user confirmed there is no teacher rubric)",
+        "warning: rubric.yml criterion 1 origin must be 'guide' or 'teacher'",
+        "warning: rubric.yml criterion 2 levels must be a list of at least 2 {points, descriptor} mappings",
+        "rubric.yml OK",
     ]
 
 
@@ -140,3 +168,16 @@ def test_plan_reports_a_confirmed_absence_without_a_warning(tmp_path: Path) -> N
 
     assert phase.state == doc_status.DONE
     assert phase.detail == "rubric.yml valid (1 criterion, 0 with checks); no teacher rubric (confirmed by the user)"
+
+
+def test_plan_with_malformed_levels_is_done_and_warns_in_its_detail(tmp_path: Path) -> None:
+    _write(tmp_path, _data(GUIDE, {**TEACHER, "levels": LEVELS[:1]}))
+
+    phase = _plan(tmp_path)
+
+    assert phase.state == doc_status.DONE and phase.blocked_reason == ""
+    assert phase.detail == (
+        "rubric.yml valid (2 criteria, 0 with checks); teacher rubric: 1 criterion, 0 with levels; "
+        "warning: teacher criteria without levels: docente-ambiental; "
+        "warning: rubric.yml criterion 2 levels must be a list of at least 2 {points, descriptor} mappings"
+    )

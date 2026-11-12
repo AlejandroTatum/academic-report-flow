@@ -63,7 +63,8 @@ def _criterion_errors(data: object) -> list[str]:
         "criteria": [{**c, "section": "-", "origin": "teacher"} for c in criteria],
     }
     prefix = rubric_plan.RUBRIC_NAME + " "
-    return missing + [e.removeprefix(prefix) for e in rubric_plan.validate_rubric(plan)]
+    problems = rubric_plan.validate_rubric(plan) + rubric_plan.rubric_warnings(plan)
+    return missing + [e.removeprefix(prefix) for e in problems]
 
 
 def course_rubrics(slug: str) -> tuple[list[tuple[str, dict]], list[str]]:
@@ -235,8 +236,11 @@ def add_delivery(folder: Path, work: str | None, date: str | None, grade: str | 
         {"work": work, "date": date, "grade": points, "max": top, "comments": list(comments)}
         | ({"predicted": leveled} if leveled is not None else {})
     ]
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    except OSError as exc:  # S2: an unwritable log is a warning, never a failure
+        return [f"warning: feedback.yml could not be written ({exc.__class__.__name__}); delivery not recorded"]
     note = f" (predicted {leveled})" if leveled is not None else ""
     return [f"recorded: {work} {date} {points}/{top:g}{note} in academic-sources/{slug}/feedback.yml"]
 
