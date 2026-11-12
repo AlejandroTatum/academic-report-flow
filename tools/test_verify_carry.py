@@ -4,8 +4,10 @@
 ``body.md`` later differs from ``body_sha256`` the marker still holds only if
 that snapshot hashes to ``body_sha256``, the diff is bounded (the same
 predicate as the approval gate), every ``found`` quote is still in the body and
-the draft's mechanical checks still pass on the new bytes. Anything else is
-``stale``, as before.
+the draft's mechanical checks still pass on the new bytes. A heading rename
+carries too when the outline keeps its shape, every criterion section still
+resolves and the rubric checks still pass (faster-verify-loop S2). Anything
+else is ``stale``, as before.
 """
 from __future__ import annotations
 
@@ -67,12 +69,125 @@ def test_large_edit_is_stale(tmp_path: Path) -> None:
     assert content_check.content_check_state(folder) == "stale"
 
 
-def test_heading_edit_is_stale(tmp_path: Path) -> None:
-    folder = _checked(tmp_path / "wf")
+# S2 (faster-verify-loop): a heading rename keeps the verification when the
+# outline keeps its shape, the edit stays bounded and every criterion's
+# section still resolves. The AA3 run renamed `### Referencias`.
+RENAME_BODY = (
+    "# Informe\n\nCuerpo con fuentes [@key1] y [@key2], mas [@key3], [@key4] y [@key5].\n\n"
+    "## Objetivos\n\nMedir la deriva.\n\n## Metodologia\n\nSe midio dos veces.\n\n"
+    "### Referencias\n\nLista de fuentes.\n"
+)
 
-    _edit(folder, "# Informe", "# Reporte")
+
+def _renamed(folder: Path, criteria: tuple[dict, ...] | None = None) -> tuple[Path, bytes, bytes]:
+    _report(folder)
+    _sources_bib(folder)
+    _rubric(folder, criteria=criteria)
+    _cited_body(folder, RENAME_BODY)
+    assert content_check.main([str(folder), "--verification", str(_verification(folder))]) == 0
+    assert content_check.content_check_state(folder) == "pass"
+    return (folder, (folder / content_check.CONTENT_CHECK_NAME).read_bytes(),
+            (folder / content_check.CHECKED_SNAPSHOT_NAME).read_bytes())
+
+
+def _unchanged(folder: Path, marker: bytes, snapshot: bytes) -> None:
+    assert (folder / content_check.CONTENT_CHECK_NAME).read_bytes() == marker
+    assert (folder / content_check.CHECKED_SNAPSHOT_NAME).read_bytes() == snapshot
+
+
+def test_heading_rename_keeps_a_pass(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+
+    _edit(folder, "### Referencias", "### Fuentes de la decision")
+
+    assert content_check.content_check_state(folder) == "pass"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_heading_rename_with_a_level_change_is_stale(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+
+    _edit(folder, "### Referencias", "## Fuentes de la decision")
 
     assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_heading_swap_is_stale(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+    text = RENAME_BODY.replace("## Objetivos", "## TMP").replace("## Metodologia", "## Objetivos")
+    _body(folder, text.replace("## TMP", "## Metodologia"))
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_added_heading_is_stale(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+
+    _edit(folder, "Lista de fuentes.\n", "Lista de fuentes.\n\n### Anexos\n")
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_removed_heading_is_stale(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+
+    _edit(folder, "### Referencias\n\n", "")
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+@pytest.mark.parametrize(("extra", "state"), [(35, "pass"), (36, "stale")])
+def test_heading_rename_counts_heading_words_in_the_limit(tmp_path: Path, extra: int, state: str) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+    # The rename alone changes 5 words: 1 deleted, 4 inserted.
+    _edit(folder, "### Referencias\n\nLista de fuentes.",
+          "### Fuentes de la decision\n\nLista de fuentes. " + "palabra " * extra)
+
+    assert content_check.content_check_state(folder) == state
+    _unchanged(folder, marker, snapshot)
+
+
+def test_heading_rename_hiding_a_criterion_section_is_stale(tmp_path: Path) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+
+    _edit(folder, "## Objetivos", "## Metas")
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+def test_heading_rename_failing_a_rubric_check_is_stale(tmp_path: Path) -> None:
+    criteria = (
+        {"id": "objetivo", "title": "Objetivo claro", "section": "Objetivos",
+         "checks": [{"type": "heading_present", "section": "Referencias"}]},
+        {"id": "metodologia", "title": "Metodologia descrita", "section": "Metodologia"},
+    )
+    folder, marker, snapshot = _renamed(tmp_path / "wf", criteria)
+
+    _edit(folder, "### Referencias", "### Fuentes de la decision")
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
+
+
+@pytest.mark.parametrize("breakage", ["accepted_gaps", "quote", "citation"])
+def test_heading_rename_keeps_the_bounded_conditions(tmp_path: Path, breakage: str) -> None:
+    folder, marker, snapshot = _renamed(tmp_path / "wf")
+    text = RENAME_BODY.replace("### Referencias", "### Fuentes de la decision")
+    if breakage == "accepted_gaps":
+        (folder / "accepted-gaps.yml").write_text("gaps: []\n", encoding="utf-8")
+    elif breakage == "quote":
+        text = text.replace("Cuerpo con fuentes", "Texto con fuentes")
+    else:
+        text = text.replace("[@key5]", "[@nokey]")
+    _body(folder, text)
+
+    assert content_check.content_check_state(folder) == "stale"
+    _unchanged(folder, marker, snapshot)
 
 
 def test_untrusted_snapshot_is_stale(tmp_path: Path) -> None:

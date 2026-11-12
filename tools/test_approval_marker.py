@@ -320,6 +320,15 @@ def test_a_heading_change_is_stale(tmp_path: Path) -> None:
     assert approval_marker.approval_state(folder).state == "stale"
 
 
+def test_a_heading_only_rename_is_still_stale(tmp_path: Path) -> None:
+    # S2 (faster-verify-loop): the verification carries a heading rename; approval does not.
+    folder = tmp_path / "wf"
+    body = _approved(folder)
+    body.write_text(CARRY_BODY.replace("## Resultados", "## Fuentes de la decision"), encoding="utf-8")
+    state = approval_marker.approval_state(folder)
+    assert state.state == "stale" and state.reason == "approval_marker_stale"
+
+
 def test_a_missing_snapshot_is_stale(tmp_path: Path) -> None:
     folder = tmp_path / "wf"
     body = _approved(folder)
