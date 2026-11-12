@@ -2005,3 +2005,57 @@ def test_body_check_lists_prose_findings_as_a_warning(tmp_path: Path) -> None:
     results = {item["check"]: item for item in content_check.body_check_results(folder)}
     assert results["prose_findings"]["ok"] is True
     assert "Como es sabido" in results["prose_findings"]["detail"]
+
+
+# ---------------------------------------------------------------------------
+# The verifier knows length is mechanical (faster-verify-loop S3)
+# ---------------------------------------------------------------------------
+
+WORD_BUDGET_SENTENCE = (
+    "Length is checked mechanically: the tool's word_budget check counts prose words, tables "
+    "excluded, against the rubric's max_words. Do not count words and do not report length in "
+    "requirements, findings or prose_findings.\n"
+)
+
+
+def test_verify_brief_states_the_mechanical_word_budget(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = _verify_folder(tmp_path / "wf")
+    assert content_check.main([str(folder), "--verify-brief"]) == 0
+    assert WORD_BUDGET_SENTENCE in capsys.readouterr().out
+
+
+def test_since_brief_states_the_mechanical_word_budget(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = tmp_path / "wf"
+    previous = _sectioned_verification(folder)
+    assert content_check.main([str(folder), "--verify-brief", "--since", str(previous)]) == 0
+    out = capsys.readouterr().out
+    assert "Incremental re-verify" in out
+    assert WORD_BUDGET_SENTENCE in out
+
+
+def _body_check_line(folder: Path, capsys: pytest.CaptureFixture[str], name: str) -> str:
+    content_check.main([str(folder), "--body-check"])
+    return next(line for line in capsys.readouterr().out.splitlines() if line.startswith(f"  [") and f"] {name}:" in line)
+
+
+@pytest.mark.parametrize("ceiling", [None, 3])
+def test_verification_output_prints_the_body_check_word_budget_line(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], ceiling: int | None
+) -> None:
+    folder = _verify_folder(tmp_path / "wf")
+    if ceiling is not None:
+        rubric = folder / "rubric.yml"
+        rubric.write_text(rubric.read_text(encoding="utf-8") + f"max_words: {ceiling}\n", encoding="utf-8")
+    expected = _body_check_line(folder, capsys, "word_budget")
+    assert expected == ("  [FAIL] word_budget: total prose words 6 > 3" if ceiling
+                        else "  [ok] word_budget: within the word budget (or none set)")
+
+    assert _run(folder) == 0
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "content check: pass"
+    assert out.count(expected) == 1
+    import yaml
+
+    marker = yaml.safe_load((folder / "content-check.yml").read_text(encoding="utf-8"))
+    assert {check["check"] for check in marker["mechanical"]} == content_check.MECHANICAL_NAMES
+    assert content_check.content_check_state(folder) == "pass"

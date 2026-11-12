@@ -52,7 +52,10 @@ old two-judge flow (``judges``/``disagreements``) stay readable and valid.
 
 CLI: ``python tools/content_check.py <report-folder> --verification <file>``
 exits 0 on pass, 1 on fail, 2 on usage/input error; ``--verify-brief`` prints the
-verifier's assignment.
+verifier's assignment. Length is the body check's (``word_budget``: prose words,
+tables excluded): the brief tells the verifier not to count words or report
+length, and the ``--verification`` output prints the same ``word_budget`` line
+the body check prints, outside the marker and the verdict (faster-verify-loop S3).
 """
 from __future__ import annotations
 
@@ -245,6 +248,14 @@ def _incremental_section(since: Path, criteria: list[dict], hashes: dict[str, st
     return text + ("Return requirements only for the re-checked criteria (an empty list when there are none) and "
                    "list unmapped paragraphs only for their sections; the tool still checks every carried "
                    "evidence quote against body.md.\n")
+
+
+# faster-verify-loop S3: the body check owns length, so the verifier never counts words.
+WORD_BUDGET_NOTE = (
+    "Length is checked mechanically: the tool's word_budget check counts prose words, tables "
+    "excluded, against the rubric's max_words. Do not count words and do not report length in "
+    "requirements, findings or prose_findings.\n"
+)
 
 
 VERIFY_EXAMPLE_NOTE = (
@@ -444,7 +455,8 @@ def verify_brief(folder: Path, since: Path | None = None) -> str:
             "text-quality problem you find as a prose_findings entry (location, kind "
             "repeticion|circular|ambiguo|relleno|registro, an exact quote from body.md, fix); at most "
             f"{concision.MAX_PROSE_FINDINGS}, none when the prose is clean.\n"
-            f"Citations [@key] in body.md render in {config.citation_style.upper()} format at build time from sources.bib; citation keys are expected, not a formatting defect. Check that cited keys exist in sources.bib instead.\n"
+            + WORD_BUDGET_NOTE
+            + f"Citations [@key] in body.md render in {config.citation_style.upper()} format at build time from sources.bib; citation keys are expected, not a formatting defect. Check that cited keys exist in sources.bib instead.\n"
             + _criteria_section(criteria)
             + incremental
             + _already_run_checks_section(folder, criteria, body_text)
@@ -1281,6 +1293,16 @@ def body_check_results(folder: Path) -> list[dict]:
     return results
 
 
+def _word_budget_result(folder: Path) -> dict | None:
+    """The body check's ``word_budget`` entry for the current draft, or None when an input is unreadable."""
+    try:
+        folder = Path(folder)
+        return concision.word_budget_result((folder / BODY_NAME).read_text(encoding="utf-8"),
+                                            rubric_plan.load_rubric(folder), rubric_plan.load_max_words(folder))
+    except (OSError, ValueError, TypeError):
+        return None
+
+
 def run_body_check(folder: Path) -> int:
     """Run the verification-free mechanical checks on a draft; print, never write."""
     try:
@@ -1303,7 +1325,8 @@ def main(argv: list[str] | None = None, fetcher: link_check.Fetcher | None = Non
         "--verification",
         type=Path,
         action="append",
-        help="the independent verifier's verification.yml (requirement -> evidence matrix); exactly one file",
+        help=("the independent verifier's verification.yml (requirement -> evidence matrix); exactly one file; "
+              "the output also prints the body check's word_budget line"),
     )
     mode.add_argument(
         "--verify-brief",
@@ -1350,6 +1373,11 @@ def main(argv: list[str] | None = None, fetcher: link_check.Fetcher | None = Non
     for check in outcome.marker["mechanical"]:
         mark = "ok" if check["ok"] else "FAIL"
         print(f"  [{mark}] {check['check']}: {check['detail']}")
+    # faster-verify-loop S3: the body check's length line, so length is never the verifier's call.
+    # Printed only: the marker keeps its fixed mechanical entries and the verdict is unchanged.
+    budget = _word_budget_result(args.folder)
+    if budget is not None:
+        print(f"  [{'ok' if budget['ok'] else 'FAIL'}] {budget['check']}: {budget['detail']}")
     for finding in outcome.marker["findings"]:
         print(f"  finding: {finding}")
     for paragraph in outcome.marker["unmapped_paragraphs"]:

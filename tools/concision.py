@@ -431,14 +431,19 @@ def _prose_findings_detail(findings: list[dict]) -> str:
     return f"warning: review wording ({len(findings)} finding(s)); {shown}{more}"
 
 
+def word_budget_result(body: str, criteria: list[dict], total: int | None) -> dict:
+    """The ``word_budget`` entry: prose words (tables excluded) against the rubric's ``max_words``."""
+    problems = budget_problems(body, criteria, total)
+    return {"check": "word_budget", "ok": not problems,
+            "detail": "; ".join(problems) or "within the word budget (or none set)"}
+
+
 def concision_results(body: str, criteria: list[dict], total: int | None) -> list[dict]:
     """Blocking budget, filler and formulaic-conclusion checks plus advisory warnings."""
     findings = prose_findings(body)
-    entries = (
-        ("word_budget", budget_problems(body, criteria, total), "within the word budget (or none set)"),
-        ("filler_phrases", filler_problems(body), "no stock filler phrases"),
-    )
-    results = [{"check": name, "ok": not problems, "detail": "; ".join(problems) or ok} for name, problems, ok in entries]
+    filler = filler_problems(body)
+    results = [word_budget_result(body, criteria, total),
+               {"check": "filler_phrases", "ok": not filler, "detail": "; ".join(filler) or "no stock filler phrases"}]
     long = long_paragraph_problems(body)
     results.append({"check": "long_paragraphs", "ok": True,
                     "detail": "warning: review readability; " + "; ".join(long) if long
