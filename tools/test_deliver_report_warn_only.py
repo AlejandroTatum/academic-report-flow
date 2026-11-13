@@ -5,8 +5,9 @@ unresolved rubric, an unmapped guide inventory, a missing generated identity and
 a carried gate over an unrebuilt PDF print ``warning: <message>`` on stderr and
 the PDF is delivered (exit 0). Nothing to deliver or nothing readable still
 refuses (exit 1): a missing PDF, an invalid report.yml, an unparseable receipt
-or final review, a missing declared bibliography, and a missing or stale
-approval.yml (the user's explicit approve).
+or final review, a missing declared bibliography, a stale or malformed approval.yml (the user's
+explicit approve), and no approval.yml without a current generated identity
+(test_deliver_report_approval_anchor.py covers L3).
 """
 from __future__ import annotations
 
@@ -38,6 +39,13 @@ def _ready(tmp_path: Path) -> tuple[Path, Path]:
     _validation(folder, pdf=pdf)
     _final_review(folder, pdf=pdf)
     return folder, pdf
+
+
+def _current_generation(folder: Path, pdf: Path) -> None:
+    """A current v1 generated identity: without approval.yml it is the integrity anchor (L3)."""
+    approval_marker.write_generation_record(
+        folder, pdf, approval_marker.generation_inputs(folder), approval_marker.sha256_file(pdf)
+    )
 
 
 def _deliver(folder: Path, documents: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, list[str], str]:
@@ -156,8 +164,10 @@ def test_stale_final_review_warns_and_delivers(tmp_path: Path, capsys) -> None:
 
 
 def test_stale_generated_identity_warns_and_delivers(tmp_path: Path, capsys) -> None:
+    """Next to a valid approval.yml a stale generated identity only warns (L3 case d)."""
     folder = tmp_path / "wf"
     _report(folder)
+    _approval(folder)
     pdf = _pdf(folder)
     _validation(folder, pdf=pdf)
     _final_review(folder, pdf=pdf)
@@ -176,9 +186,9 @@ def test_delivered_warnings_never_say_nothing_is_published(tmp_path: Path, capsy
     """A warning is printed while the PDF IS delivered, so it cannot claim the opposite."""
     folder = tmp_path / "wf"
     _report(folder)
+    (folder / "body.md").write_text("# Informe\n\nCuerpo generado.\n", encoding="utf-8")
     pdf = _pdf(folder)
-    (folder / "build").mkdir(exist_ok=True)
-    (folder / "build" / "generation.yml").write_text("pdf_sha256: stale\n", encoding="utf-8")
+    _current_generation(folder, pdf)
     documents = tmp_path / "docs"
     code, err, out = _deliver(folder, documents, capsys)
     assert code == 0 and len(_delivered(documents)) == 1
@@ -195,8 +205,7 @@ def test_unmapped_inventory_warns_and_delivers(tmp_path: Path, capsys) -> None:
     pdf = _pdf(folder)
     _validation(folder, pdf=pdf)
     _final_review(folder, pdf=pdf)
-    (folder / "build").mkdir(exist_ok=True)
-    (folder / "build" / "generation.yml").write_text("pdf_sha256: stale\n", encoding="utf-8")
+    _current_generation(folder, pdf)
     documents = tmp_path / "docs"
     code, err, out = _deliver(folder, documents, capsys)
     refusal = publish_pdf._content_refusal(folder)

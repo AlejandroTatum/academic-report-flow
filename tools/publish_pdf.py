@@ -276,12 +276,15 @@ def publish_validated_pdf(
 
     warn-only-gates S2: with ``warn``, each quality refusal is handed to
     ``warn(code, message)`` and publication proceeds instead of raising. The
-    codes are ``generation_identity`` (missing or stale generated identity),
+    codes are ``generation_identity`` (a stale generated identity next to a
+    valid approval),
     ``content_check`` (unmapped inventory or unresolved content check),
     ``final_review`` (missing or stale final review) and ``stale_draft`` (a
     carried gate over a PDF not rebuilt from the current body.md). A missing PDF
-    or bibliography, a missing category/slug, a missing, stale or malformed
-    approval.yml (the user's explicit approve, not a quality check), a malformed
+    or bibliography, a missing category/slug, a stale or malformed approval.yml
+    (the user's explicit approve, not a quality check) whatever
+    build/generation.yml holds, a missing approval.yml without a current
+    generated identity (the only integrity anchor then), a malformed
     final-review.yml and version-claim errors always raise. ``warn=None`` keeps
     every refusal raising. The message handed to ``warn`` is the raw refusal
     text; a caller that delivers anyway rewords its "no se publica nada" clause
@@ -308,16 +311,22 @@ def publish_validated_pdf(
     # A report built as v1 (no draft approval, or a generation record) is
     # bound to its generated artifact identity and re-checks the verify gate
     # the approval used to vouch for; a legacy approval keeps its own path.
+    #
+    # Integrity, not quality (L3): a present but stale or malformed approval.yml
+    # always refuses, whatever build/generation.yml holds. Without approval.yml
+    # the generated identity is the only anchor, so a missing or stale record
+    # refuses too. Only a stale identity next to a valid approval is a warning.
     generation_record = work_folder / "build" / "generation.yml"
-    if generation_record.is_file() or state.state == "absent":
-        if not generation_record_current(work_folder, source):
-            refuse_or_warn("generation_identity", GENERATION_REFUSAL)
-        if not state.ok:
-            refusal = _content_refusal(work_folder)
-            if refusal:
-                refuse_or_warn("content_check", refusal)
-    elif not state.ok:
+    if state.state in ("stale", "malformed"):
         raise PublicationError(_approval_refusal(state, work_folder))
+    if state.state == "absent":
+        if not generation_record_current(work_folder, source):
+            raise PublicationError(GENERATION_REFUSAL)
+        refusal = _content_refusal(work_folder)
+        if refusal:
+            refuse_or_warn("content_check", refusal)
+    elif generation_record.is_file() and not generation_record_current(work_folder, source):
+        refuse_or_warn("generation_identity", GENERATION_REFUSAL)
 
     review = final_review_state(work_folder, source, bibliography=bibliography)
     if not review.ok:

@@ -6,6 +6,10 @@ and other DataCite DOIs), in DataCite. A web-only entry (``@misc``/``@online``)
 without a DOI or ISBN is ``VERIFIED_URL`` when its URL answers; it proves the
 page exists, never a scholarly record, and web-only entries never count toward
 the source minimum (``source_count``).
+
+warn-only-gates S2: failed entries print ``warning: verify_sources: ...`` on
+stderr and exit 0 after the record is written; an unreadable or missing
+bibliography still exits 2.
 """
 from __future__ import annotations
 
@@ -13,6 +17,7 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 import time
 import unicodedata
 from datetime import datetime, timezone
@@ -295,8 +300,10 @@ def verify_sources(folder: Path, fetch=None, sleep=None, probe=None) -> int:
         print(_summary_line(row))
     failed = [row for row in results if row["status"] not in PASSING]
     if failed:
-        print(f"verify_sources: {len(failed)} of {len(results)} entries failed; details in {destination}")
-    return 1 if failed else 0
+        # warn-only-gates S2: a failed source is a quality finding; the record is written.
+        print(f"warning: verify_sources: {len(failed)} of {len(results)} entries failed; "
+              f"details in {destination}. The flow continues.", file=sys.stderr)
+    return 0
 
 
 def main(argv=None, fetch=None) -> int:

@@ -215,9 +215,10 @@ def test_delivery_refuses_without_approval_or_generated_identity(tmp_path: Path,
 
 
 def test_delivery_warns_with_a_stale_generated_identity(tmp_path: Path, capsys) -> None:
-    """A v1 whose generated identity is stale warns and is still delivered (warn-only-gates S2)."""
+    """An approved report whose generated identity is stale warns and is still delivered (S2, L3 d)."""
     folder = tmp_path / "wf"
     _report(folder)
+    _approval(folder)
     pdf = _pdf(folder)
     _validation(folder)
     _final_review(folder, pdf=pdf)

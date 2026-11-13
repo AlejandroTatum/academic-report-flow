@@ -19,9 +19,10 @@ unmapped inventory, a carried gate over an unrebuilt PDF) prints
 ``warning: <message>`` on stderr and the PDF is still delivered. Only nothing to
 deliver or nothing readable refuses with a non-zero exit: a missing PDF or
 declared bibliography, an invalid report.yml, an unparseable receipt or final
-review, a missing publication identity, a missing, stale or malformed
-approval.yml (the user's explicit approve), a report with neither approval.yml
-nor a generated v1 identity (``build/generation.yml``), and version-claim errors.
+review, a missing publication identity, a stale or malformed approval.yml (the
+user's explicit approve) whatever ``build/generation.yml`` holds, a report with
+no approval.yml whose generated v1 identity (``build/generation.yml``) is
+missing or not current, and version-claim errors.
 A warning never says "no se publica nada": the publisher's refusal texts are
 reworded to "el PDF se entrega igual" before they are printed.
 The destination is the report's shared delivery folder (``config.delivery_folder``):
@@ -38,9 +39,9 @@ import re
 import sys
 from pathlib import Path
 
-from approval_marker import approval_state, sha256_file
+from approval_marker import approval_state, generation_record_current, sha256_file
 from final_review_marker import final_review_state
-from publish_pdf import PublicationError, publish_validated_pdf
+from publish_pdf import GENERATION_REFUSAL, PublicationError, _approval_refusal, publish_validated_pdf
 from report_config import load_report_config, read_yaml
 
 VALIDATION_RECEIPT = "validation.yml"
@@ -124,12 +125,21 @@ def deliver(folder: Path, documents_root: Path | None = None) -> int:
     # Something must vouch for these bytes: the user's approve of body.md or the
     # generated v1 identity. With neither there is nothing to warn about, only
     # an unapproved PDF, so it refuses before any warning or write.
-    if approval_state(folder).state == "absent" and not (folder / "build" / "generation.yml").is_file():
-        return _refuse(
-            f"no hay approval.yml ni build/generation.yml en {folder}: falta la aprobación humana "
-            "del cuerpo y la identidad del PDF generado. Aprobá body.md o generá el PDF con "
-            "build_report_auto.py."
-        )
+    # A present but stale or malformed approval.yml refuses whatever
+    # build/generation.yml holds; without approval.yml the generated identity
+    # must be current, since it is then the only integrity anchor (L3).
+    approval = approval_state(folder)
+    if approval.state in ("stale", "malformed"):
+        return _refuse(_approval_refusal(approval, folder))
+    if approval.state == "absent":
+        if not (folder / "build" / "generation.yml").is_file():
+            return _refuse(
+                f"no hay approval.yml ni build/generation.yml en {folder}: falta la aprobación humana "
+                "del cuerpo y la identidad del PDF generado. Aprobá body.md o generá el PDF con "
+                "build_report_auto.py."
+            )
+        if not generation_record_current(folder, pdf):
+            return _refuse(GENERATION_REFUSAL)
 
     receipt_path = folder / VALIDATION_RECEIPT
     receipt: dict = {}

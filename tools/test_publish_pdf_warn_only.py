@@ -1,12 +1,13 @@
 """warn-only-gates S2: the publisher's quality refusals become warnings when the caller asks.
 
-``publish_validated_pdf(..., warn=callback)`` hands each quality refusal (stale
-or missing generated identity, unresolved rubric or unmapped inventory, missing
+``publish_validated_pdf(..., warn=callback)`` hands each quality refusal (a stale
+generated identity next to a valid approval, unresolved rubric or unmapped inventory, missing
 or stale final review, a carried gate over an unrebuilt PDF) to ``callback`` as
 ``(code, message)`` and publishes. ``warn=None`` keeps the old raising
-behaviour. A missing PDF or bibliography, a missing category/slug, a missing,
-stale or malformed approval (the user's explicit approve) and a malformed final
-review always raise, with or without ``warn``.
+behaviour. A missing PDF or bibliography, a missing category/slug, a stale or malformed
+approval (the user's explicit approve), a missing approval without a current
+generated identity, and a malformed final review always raise, with or without
+``warn``.
 """
 from __future__ import annotations
 
@@ -42,9 +43,20 @@ def _published(documents: Path) -> list[Path]:
 # -- downgraded refusals ---------------------------------------------------------
 
 
-def test_missing_generated_identity_warns_and_publishes(tmp_path: Path) -> None:
-    folder = tmp_path / "v1"
-    folder.mkdir()
+def _v1(folder: Path, source: Path) -> None:
+    """A v1 report (no approval.yml) with a current generated identity for ``source``."""
+    _report(folder)
+    (folder / "body.md").write_text("# Informe\n\nCuerpo generado.\n", encoding="utf-8")
+    approval_marker.write_generation_record(
+        folder, source, approval_marker.generation_inputs(folder), approval_marker.sha256_file(source)
+    )
+
+
+def test_stale_generated_identity_next_to_approval_warns_and_publishes(tmp_path: Path) -> None:
+    folder = tmp_path / "approved"
+    _approval(folder)
+    (folder / "build").mkdir()
+    (folder / "build" / "generation.yml").write_text("pdf_sha256: stale\n", encoding="utf-8")
     source = _source(tmp_path)
     _final_review(folder, pdf=source)
     documents = tmp_path / "Documents"
@@ -52,16 +64,30 @@ def test_missing_generated_identity_warns_and_publishes(tmp_path: Path) -> None:
 
     published = _publish(source, folder, documents, warnings)
 
-    assert ("generation_identity", publish_pdf.GENERATION_REFUSAL) in warnings
+    assert warnings == [("generation_identity", publish_pdf.GENERATION_REFUSAL)]
     assert published.path.read_bytes() == CONTENT
     with pytest.raises(publish_pdf.PublicationError, match="identidad del PDF generado"):
         _publish(source, folder, tmp_path / "Other", None)
 
 
-def test_unresolved_content_check_warns_and_publishes(tmp_path: Path) -> None:
+def test_missing_generated_identity_without_approval_raises_even_with_warn(tmp_path: Path) -> None:
+    """Without approval.yml the generated identity is the integrity anchor (L3), never a warning."""
     folder = tmp_path / "v1"
     folder.mkdir()
     source = _source(tmp_path)
+    _final_review(folder, pdf=source)
+    documents = tmp_path / "Documents"
+
+    with pytest.raises(publish_pdf.PublicationError) as raised:
+        _publish(source, folder, documents, [])
+    assert str(raised.value) == publish_pdf.GENERATION_REFUSAL
+    assert not documents.exists()
+
+
+def test_unresolved_content_check_warns_and_publishes(tmp_path: Path) -> None:
+    folder = tmp_path / "v1"
+    source = _source(tmp_path)
+    _v1(folder, source)
     _final_review(folder, pdf=source)
     documents = tmp_path / "Documents"
     warnings: list = []
@@ -79,6 +105,9 @@ def test_unmapped_inventory_warns_and_publishes(tmp_path: Path) -> None:
 
     folder = verified_with_guide(tmp_path / "unmapped", CRITERIA)
     source = _source(tmp_path)
+    approval_marker.write_generation_record(
+        folder, source, approval_marker.generation_inputs(folder), approval_marker.sha256_file(source)
+    )
     _final_review(folder, pdf=source)
     documents = tmp_path / "Documents"
     warnings: list = []

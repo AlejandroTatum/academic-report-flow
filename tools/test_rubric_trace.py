@@ -71,9 +71,9 @@ def listing(folder: Path) -> dict[str, bytes]:
     return {str(p.relative_to(folder)): p.read_bytes() for p in sorted(folder.rglob("*")) if p.is_file()}
 
 
-def test_plan_without_a_body_is_all_red_and_exits_1(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_plan_without_a_body_is_all_red_and_warns(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     folder = planned_folder(tmp_path, body=None)
-    assert rubric_trace.main([str(folder)]) == 1
+    assert rubric_trace.main([str(folder)]) == 0
     out = capsys.readouterr().out
     for cid in ("objetivo", "metodologia", "conclusiones"):
         assert cid in out
@@ -94,7 +94,7 @@ def test_a_covered_rubric_exits_0_and_shows_weight_and_section_per_criterion(
 
 def test_an_uncovered_criterion_is_named_with_its_reason(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     folder = planned_folder(tmp_path, body=BODY.replace("topologia", "red"))
-    assert rubric_trace.main([str(folder)]) == 1
+    assert rubric_trace.main([str(folder)]) == 0
     out = capsys.readouterr().out
     assert "uncovered: 1/3" in out
     assert "metodologia" in out.split("Uncovered:", 1)[1]
@@ -105,7 +105,7 @@ def test_an_uncovered_criterion_is_named_with_its_reason(tmp_path: Path, capsys:
 def test_a_missing_section_is_uncovered(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     body = BODY.split("# Conclusiones")[0]
     folder = planned_folder(tmp_path, body=body)
-    assert rubric_trace.main([str(folder)]) == 1
+    assert rubric_trace.main([str(folder)]) == 0
     tail = capsys.readouterr().out.split("Uncovered:", 1)[1]
     assert "conclusiones" in tail and "section 'Conclusiones' missing" in tail
 
@@ -166,7 +166,7 @@ def test_a_current_verification_adds_requirement_counts_and_sections_of_the_quot
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     folder = verified_folder(tmp_path)
-    assert rubric_trace.main([str(folder)]) == 1  # requirements are missing
+    assert rubric_trace.main([str(folder)]) == 0  # requirements are missing
     out = capsys.readouterr().out
     meto = next(line for line in out.splitlines() if line.startswith("| metodologia "))
     assert "1/2" in meto and "Metodologia" in meto
@@ -189,7 +189,7 @@ def test_body_flag_traces_the_typeset_copy_and_reports_what_it_lost(
 ) -> None:
     folder = planned_folder(tmp_path)
     (folder / "body.typeset.md").write_text(BODY.replace("topologia", "red"), encoding="utf-8")
-    assert rubric_trace.main([str(folder), "--body", "body.typeset.md"]) == 1
+    assert rubric_trace.main([str(folder), "--body", "body.typeset.md"]) == 0
     out = capsys.readouterr().out
     assert "body.typeset.md" in out
     assert "metodologia" in out.split("Uncovered:", 1)[1]
@@ -203,7 +203,7 @@ def test_pdf_flag_reports_checked_text_that_never_reached_the_pdf(
     pdf.write_bytes(b"%PDF-1.4\n")
     monkeypatch.setattr(rubric_trace, "pdf_pages", lambda path: [
         "Portada", "Objetivos\nAnalizar el protocolo", "Metodologia\nSe configuro la topo-\nlogia", ""])
-    assert rubric_trace.main([str(folder), "--pdf", str(pdf)]) == 1
+    assert rubric_trace.main([str(folder), "--pdf", str(pdf)]) == 0
     out = capsys.readouterr().out
     assert "lost in the PDF" in out and "conclusiones" in out and "enlace" in out
     assert "metodologia" not in out.split("lost in the PDF", 1)[1]  # hyphenation does not count as a loss

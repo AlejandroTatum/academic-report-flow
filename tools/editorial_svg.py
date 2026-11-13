@@ -15,7 +15,8 @@ process timeline, external actors below, related services at the foot) or a
 ``concept_map`` (a central concept fanning out through labelled links to 2-4
 branch concepts with their sub-concepts). At the default 13.5 cm print width a
 figure wider than about 860 SVG units prints its 12.5-unit labels below 5.5 pt. ``check`` converts every ``font-size`` to
-printed points for the figure's printed width and fails below the minimum.
+printed points for the figure's printed width and warns below the minimum
+(``warning: print size check: FAIL ...`` on stderr, exit 0; unreadable input exits 2).
 """
 from __future__ import annotations
 
@@ -268,7 +269,7 @@ def main(argv: list[str] | None = None) -> int:
     render_cmd = sub.add_parser("render", help="render an actor_map or concept_map spec to SVG")
     render_cmd.add_argument("spec", type=Path)
     render_cmd.add_argument("--out", type=Path, required=True)
-    check_cmd = sub.add_parser("check", help="fail when any text prints below the minimum size")
+    check_cmd = sub.add_parser("check", help="warn when any text prints below the minimum size")
     check_cmd.add_argument("svg", type=Path)
     check_cmd.add_argument("--print-width-cm", type=float, default=DEFAULT_PRINT_WIDTH_CM)
     check_cmd.add_argument("--min-pt", type=float, default=DEFAULT_MIN_PT)
@@ -286,8 +287,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     for problem in problems:
         print(problem)
-    print(f"print size check: {'FAIL' if problems else 'PASS'} ({args.print_width_cm} cm wide, minimum {args.min_pt} pt)")
-    return 1 if problems else 0
+    summary = f"({args.print_width_cm} cm wide, minimum {args.min_pt} pt)"
+    if problems:
+        # warn-only-gates S2: undersized text is a quality finding, not a block.
+        print(f"warning: print size check: FAIL {summary}; enlarge the listed text. The flow continues.",
+              file=sys.stderr)
+    else:
+        print(f"print size check: PASS {summary}")
+    return 0
 
 
 if __name__ == "__main__":

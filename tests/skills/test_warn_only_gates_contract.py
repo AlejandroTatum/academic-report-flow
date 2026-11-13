@@ -50,3 +50,23 @@ def test_production_md_never_says_the_publisher_refuses_a_quality_gap() -> None:
     for stale in ("refused by the publisher", "the publisher no longer refuses", "the publisher needs it current",
                   "after the draft passes the body check", "still fails the build"):
         assert stale not in production, stale
+
+
+def test_t6_quality_checks_read_as_warnings_and_approval_stays_a_block() -> None:
+    production = _read("references/production.md")
+    assert "a visible blocking defect fails the artifact" not in production
+    assert "Blocking defects:" not in production
+    assert "Defects to report and fix (warnings; they never block delivery):" in production
+    content = _read("references/content.md")
+    assert "must be covered before the next section" not in content
+    assert "uncovered (exit 1)" not in content
+    assert "`warning: rubric trace: <n> uncovered criteria (<ids>)`" in content
+    assert "`warning: verify_sources: <n> of <m> entries failed`" in content
+    delivery = _read("references/delivery.md")
+    assert "a present but stale or malformed `approval.yml` always refuses, whatever `build/generation.yml` holds" in delivery
+    assert "whose `build/generation.yml` is not current for the PDF" in delivery
+    visual = " ".join((SKILL_DIR.parent / "academic-visual-builder" / "SKILL.md").read_text(encoding="utf-8").split())
+    assert "Stop on missing metadata" not in visual
+    assert "stop on failure" not in visual
+    assert "`warning: VALIDATION FAILED`" in visual
+    assert "`warning: print size check: FAIL ...`" in visual

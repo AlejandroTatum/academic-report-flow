@@ -108,8 +108,13 @@ def test_grade_counts_the_partial_end_to_end_at_half(tmp_path: Path) -> None:
 
 def test_trace_shows_the_partial_and_its_gap(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     folder = verified_with_partial(tmp_path)
-    assert rubric_trace.main([str(folder)]) == 1
-    out = capsys.readouterr().out
+    assert rubric_trace.main([str(folder)]) == 0  # warn-only-gates S2: uncovered criteria warn
+    captured = capsys.readouterr()
+    out = captured.out
+    assert (
+        "warning: rubric trace: 2 uncovered criteria (metodologia, conclusiones); "
+        "see Uncovered above. The flow continues."
+    ) in captured.err.splitlines()
     row = next(line for line in out.splitlines() if line.startswith("| metodologia "))
     assert "(+1 partial)" in row
     assert "requirement partial: Includes a network diagram" in out and PARTIAL["gap"] in out

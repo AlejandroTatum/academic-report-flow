@@ -186,7 +186,7 @@ def test_missing_sources_still_stop_research(tmp_path: Path) -> None:
     assert status.next_token == "research"
 
 
-def test_v1_publishes_and_warns_without_a_current_identity(
+def test_v1_publishes_only_with_a_current_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     folder, pdf = _v1(tmp_path, monkeypatch, capsys, requirements=FOUND_ONLY)
@@ -197,13 +197,10 @@ def test_v1_publishes_and_warns_without_a_current_identity(
     assert len(list(documents.rglob("*.pdf"))) == 1
     capsys.readouterr()
     (folder / "body.md").write_text("# Changed\n\nChanged content.\n")
-    # warn-only-gates S2: a stale generated identity warns; the same bytes reuse v001.
-    assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 0
+    # warn-only-gates L3: without approval.yml the generated identity is the integrity anchor.
+    assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 1
     err = capsys.readouterr().err
-    assert err.startswith(
-        "warning: Falta o está obsoleta la identidad del PDF generado y sus entradas; "
-        "volvé a generar y validar antes de publicar. El PDF se entrega igual.\n"
-    )
+    assert err.startswith(f"DELIVERY REFUSED: {publish_pdf.GENERATION_REFUSAL}\n")
     assert len(list(documents.rglob("*.pdf"))) == 1
 
 
