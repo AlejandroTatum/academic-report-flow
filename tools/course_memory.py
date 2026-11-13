@@ -14,7 +14,11 @@ its memory lives in the content root under ``academic-sources/<course-slug>/``:
 as a ready ``origin: teacher`` block for rubric.yml, the graded deliveries with their
 comments and the AI declaration decision. Anything missing or malformed is a
 ``warning:`` line and the exit code is always 0 (S2: it informs, it never blocks).
-``--add-delivery`` appends one graded delivery to feedback.yml, its only write;
+``--add-delivery`` appends one graded delivery to feedback.yml and ``--ai-declaration
+include|omit`` records the course's AI declaration decision there (any other value is a
+usage error, exit 2, nothing written); these are its only writes. A course without a
+decision defaults to include (academic work carries the declaration unless the user says
+otherwise) and that default is an informational line, not a warning.
 ``--predicted`` stores the leveled grade /10 the report had at delivery, and the read
 prints the mean absolute difference between predicted and teacher grades (S8,
 orientative calibration, never a gate).
@@ -35,6 +39,10 @@ from report_config import ReportConfig, read_yaml, resolve_content_root
 RUBRIC_SCHEMA = "academic.course-rubric/v1"
 FEEDBACK_SCHEMA = "academic.course-feedback/v1"
 DECISIONS = ("include", "omit")
+DEFAULT_INCLUDE_LINE = (
+    "ai_declaration: include (default for academic work; no course decision yet; "
+    "record one with --ai-declaration include|omit)"
+)
 
 
 def course_slug(config: ReportConfig) -> str | None:
@@ -96,6 +104,18 @@ def course_rubric_count(config: ReportConfig) -> int:
         return 0
 
 
+def course_ai_decision(config: ReportConfig) -> tuple[str | None, str | None]:
+    """``(decision, course slug)``: the course's recorded ``include|omit`` or ``None``. Never raises."""
+    slug = course_slug(config)
+    if not slug:
+        return None, None
+    try:
+        data, _error = _load_feedback(course_dir(slug) / "feedback.yml")
+    except Exception:
+        return None, slug
+    return (data or {}).get("ai_declaration"), slug
+
+
 def _load_feedback(path: Path) -> tuple[dict | None, str]:
     """``(data, error)`` of feedback.yml; ``(None, "")`` when the file is absent."""
     if not path.is_file():
@@ -140,10 +160,7 @@ def _ai_lines(decision: str | None, config: ReportConfig) -> list[str]:
     """The course decision and how report.yml compares; informs only, changes nothing."""
     from doc_status import _ai_declaration_decided
 
-    lines = [f"ai_declaration: {decision} (course decision in feedback.yml)"] if decision else [
-        "ai_declaration: include (default; no course decision)",
-        "warning: no AI declaration decision for this course; record ai_declaration: include|omit in feedback.yml",
-    ]
+    lines = [f"ai_declaration: {decision} (course decision in feedback.yml)" if decision else DEFAULT_INCLUDE_LINE]
     decision = decision or "include"
     opted_out = any(config.raw.get(key) is False for key in ("ai_declaration", "declaracion_ia"))
     if not _ai_declaration_decided(config):
@@ -245,10 +262,32 @@ def add_delivery(folder: Path, work: str | None, date: str | None, grade: str | 
     return [f"recorded: {work} {date} {points}/{top:g}{note} in academic-sources/{slug}/feedback.yml"]
 
 
+def set_ai_declaration(folder: Path, decision: str) -> list[str]:
+    """Record the course's ``ai_declaration: include|omit`` in feedback.yml; warn and write nothing on bad data."""
+    slug = course_slug(_config(folder))
+    if not slug:
+        return ["warning: no course for this report (academic route with metadata.subject needed); ai_declaration not recorded"]
+    path = course_dir(slug) / "feedback.yml"
+    data, error = _load_feedback(path)
+    if error:
+        return [f"warning: feedback.yml malformed: {error}; ai_declaration not recorded"]
+    data = data or {"schema": FEEDBACK_SCHEMA}
+    data["ai_declaration"] = decision
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    except OSError as exc:  # S2: an unwritable log is a warning, never a failure
+        return [f"warning: feedback.yml could not be written ({exc.__class__.__name__}); ai_declaration not recorded"]
+    return [f"recorded: ai_declaration: {decision} in academic-sources/{slug}/feedback.yml"]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("folder", type=Path)
-    parser.add_argument("--add-delivery", action="store_true", help="append one graded delivery to feedback.yml")
+    writes = parser.add_mutually_exclusive_group()
+    writes.add_argument("--add-delivery", action="store_true", help="append one graded delivery to feedback.yml")
+    writes.add_argument("--ai-declaration", choices=DECISIONS,
+                        help="record the course's AI declaration decision in feedback.yml")
     parser.add_argument("--work", help="delivery name (default: the work folder name)")
     parser.add_argument("--date")
     parser.add_argument("--grade")
@@ -257,7 +296,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--comment", action="append", default=[], help="one teacher comment (repeatable)")
     args = parser.parse_args(argv)
     folder = args.folder.expanduser().resolve()
-    if args.add_delivery:
+    if args.ai_declaration:
+        lines = set_ai_declaration(folder, args.ai_declaration)
+    elif args.add_delivery:
         lines = add_delivery(folder, args.work, args.date, args.grade, args.max, args.comment, args.predicted)
     else:
         lines = report(folder)

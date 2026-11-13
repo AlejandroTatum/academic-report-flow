@@ -3,7 +3,8 @@
 The teacher rubric is stored once per course, a feedback log holds each graded
 delivery, and the AI declaration is a per-course decision. ``course_memory``
 reads all three, warns about anything missing or malformed and always exits 0;
-``--add-delivery`` is its only write.
+``--add-delivery`` and ``--ai-declaration include|omit`` are its only writes (warn-only-gates
+S1: no decision is an informational default include, never a warning).
 """
 from __future__ import annotations
 
@@ -32,7 +33,10 @@ FEEDBACK = {
 }
 NO_RUBRIC = f"warning: no course rubric in academic-sources/{SLUG}/rubrics/ (save the teacher's rubric there once, schema academic.course-rubric/v1)"
 NO_FEEDBACK = "warning: no feedback.yml for this course yet; after the teacher grades a delivery, record it with --add-delivery"
-NO_DECISION = "warning: no AI declaration decision for this course; record ai_declaration: include|omit in feedback.yml"
+DEFAULT_INCLUDE = (
+    "ai_declaration: include (default for academic work; no course decision yet; "
+    "record one with --ai-declaration include|omit)"
+)
 
 
 @pytest.fixture
@@ -114,8 +118,7 @@ def test_missing_course_files_are_warnings_and_default_to_include(root: Path, ca
         f"course: {SLUG} (academic-sources/{SLUG})",
         NO_RUBRIC,
         NO_FEEDBACK,
-        "ai_declaration: include (default; no course decision)",
-        NO_DECISION,
+        DEFAULT_INCLUDE,
         "warning: course decision is include but report.yml has no ai_declaration yet",
     ]
 
@@ -132,8 +135,7 @@ def test_malformed_course_files_are_warnings(root: Path, capsys: pytest.CaptureF
         "warning: rubrics/u1.yml malformed: criterion 1 levels must be a list of at least 2 {points, descriptor} mappings",
         NO_RUBRIC,
         "warning: feedback.yml malformed: not readable YAML",
-        "ai_declaration: include (default; no course decision)",
-        NO_DECISION,
+        DEFAULT_INCLUDE,
         "warning: course decision is include but report.yml has ai_declaration: false",
     ]
 
@@ -161,6 +163,75 @@ def test_no_subject_is_a_warning(root: Path, capsys: pytest.CaptureFixture[str])
     assert _run(capsys, str(folder)) == [
         "warning: no course for this report (academic route with metadata.subject needed); no course memory read"
     ]
+
+
+def test_no_decision_is_an_informational_default_never_a_warning(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = _work(root, 'ai_declaration: "Se uso Claude."\n')
+
+    lines = _run(capsys, str(folder))
+
+    assert lines[-1] == DEFAULT_INCLUDE
+    assert not any("decision" in line and line.startswith("warning:") for line in lines)
+
+
+def test_ai_declaration_option_creates_the_course_log(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = _work(root)
+
+    lines = _run(capsys, str(folder), "--ai-declaration", "omit")
+
+    assert lines == [f"recorded: ai_declaration: omit in academic-sources/{SLUG}/feedback.yml"]
+    data = yaml.safe_load((root / "academic-sources" / SLUG / "feedback.yml").read_text(encoding="utf-8"))
+    assert data == {"schema": "academic.course-feedback/v1", "ai_declaration": "omit"}
+    assert _run(capsys, str(folder))[-2:] == [
+        "ai_declaration: omit (course decision in feedback.yml)",
+        "warning: course decision is omit but report.yml has no ai_declaration: false yet",
+    ]
+
+
+def test_ai_declaration_option_keeps_the_deliveries(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = _work(root)
+    course = _course(root, feedback={**FEEDBACK, "ai_declaration": "omit"})
+
+    lines = _run(capsys, str(folder), "--ai-declaration", "include")
+
+    assert lines == [f"recorded: ai_declaration: include in academic-sources/{SLUG}/feedback.yml"]
+    assert yaml.safe_load((course / "feedback.yml").read_text(encoding="utf-8")) == FEEDBACK
+
+
+@pytest.mark.parametrize("value", ["maybe", "", "INCLUDE", "true"])
+def test_ai_declaration_option_rejects_other_values_as_usage_errors(
+    root: Path, capsys: pytest.CaptureFixture[str], value: str
+) -> None:
+    folder = _work(root)
+    _course(root, feedback=FEEDBACK)
+    before = _snapshot(root)
+
+    with pytest.raises(SystemExit) as exc:
+        course_memory.main([str(folder), "--ai-declaration", value])
+
+    assert exc.value.code == 2
+    assert "--ai-declaration" in capsys.readouterr().err
+    assert _snapshot(root) == before
+
+
+def test_ai_declaration_option_never_overwrites_a_malformed_log(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = _work(root)
+    _course(root, feedback="deliveries: [unclosed\n")
+    before = _snapshot(root)
+
+    lines = _run(capsys, str(folder), "--ai-declaration", "include")
+
+    assert lines == ["warning: feedback.yml malformed: not readable YAML; ai_declaration not recorded"]
+    assert _snapshot(root) == before
+
+
+def test_ai_declaration_option_without_a_course_is_a_warning(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = _work(root, subject=None)
+
+    assert _run(capsys, str(folder), "--ai-declaration", "include") == [
+        "warning: no course for this report (academic route with metadata.subject needed); ai_declaration not recorded"
+    ]
+    assert not (root / "academic-sources").exists()
 
 
 def test_add_delivery_appends_and_keeps_existing_deliveries(root: Path, capsys: pytest.CaptureFixture[str]) -> None:
