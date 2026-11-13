@@ -423,31 +423,41 @@ class TestMain:
 
         validate.assert_called_once_with(config)
 
-    def test_validation_failure_stops_generation_before_any_delivery(self) -> None:
-        """Validation errors abort the run; delivery is a separate later phase."""
-        config = FakeReportConfig(backend="latex")
-        argv = ["build_report_auto.py", "/tmp/fake-report"]
+    def test_validation_failure_warns_and_generation_continues(
+        self, capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """warn-only-gates S2: validation errors warn on stderr; the run exits 0, never publishes."""
+        config, _, _ = self._run_main(backend="latex", validation=FakeValidation(errors=["falló"]))
 
+        captured = capsys.readouterr()
+        assert captured.err == (
+            f"warning: VALIDATION FAILED:\n- falló\n\nReporte: {config.quality_report_path}\n"
+        )
+        assert "PDF GENERADO Y VALIDADO" not in captured.out
+        assert "PDF GENERADO CON ADVERTENCIAS DE VALIDACIÓN" in captured.out
+        assert f"Reporte: {config.quality_report_path}" in captured.out
+
+    def test_validation_errors_warn_without_systemexit(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Validate-only with errors: warning on stderr, no SystemExit (exit 0)."""
+        val = FakeValidation(errors=["Metadata incompleta: falta título"])
+
+        self._run_main(backend="latex", extra_args=["--validate-only"], validation=val)
+
+        captured = capsys.readouterr()
+        assert "warning: VALIDATION FAILED:\n- Metadata incompleta: falta título\n" in captured.err
+        assert "VALIDATION PASSED" not in captured.out
+
+    def test_missing_pdf_after_build_still_fails(self) -> None:
+        """A PDF that was never produced leaves nothing to validate: still a hard failure."""
+        config = FakeReportConfig(backend="latex", folder=Path("/nonexistent/fake-report"))
+        argv = ["build_report_auto.py", "/nonexistent/fake-report", "--validate-only"]
         with (
             patch.object(sys, "argv", argv),
             patch("build_report_auto.load_report_config", return_value=config),
-            patch("build_report_auto.build_backend"),
-            patch("build_report_auto.validate", return_value=FakeValidation(errors=["falló"])),
-            patch("build_report_auto.sha256_file", return_value="validated-hash"),
+            patch("build_report_auto.validate", return_value=FakeValidation()),
         ):
-            with pytest.raises(SystemExit):
+            with pytest.raises((SystemExit, FileNotFoundError)):
                 main()
-
-    def test_validation_errors_cause_systemexit(self) -> None:
-        """When validate returns errors, main() raises SystemExit with a failure message."""
-        val = FakeValidation(errors=["Metadata incompleta: falta título"])
-
-        with pytest.raises(SystemExit) as exc:
-            self._run_main(backend="latex", validation=val)
-
-        message = str(exc.value.code)
-        assert message, "SystemExit code must be a non-empty string"
-        assert "VALIDATION FAILED" in message
 
     # -- Validation warnings -------------------------------------------------
 
@@ -463,33 +473,21 @@ class TestMain:
 
     # -- Validation errors + warnings ----------------------------------------
 
-    def test_validation_errors_suppress_warnings_printing(
+    def test_validation_errors_also_print_the_warnings(
         self, capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """When validate returns both errors AND warnings, errors raise first — warnings are not printed.
-
-        Current implementation: errors raise SystemExit before the warnings print
-        statement is reached. This test documents that specific behavior.
-        """
+        """Errors and warnings together: the errors warn on stderr, the warnings still print."""
         val = FakeValidation(
             errors=["Metadata incompleta: falta título"],
             warnings=["Revisar fuentes de figuras"],
         )
 
-        with pytest.raises(SystemExit) as exc:
-            self._run_main(backend="latex", validation=val)
+        self._run_main(backend="latex", validation=val)
 
-        message = str(exc.value.code)
-        assert "VALIDATION FAILED" in message
-        assert "falta título" in message
-        # Warnings must NOT appear in the SystemExit message
-        assert "VALIDATION PASSED WITH WARNINGS" not in message
-        assert "Revisar fuentes" not in message
-
-        # Warnings must NOT have been printed to stdout either
         captured = capsys.readouterr()
-        assert "Revisar fuentes" not in captured.out
-        assert "VALIDATION PASSED WITH WARNINGS" not in captured.out
+        assert "warning: VALIDATION FAILED:\n- Metadata incompleta: falta título\n" in captured.err
+        assert "Revisar fuentes de figuras" in captured.out
+        assert "VALIDATION PASSED" not in captured.out
 
     # -- --tex-only mutation -------------------------------------------------
 

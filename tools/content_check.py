@@ -51,7 +51,8 @@ each time, never copied into the marker, so the recorded statuses stay
 old two-judge flow (``judges``/``disagreements``) stay readable and valid.
 
 CLI: ``python tools/content_check.py <report-folder> --verification <file>``
-exits 0 on pass, 1 on fail, 2 on usage/input error; ``--verify-brief`` prints the
+exits 0 on pass and on a fail (recorded, with a ``warning: content_check_failed``
+line on stderr; warn-only-gates S2), 2 on usage/input error; ``--verify-brief`` prints the
 verifier's assignment. Length is the body check's (``word_budget``: prose words,
 tables excluded): the brief tells the verifier not to count words or report
 length, and the ``--verification`` output prints the same ``word_budget`` line
@@ -1465,7 +1466,11 @@ def run_body_check(folder: Path) -> int:
         return 2
     for check in results:
         print(f"  [{'ok' if check['ok'] else 'FAIL'}] {check['check']}: {check['detail']}")
-    return 0 if all(check["ok"] for check in results) else 1
+    failed = [check["check"] for check in results if not check["ok"]]
+    if failed:
+        # warn-only-gates S2: a FAIL is a quality finding, reported, never a block.
+        print(f"warning: body_check_failed: {', '.join(failed)}", file=sys.stderr)
+    return 0
 
 
 def main(argv: list[str] | None = None, fetcher: link_check.Fetcher | None = None) -> int:
@@ -1538,7 +1543,12 @@ def main(argv: list[str] | None = None, fetcher: link_check.Fetcher | None = Non
         print(f"  {waiting_label(record)}")
     for paragraph in outcome.marker["unmapped_paragraphs"]:
         print(f"  unmapped paragraph (deletion candidate): {paragraph}")
-    return 0 if outcome.result == "pass" else 1
+    if outcome.result != "pass":
+        # warn-only-gates S2: the fail verdict is recorded in content-check.yml and
+        # reported; it never blocks the flow. Input errors above still exit 2.
+        print(f"warning: content_check_failed: {CONTENT_CHECK_NAME} recorded result: {outcome.result}",
+              file=sys.stderr)
+    return 0
 
 
 if __name__ == "__main__":

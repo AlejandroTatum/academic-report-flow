@@ -68,7 +68,7 @@ def test_partial_with_a_quote_absent_from_the_body_is_downgraded_to_missing(tmp_
 def test_old_verification_without_partial_loads_with_unchanged_verdicts(tmp_path: Path) -> None:
     folder = planned_folder(tmp_path)
     path = _verification(folder, requirements=REQUIREMENTS)
-    assert content_check.main([str(folder), "--verification", str(path)]) == 1
+    assert content_check.main([str(folder), "--verification", str(path)]) == 0
     data = marker(folder)
     assert [(c["id"], c["status"]) for c in data["criteria"]] == [
         ("objetivo", "cumple"), ("metodologia", "falta"), ("conclusiones", "falta")]

@@ -176,21 +176,24 @@ def test_generate_step_runs_build_report_auto_and_keeps_its_messages(
     assert approval_marker.draft_record_path(pdf).is_file()
 
 
-def test_failed_validation_exits_like_build_report_auto(
+def test_failed_validation_warns_like_build_report_auto(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """warn-only-gates S2: a failed validation warns and the build still finishes (exit 0)."""
     folder = _folder(tmp_path)
     _stub_build(monkeypatch, _Validation(errors=["La tabla 1 no cabe"]))
 
-    assert build.main([str(folder)]) == 1
+    assert build.main([str(folder)]) == 0
 
     output = capsys.readouterr()
     assert output.err == (
-        "VALIDATION FAILED:\n- La tabla 1 no cabe\n\n"
+        "warning: VALIDATION FAILED:\n- La tabla 1 no cabe\n\n"
         f"Reporte: {folder / 'backups' / 'quality_report.md'}\n"
     )
-    assert "left for validate" not in output.out
-    assert not (folder / "build" / "generation.yml").exists()
+    assert "PDF GENERADO CON ADVERTENCIAS DE VALIDACIÓN" in output.out
+    assert "PDF GENERADO Y VALIDADO" not in output.out
+    assert _validate_line(folder) in output.out.splitlines()
+    assert (folder / "build" / "generation.yml").is_file()
 
 
 def test_build_offers_no_option_that_skips_a_gate(capsys: pytest.CaptureFixture[str]) -> None:

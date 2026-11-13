@@ -7,7 +7,7 @@ records it, downgrades any ``found`` requirement whose evidence quote is not in
 rubric checks, links) and derives the pass/fail verdict -- the agent can never
 declare a pass by itself. These tests pin the matrix validation, the
 downgrade rule, the per-criterion ``cumple|falta`` derivation, the CLI exit
-codes (0 pass / 1 fail / 2 usage or input error), the ``content_check_state``
+codes (0 pass or warned fail / 2 usage or input error), the ``content_check_state``
 predicate (``absent|malformed|stale|fail|pass``) for new and legacy two-judge
 markers, the bindings (body/rubric/bib/guide hashes), the atomic marker write,
 and the guarantee that the check never touches ``body.md``. The network is never
@@ -74,7 +74,7 @@ def test_body_check_long_paragraph_warns_without_blocking_budget(monkeypatch: py
     assert content_check.run_body_check(Path("unused")) == 0
     assert "warning: review readability" in capsys.readouterr().out
     monkeypatch.setattr(content_check, "body_check_results", lambda folder: content_check.concision.concision_results(body, [], 80))
-    assert content_check.run_body_check(Path("unused")) == 1
+    assert content_check.run_body_check(Path("unused")) == 0
     assert "FAIL" in capsys.readouterr().out
 
 
@@ -83,7 +83,7 @@ def test_matrix_derives_cumple_falta_per_criterion_with_no_flojo(tmp_path: Path)
     matrix = _verification(folder, findings=["shared"], requirements=[
         _req("objetivo"), _req("objetivo", "missing", evidence=""), _req("metodologia"), _req("metodologia"),
     ])
-    assert _run(folder, matrix) == 1
+    assert _run(folder, matrix) == 0
     marker = _marker(folder)
     assert [(c["id"], c["status"]) for c in marker["criteria"]] == [("objetivo", "falta"), ("metodologia", "cumple")]
     assert marker["verifier"]["role"] == "independent"
@@ -98,7 +98,7 @@ def test_found_requirement_with_a_quote_absent_from_body_is_downgraded_to_missin
         _req("objetivo"),
         _req("metodologia", evidence="Wokwi links all present"),
     ])
-    assert _run(folder, matrix) == 1
+    assert _run(folder, matrix) == 0
     marker = _marker(folder)
     downgraded = marker["requirements"][1]
     assert downgraded["status"] == "missing"
@@ -113,7 +113,7 @@ def test_whitespace_normalized_quote_is_found_and_comparison_is_case_sensitive(t
         _req("objetivo", evidence="Cuerpo\n\tcon   fuentes"),
         _req("metodologia", evidence="CUERPO con fuentes"),
     ])
-    assert _run(folder, matrix) == 1
+    assert _run(folder, matrix) == 0
     statuses = [r["status"] for r in _marker(folder)["requirements"]]
     assert statuses == ["found", "missing"]
 
@@ -121,7 +121,7 @@ def test_whitespace_normalized_quote_is_found_and_comparison_is_case_sensitive(t
 def test_missing_requirement_keeps_its_status_and_needs_no_evidence(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     matrix = _verification(folder, requirements=[_req("objetivo"), _req("metodologia", "missing", evidence=None)])
-    assert _run(folder, matrix) == 1
+    assert _run(folder, matrix) == 0
     assert [r["status"] for r in _marker(folder)["requirements"]] == ["found", "missing"]
 
 
@@ -264,7 +264,7 @@ def test_preplanned_checks_start_red_and_turn_green_without_editing_body_by_runn
     assert not (folder / "body.md").exists()
     _cited_body(folder)
     before = (folder / "body.md").read_bytes()
-    assert _run(folder) == 1
+    assert _run(folder) == 0
     marker = _marker(folder)
     assert _mechanical(marker, "rubric_checks")["ok"] is False
     assert "objetivo" in _mechanical(marker, "rubric_checks")["detail"]
@@ -306,11 +306,11 @@ def test_marker_write_is_atomic_and_cleans_up_on_failure(
     assert not (folder / "content-check.yml.tmp").exists()
 
 
-def test_fail_case_exits_one_and_records_result(tmp_path: Path) -> None:
+def test_fail_case_warns_exits_zero_and_records_result(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     matrix = _verification(folder, requirements=[_req("objetivo")])
 
-    assert _run(folder, matrix) == 1
+    assert _run(folder, matrix) == 0
 
     marker = _marker(folder)
     assert marker["result"] == "fail"
@@ -328,7 +328,7 @@ def test_missing_requirement_fails(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     matrix = _verification(folder, requirements=[_req("objetivo"), _req("metodologia", "missing", evidence="")])
 
-    assert _run(folder, matrix) == 1
+    assert _run(folder, matrix) == 0
     assert _marker(folder)["result"] == "fail"
 
 
@@ -336,7 +336,7 @@ def test_unresolved_citation_fails(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     _body(folder, DEFAULT_CITED_BODY + "\nReclamo sin fuente [@fantasma].\n")
 
-    assert _run(folder) == 1
+    assert _run(folder) == 0
 
     marker = _marker(folder)
     assert _mechanical(marker, "citations_resolve")["ok"] is False
@@ -348,7 +348,7 @@ def test_only_four_eligible_cited_sources_fails(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     _body(folder, "# Informe\n\nCuerpo con [@key1], [@key2], [@key3] y [@key4].\n")
 
-    assert _run(folder) == 1
+    assert _run(folder) == 0
 
     marker = _marker(folder)
     eligible = _mechanical(marker, "eligible_sources_cited")
@@ -366,7 +366,7 @@ def test_web_only_cited_sources_do_not_count(tmp_path: Path) -> None:
     )
     _body(folder, "# Informe\n\n" + " ".join(f"[@web{i}]" for i in range(1, 6)) + "\n")
 
-    assert _run(folder) == 1
+    assert _run(folder) == 0
     assert _mechanical(_marker(folder), "eligible_sources_cited")["ok"] is False
 
 
@@ -374,7 +374,7 @@ def test_unknown_criterion_id_fails(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     matrix = _verification(folder, requirements=[_req("objetivo"), _req("metodologia"), _req("inventado")])
 
-    assert _run(folder, matrix) == 1
+    assert _run(folder, matrix) == 0
 
     marker = _marker(folder)
     check = _mechanical(marker, "verification_matches_rubric")
@@ -387,7 +387,7 @@ def test_criterion_without_a_requirement_fails(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     matrix = _verification(folder, requirements=[_req("objetivo")])
 
-    assert _run(folder, matrix) == 1
+    assert _run(folder, matrix) == 0
     check = _mechanical(_marker(folder), "verification_matches_rubric")
     assert check["ok"] is False and "metodologia" in check["detail"]
     assert [c["status"] for c in _marker(folder)["criteria"]] == ["cumple", "falta"]
@@ -416,7 +416,7 @@ def test_mechanical_failures_become_findings(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     _body(folder, "# Informe\n\nCuerpo con [@key1] y una cita rota [@fantasma].\n")
 
-    assert _run(folder) == 1
+    assert _run(folder) == 0
 
     findings = "\n".join(_marker(folder)["findings"])
     assert "citations_resolve" in findings or "fantasma" in findings
@@ -757,7 +757,7 @@ def test_verifier_level_errors_name_the_offending_file(tmp_path: Path) -> None:
 
 
 def test_real_cli_subprocess_exit_codes(tmp_path: Path) -> None:
-    """The module entry point maps pass->0, fail->1, usage->2 for real."""
+    """The module entry point maps pass->0, warned fail->0, usage->2 for real."""
     folder = _verify_folder(tmp_path / "wf")
     runner = sys.executable
     script = Path(content_check.__file__)
@@ -769,7 +769,7 @@ def test_real_cli_subprocess_exit_codes(tmp_path: Path) -> None:
     assert passed.returncode == 0, passed.stderr
 
     failing = _verification(folder, name="bad.yml", requirements=[_req("objetivo"), _req("metodologia", "missing", evidence="")])
-    assert cli(str(folder), "--verification", str(failing)).returncode == 1
+    assert cli(str(folder), "--verification", str(failing)).returncode == 0
 
     assert cli(str(tmp_path / "nope"), "--verification", str(failing)).returncode == 2
 
@@ -1105,7 +1105,7 @@ def test_links_resolve_fails_on_404_and_names_the_url(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     _body_with_links(folder, "https://gone.example/x")
 
-    assert _run(folder, fetcher=lambda url, method: 404) == 1
+    assert _run(folder, fetcher=lambda url, method: 404) == 0
 
     marker = _marker(folder)
     check = _mechanical(marker, "links_resolve")
@@ -1234,7 +1234,7 @@ def test_min_sources_override_one_passes_with_one_cited_source(tmp_path: Path) -
 def test_absent_min_sources_still_requires_five_cited(tmp_path: Path) -> None:
     folder = _min_sources_folder(tmp_path / "wf", None)
 
-    assert _run(folder) == 1
+    assert _run(folder) == 0
 
     eligible = _mechanical(_marker(folder), "eligible_sources_cited")
     assert eligible["ok"] is False
@@ -1294,7 +1294,7 @@ def test_run_check_fails_on_format_defects_and_state_is_fail(tmp_path: Path) -> 
     (folder / "body.md").write_text(
         "## Informe\n\nc\u2081 con $x$ y [@key1] y [@key2], [@key3], [@key4], [@key5].\n", encoding="utf-8"
     )
-    assert _run(folder) == 1
+    assert _run(folder) == 0
     findings = " ".join(_marker(folder)["findings"])
     assert "level-1" in findings
     # issue #96: backend formatting is rejected by name and line; Unicode scripts are plain text.
@@ -1305,7 +1305,7 @@ def test_run_check_fails_on_format_defects_and_state_is_fail(tmp_path: Path) -> 
 def test_body_check_mode_reports_without_writing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     folder = _verify_folder(tmp_path / "wf")
     (folder / "body.md").write_text("## Informe\n\nTexto con [@key1].\n", encoding="utf-8")
-    assert content_check.main([str(folder), "--body-check"]) == 1
+    assert content_check.main([str(folder), "--body-check"]) == 0
     out = capsys.readouterr().out
     assert "level-1" in out
     assert not (folder / "content-check.yml").exists()
@@ -1333,7 +1333,7 @@ def test_body_check_output_labels_body_format_defects(tmp_path: Path, capsys: py
     folder = _verify_folder(tmp_path / "wf")
     (folder / "body.md").write_text("## Informe\n\nTexto con [@key1].\n", encoding="utf-8")
 
-    assert content_check.main([str(folder), "--body-check"]) == 1
+    assert content_check.main([str(folder), "--body-check"]) == 0
 
     assert "[FAIL] body_format:" in capsys.readouterr().out
 
@@ -1342,7 +1342,7 @@ def test_marker_keeps_five_mechanical_entries_with_unambiguous_format_text(tmp_p
     folder = _verify_folder(tmp_path / "wf")
     (folder / "body.md").write_text("## Informe\n\nTexto con [@key1].\n", encoding="utf-8")
 
-    assert _run(folder) == 1
+    assert _run(folder) == 0
 
     marker = _marker(folder)
     assert [c["check"] for c in marker["mechanical"]][-2:] == ["rubric_checks", "links_resolve"]
@@ -1380,7 +1380,7 @@ def test_body_check_fails_on_bold_pseudo_heading(tmp_path: Path, capsys: pytest.
     folder = _verify_folder(tmp_path / "wf")
     (folder / "body.md").write_text("# Informe\n\n**Por el club**\n\nTexto con [@key1].\n", encoding="utf-8")
 
-    assert content_check.main([str(folder), "--body-check"]) == 1
+    assert content_check.main([str(folder), "--body-check"]) == 0
 
     out = capsys.readouterr().out
     # issue #96: bold is backend formatting; the plain-text check names it (typeset keeps the pseudo-heading rule).
@@ -1532,7 +1532,7 @@ def test_uncited_bibliography_passes_without_citations(tmp_path: Path) -> None:
 def test_uncited_bibliography_still_resolves_cited_keys(tmp_path: Path) -> None:
     folder = _uncited_folder(tmp_path / "wf", "# Informe\n\nCita rota [@fantasma].\n")
 
-    assert _run(folder) == 1
+    assert _run(folder) == 0
 
     marker = _marker(folder)
     assert _mechanical(marker, "citations_resolve")["ok"] is False
@@ -1649,14 +1649,14 @@ def test_body_check_fails_when_total_word_budget_is_exceeded(tmp_path: Path) -> 
     results = {item["check"]: item for item in content_check.body_check_results(folder)}
     assert results["word_budget"]["ok"] is False
     assert "> 3" in results["word_budget"]["detail"]
-    assert content_check.main([str(folder), "--body-check"]) == 1
+    assert content_check.main([str(folder), "--body-check"]) == 0
 
 
 def test_body_check_fails_on_filler_phrase(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     folder = _verify_folder(tmp_path / "wf")
     body = folder / "body.md"
     body.write_text(body.read_text(encoding="utf-8") + "\nCabe destacar que funciona.\n", encoding="utf-8")
-    assert content_check.main([str(folder), "--body-check"]) == 1
+    assert content_check.main([str(folder), "--body-check"]) == 0
     assert "filler_phrases" in capsys.readouterr().out
 
 
@@ -1797,7 +1797,7 @@ def test_check_does_not_carry_a_criterion_whose_section_changed(tmp_path: Path) 
     edited = SECTIONED_BODY.replace("Medir la deriva", "Estimar la deriva").replace("Se usaron", "Se midieron con")
     answer = _recheck(folder, edited, [_req("metodologia", evidence="Se midieron con")])
 
-    assert _run(folder, answer) == 1
+    assert _run(folder, answer) == 0
     marker = _marker(folder)
     assert [r["criterion"] for r in marker["requirements"]] == ["metodologia"]
     assert dict((c["id"], c["status"]) for c in marker["criteria"])["objetivo"] == "falta"
@@ -1809,7 +1809,7 @@ def test_check_does_not_carry_after_a_rubric_change(tmp_path: Path) -> None:
     _rubric(folder, source="otra guia")
     answer = _recheck(folder, SECTIONED_BODY, [_req("metodologia", evidence="Se usaron")])
 
-    assert _run(folder, answer) == 1
+    assert _run(folder, answer) == 0
     assert [r["criterion"] for r in _marker(folder)["requirements"]] == ["metodologia"]
 
 
@@ -1849,7 +1849,7 @@ def test_a_carried_found_requirement_without_a_quote_is_not_carried(tmp_path: Pa
     answer = _recheck(folder, SECTIONED_BODY.replace("Se usaron", "Se midieron con"),
                       [_req("metodologia", evidence="Se midieron con")])
 
-    assert _run(folder, answer) == 1
+    assert _run(folder, answer) == 0
     marker = _marker(folder)
     assert dict((c["id"], c["status"]) for c in marker["criteria"])["objetivo"] == "falta"
     assert marker["carried_criteria"] == []
@@ -1863,7 +1863,7 @@ def test_a_malformed_previous_marker_record_carries_nothing_instead_of_crashing(
     answer = _recheck(folder, SECTIONED_BODY.replace("Se usaron", "Se midieron con"),
                       [_req("metodologia", evidence="Se midieron con")])
 
-    assert _run(folder, answer) == 1
+    assert _run(folder, answer) == 0
     assert [r["criterion"] for r in _marker(folder)["requirements"]] == ["metodologia"]
 
 
@@ -1879,7 +1879,7 @@ def test_a_legacy_marker_without_section_hashes_carries_nothing(tmp_path: Path) 
     answer = _recheck(folder, SECTIONED_BODY.replace("Se usaron", "Se midieron con"),
                       [_req("metodologia", evidence="Se midieron con")])
 
-    assert _run(folder, answer) == 1
+    assert _run(folder, answer) == 0
     assert [r["criterion"] for r in _marker(folder)["requirements"]] == ["metodologia"]
 
 
@@ -2182,7 +2182,7 @@ def test_ceilings_and_another_rubric_change_is_still_a_full_verify(tmp_path: Pat
     assert "Incremental re-verify" not in brief
     assert "full verify: the rubric changed since" in brief
     answer = _recheck(folder, edited, [_req("metodologia", evidence="Se midieron con")])
-    assert _run(folder, answer) == 1
+    assert _run(folder, answer) == 0
     assert [r["criterion"] for r in _marker(folder)["requirements"]] == ["metodologia"]
 
 
@@ -2198,5 +2198,44 @@ def test_marker_without_the_matrix_hash_forces_a_full_verify_after_a_ceilings_ch
     assert "Incremental re-verify" not in brief
     assert "full verify: the rubric changed since" in brief
     answer = _recheck(folder, edited, [_req("metodologia", evidence="Se midieron con")])
-    assert _run(folder, answer) == 1
+    assert _run(folder, answer) == 0
     assert [r["criterion"] for r in _marker(folder)["requirements"]] == ["metodologia"]
+
+
+# ---------------------------------------------------------------------------
+# warn-only-gates S2: a failed content check or body check warns, never blocks
+# ---------------------------------------------------------------------------
+
+
+def test_failed_content_check_warns_exits_zero_and_still_writes_the_marker(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = _verify_folder(tmp_path / "wf")
+    matrix = _verification(folder, requirements=[_req("objetivo"), _req("metodologia", "missing", evidence="")])
+
+    assert _run(folder, matrix) == 0
+    captured = capsys.readouterr()
+    assert "warning: content_check_failed: content-check.yml recorded result: fail\n" in captured.err
+    assert "content check: fail" in captured.out
+    assert _marker(folder)["result"] == "fail"
+
+
+def test_failed_body_check_warns_and_exits_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = _verify_folder(tmp_path / "wf")
+    (folder / "body.md").write_text("## Informe\n\nTexto con [@key1].\n", encoding="utf-8")
+
+    assert content_check.main([str(folder), "--body-check"]) == 0
+    captured = capsys.readouterr()
+    failed = [line for line in captured.err.splitlines() if line.startswith("warning: body_check_failed: ")]
+    assert len(failed) == 1 and "body_format" in failed[0]
+    assert "[FAIL] body_format" in captured.out
+    assert not (folder / "content-check.yml").exists()
+
+
+def test_content_check_input_errors_still_fail(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A missing verification file or an unreadable body leaves nothing to check: exit 2."""
+    folder = _verify_folder(tmp_path / "wf")
+    assert content_check.main([str(folder), "--verification", str(folder / "nope.yml")]) == 2
+    assert content_check.main([str(tmp_path / "missing"), "--body-check"]) == 2
+    assert "content check input error" in capsys.readouterr().err
+    assert not (folder / "content-check.yml").exists()

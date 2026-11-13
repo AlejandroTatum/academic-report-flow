@@ -304,15 +304,30 @@ def test_cli_accepts_a_valid_plan(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert "OK" in capsys.readouterr().out
 
 
-def test_cli_reports_problems_and_fails_on_malformed_plan(
+def test_cli_warns_on_a_malformed_plan_and_exits_zero(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """warn-only-gates S2: rubric_malformed is a warning on stderr, never a block."""
     folder = tmp_path / "wf"
     folder.mkdir()
     (folder / "rubric.yml").write_text("schema: nope\ncriteria: []\n", encoding="utf-8")
+    problems = rubric_plan.validate_rubric({"schema": "nope", "criteria": []})
+
+    assert rubric_plan.main([str(folder)]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == "warning: rubric_malformed:\n- " + "\n- ".join(problems) + "\n"
+    assert "OK" not in captured.out
+    assert (folder / "rubric.yml").is_file()
+
+
+def test_cli_still_fails_on_an_unparseable_plan(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """An unreadable rubric.yml leaves nothing to check: it stays a hard failure."""
+    folder = tmp_path / "wf"
+    folder.mkdir()
+    (folder / "rubric.yml").write_text("criteria: [unclosed\n", encoding="utf-8")
 
     assert rubric_plan.main([str(folder)]) == 1
-    assert "rubric" in capsys.readouterr().out.lower()
+    assert "rubric.yml unreadable" in capsys.readouterr().out
 
 
 def test_cli_fails_when_the_plan_is_absent(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

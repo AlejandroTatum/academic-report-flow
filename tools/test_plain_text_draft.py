@@ -68,13 +68,13 @@ def test_draft_body_check_rejects_backend_formatting_with_its_line(
     assert "plain text" in check["detail"] and "typeset" in check["detail"]
 
 
-def test_draft_body_check_cli_exits_1_and_writes_nothing_on_formatting(
+def test_draft_body_check_cli_warns_and_writes_nothing_on_formatting(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     folder = _folder(tmp_path, f"# Informe\n\nEl error es $e$ con {CITES}.\n")
     before = sorted(p.name for p in folder.iterdir())
 
-    assert content_check.main([str(folder), "--body-check"]) == 1
+    assert content_check.main([str(folder), "--body-check"]) == 0
 
     out = capsys.readouterr().out
     assert "[FAIL] plain_text: backend formatting in the plain-text draft at line 3 (math)" in out

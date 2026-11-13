@@ -500,7 +500,13 @@ def inventory_problems(report_dir: Path) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI: validate ``<folder>/rubric.yml``; print problems, exit 1 on failure."""
+    """CLI: validate ``<folder>/rubric.yml``; print problems as warnings.
+
+    warn-only-gates S2: ``rubric_malformed`` and ``guide_inventory_unmapped``
+    are quality findings, printed on stderr as ``warning: <code>: ...`` with
+    exit 0. Only a usage error (2) or a missing or unreadable rubric.yml (1),
+    which leaves nothing to check, still fails.
+    """
     args = sys.argv[1:] if argv is None else argv
     if len(args) != 1:
         print("usage: rubric_plan.py <report-folder>")
@@ -510,19 +516,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{RUBRIC_NAME} missing in {args[0]}")
         return 1
     try:
-        problems = validate_rubric(read_yaml(path))
+        data = read_yaml(path)
     except Exception as exc:
-        problems = [f"{RUBRIC_NAME} unreadable: {exc}"]
-    if problems:
-        print("rubric_malformed:\n- " + "\n- ".join(problems))
+        print(f"rubric_malformed:\n- {RUBRIC_NAME} unreadable: {exc}")
         return 1
+    problems = validate_rubric(data)
+    if problems:
+        print("warning: rubric_malformed:\n- " + "\n- ".join(problems), file=sys.stderr)
     for warning in load_rubric_warnings(Path(args[0])):
         print(f"warning: {warning}")
     unmapped = inventory_problems(Path(args[0]))
     if unmapped:
-        print("guide_inventory_unmapped:\n- " + "\n- ".join(unmapped))
-        return 1
-    print(f"{RUBRIC_NAME} OK")
+        print("warning: guide_inventory_unmapped:\n- " + "\n- ".join(unmapped), file=sys.stderr)
+    if not (problems or unmapped):
+        print(f"{RUBRIC_NAME} OK")
     return 0
 
 
