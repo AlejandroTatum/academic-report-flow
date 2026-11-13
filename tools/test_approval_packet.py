@@ -62,10 +62,11 @@ def test_packet_without_a_preview_says_so(tmp_path: Path) -> None:
         approval_packet.render(folder))
 
 
-def test_packet_summarizes_per_criterion_and_lists_missing_items(tmp_path: Path) -> None:
+def test_packet_summarizes_per_criterion_and_lists_missing_items(tmp_path: Path, capsys) -> None:
     """#64: the human gets one row per criterion, never the per-requirement evidence matrix."""
     folder = _folder(tmp_path)
     _fresh_preview(folder)
+    capsys.readouterr()
     assert _verify(folder, requirements=[
         {"criterion": "objetivo", "requirement": "A goal | measurable", "status": "found",
          "location": "## Informe", "evidence": "Cuerpo con fuentes"},
@@ -73,7 +74,10 @@ def test_packet_summarizes_per_criterion_and_lists_missing_items(tmp_path: Path)
          "location": "", "evidence": ""},
         {"criterion": "metodologia", "requirement": "A results table", "status": "found",
          "location": "## Informe", "evidence": "Cuerpo con fuentes"},
-    ], unmapped_paragraphs=["Como es sabido"], findings=["WARNING: repeats the intro"]) == 1
+    ], unmapped_paragraphs=["Como es sabido"], findings=["WARNING: repeats the intro"]) == 0
+    # warn-only-gates S2: the fail verdict is recorded and warned, exit 0.
+    assert capsys.readouterr().err == (
+        "warning: content_check_failed: content-check.yml recorded result: fail\n")
     text = approval_packet.render(folder)
     assert "## Verify: fail (2/3 requirements found)" in text
     assert "| Criterion | Status | Found |\n|---|---|---|\n| objetivo | cumple | 1/1 |\n| metodologia | falta | 1/2 |" in text

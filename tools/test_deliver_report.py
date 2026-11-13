@@ -198,8 +198,8 @@ def test_delivery_warns_on_pdf_changed_after_validation(tmp_path: Path) -> None:
 # -- Approval gate (enforced by the shared publisher) ---------------------------
 
 
-def test_delivery_warns_without_generated_identity(tmp_path: Path, capsys) -> None:
-    """Without approval.yml (a v1) and without its generated identity the publisher warns."""
+def test_delivery_refuses_without_approval_or_generated_identity(tmp_path: Path, capsys) -> None:
+    """Without approval.yml and without a generated v1 identity nothing vouches for the PDF."""
     folder = tmp_path / "wf"
     _report(folder)
     pdf = _pdf(folder)
@@ -207,11 +207,29 @@ def test_delivery_warns_without_generated_identity(tmp_path: Path, capsys) -> No
     _final_review(folder, pdf=pdf)
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 0
+    assert _run(folder, documents_root) == 1
 
     captured = capsys.readouterr()
     assert "identidad del PDF generado" in captured.err
-    assert (documents_root / CATEGORY).exists()  # warn-only-gates S2: delivered
+    assert not documents_root.exists()  # a refusal creates nothing
+
+
+def test_delivery_warns_with_a_stale_generated_identity(tmp_path: Path, capsys) -> None:
+    """A v1 whose generated identity is stale warns and is still delivered (warn-only-gates S2)."""
+    folder = tmp_path / "wf"
+    _report(folder)
+    pdf = _pdf(folder)
+    _validation(folder)
+    _final_review(folder, pdf=pdf)
+    (folder / "build").mkdir(exist_ok=True)
+    (folder / "build" / "generation.yml").write_text("pdf_sha256: stale\n", encoding="utf-8")
+    documents_root = tmp_path / "docs"
+
+    assert _run(folder, documents_root) == 0
+
+    captured = capsys.readouterr()
+    assert "warning: Falta o está obsoleta la identidad del PDF generado" in captured.err
+    assert (documents_root / CATEGORY).exists()
 
 
 def test_delivery_refuses_stale_approval(tmp_path: Path) -> None:

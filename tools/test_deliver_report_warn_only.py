@@ -138,7 +138,7 @@ def test_missing_final_review_warns_once_and_delivers(tmp_path: Path, capsys) ->
     code, err, out = _deliver(folder, documents, capsys)
     line = (
         f"warning: falta final-review.yml en {folder}: falta la revisión humana final "
-        f"de {pdf.name}. Ejecutá primero la fase review; no se publica nada."
+        f"de {pdf.name}. Ejecutá primero la fase review; el PDF se entrega igual."
     )
     _assert_warned_and_delivered(code, err, out, documents, line)
     assert err == [line]  # the publisher's own final-review warning is not repeated
@@ -155,17 +155,36 @@ def test_stale_final_review_warns_and_delivers(tmp_path: Path, capsys) -> None:
     assert len(_delivered(documents)) == 1
 
 
-def test_missing_generated_identity_warns_and_delivers(tmp_path: Path, capsys) -> None:
-    import publish_pdf
-
+def test_stale_generated_identity_warns_and_delivers(tmp_path: Path, capsys) -> None:
     folder = tmp_path / "wf"
     _report(folder)
     pdf = _pdf(folder)
     _validation(folder, pdf=pdf)
     _final_review(folder, pdf=pdf)
+    (folder / "build").mkdir(exist_ok=True)
+    (folder / "build" / "generation.yml").write_text("pdf_sha256: stale\n", encoding="utf-8")
     documents = tmp_path / "docs"
     code, err, out = _deliver(folder, documents, capsys)
-    _assert_warned_and_delivered(code, err, out, documents, f"warning: {publish_pdf.GENERATION_REFUSAL}")
+    _assert_warned_and_delivered(
+        code, err, out, documents,
+        "warning: Falta o está obsoleta la identidad del PDF generado y sus entradas; "
+        "volvé a generar y validar antes de publicar. El PDF se entrega igual.",
+    )
+
+
+def test_delivered_warnings_never_say_nothing_is_published(tmp_path: Path, capsys) -> None:
+    """A warning is printed while the PDF IS delivered, so it cannot claim the opposite."""
+    folder = tmp_path / "wf"
+    _report(folder)
+    pdf = _pdf(folder)
+    (folder / "build").mkdir(exist_ok=True)
+    (folder / "build" / "generation.yml").write_text("pdf_sha256: stale\n", encoding="utf-8")
+    documents = tmp_path / "docs"
+    code, err, out = _deliver(folder, documents, capsys)
+    assert code == 0 and len(_delivered(documents)) == 1
+    assert len(err) >= 3
+    assert all(line.startswith("warning: ") for line in err)
+    assert not any("no se publica nada" in line.lower() for line in err), err
 
 
 def test_unmapped_inventory_warns_and_delivers(tmp_path: Path, capsys) -> None:
@@ -176,11 +195,15 @@ def test_unmapped_inventory_warns_and_delivers(tmp_path: Path, capsys) -> None:
     pdf = _pdf(folder)
     _validation(folder, pdf=pdf)
     _final_review(folder, pdf=pdf)
+    (folder / "build").mkdir(exist_ok=True)
+    (folder / "build" / "generation.yml").write_text("pdf_sha256: stale\n", encoding="utf-8")
     documents = tmp_path / "docs"
     code, err, out = _deliver(folder, documents, capsys)
     refusal = publish_pdf._content_refusal(folder)
     assert refusal.startswith("La guía tiene ítems sin criterio")
-    assert code == 0 and f"warning: {refusal}" in err
+    assert refusal.endswith(". No se publica nada.")
+    assert code == 0
+    assert f"warning: {refusal.removesuffix('No se publica nada.')}El PDF se entrega igual." in err
     assert len(_delivered(documents)) == 1
 
 
@@ -201,7 +224,7 @@ def test_carried_gate_over_an_unrebuilt_pdf_warns_and_delivers(tmp_path: Path, c
     _assert_warned_and_delivered(
         code, err, out, documents,
         "warning: Hubo una edición acotada de body.md y el PDF no se generó desde el body.md actual. "
-        "Volvé a generar y validar el PDF antes de publicar; no se publica nada.",
+        "Volvé a generar y validar el PDF antes de publicar; el PDF se entrega igual.",
     )
 
 
@@ -244,6 +267,22 @@ def test_missing_declared_bibliography_still_refuses(tmp_path: Path, capsys) -> 
     folder, _, bib = _pair(tmp_path)
     bib.unlink()
     _refused(folder, tmp_path / "docs", capsys)
+
+
+def test_no_approval_and_no_generated_identity_still_refuses(tmp_path: Path, capsys) -> None:
+    """Nothing vouches for the PDF: neither the user's approve nor a generated v1 identity."""
+    folder = tmp_path / "wf"
+    _report(folder)
+    pdf = _pdf(folder)
+    _validation(folder, pdf=pdf)
+    _final_review(folder, pdf=pdf)
+    message = _refused(folder, tmp_path / "docs", capsys)
+    assert message.splitlines()[0] == (
+        f"DELIVERY REFUSED: no hay approval.yml ni build/generation.yml en {folder}: falta la "
+        "aprobación humana del cuerpo y la identidad del PDF generado. Aprobá body.md o generá "
+        "el PDF con build_report_auto.py."
+    )
+    assert not (tmp_path / "docs").exists()
 
 
 def test_stale_approval_still_refuses(tmp_path: Path, capsys) -> None:

@@ -283,7 +283,9 @@ def publish_validated_pdf(
     or bibliography, a missing category/slug, a missing, stale or malformed
     approval.yml (the user's explicit approve, not a quality check), a malformed
     final-review.yml and version-claim errors always raise. ``warn=None`` keeps
-    every refusal raising.
+    every refusal raising. The message handed to ``warn`` is the raw refusal
+    text; a caller that delivers anyway rewords its "no se publica nada" clause
+    (``deliver_report.delivered_anyway``) before printing it.
     """
 
     def refuse_or_warn(code: str, message: str) -> None:

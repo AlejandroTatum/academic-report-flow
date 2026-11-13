@@ -20,7 +20,10 @@ unmapped inventory, a carried gate over an unrebuilt PDF) prints
 deliver or nothing readable refuses with a non-zero exit: a missing PDF or
 declared bibliography, an invalid report.yml, an unparseable receipt or final
 review, a missing publication identity, a missing, stale or malformed
-approval.yml (the user's explicit approve) and version-claim errors.
+approval.yml (the user's explicit approve), a report with neither approval.yml
+nor a generated v1 identity (``build/generation.yml``), and version-claim errors.
+A warning never says "no se publica nada": the publisher's refusal texts are
+reworded to "el PDF se entrega igual" before they are printed.
 The destination is the report's shared delivery folder (``config.delivery_folder``):
 the academic route is scoped by the confirmed subject's canonical slug
 (``Academicos/<subject-slug>/<document-slug>/``); every other route keeps the flat
@@ -31,10 +34,11 @@ either with an explicit folder. The publisher and ``doc_status`` both ask
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
-from approval_marker import sha256_file
+from approval_marker import approval_state, sha256_file
 from final_review_marker import final_review_state
 from publish_pdf import PublicationError, publish_validated_pdf
 from report_config import load_report_config, read_yaml
@@ -73,9 +77,20 @@ def _refuse(reason: str) -> int:
     return 1
 
 
+_NOTHING_PUBLISHED = re.compile(r"([;.]) [Nn]o se publica nada\.")
+
+
+def delivered_anyway(message: str) -> str:
+    """Reword a refusal text so it is truthful when the PDF is delivered anyway."""
+    return _NOTHING_PUBLISHED.sub(
+        lambda match: "; el PDF se entrega igual." if match.group(1) == ";" else ". El PDF se entrega igual.",
+        message,
+    )
+
+
 def _warn(reason: str) -> None:
     """Report a quality gap; delivery continues (warn-only-gates S2)."""
-    print(f"warning: {reason}", file=sys.stderr)
+    print(f"warning: {delivered_anyway(reason)}", file=sys.stderr)
 
 
 def deliver(folder: Path, documents_root: Path | None = None) -> int:
@@ -105,6 +120,16 @@ def deliver(folder: Path, documents_root: Path | None = None) -> int:
         bibliography = config.delivery_bibliography()
     except ValueError as exc:
         return _refuse(str(exc))
+
+    # Something must vouch for these bytes: the user's approve of body.md or the
+    # generated v1 identity. With neither there is nothing to warn about, only
+    # an unapproved PDF, so it refuses before any warning or write.
+    if approval_state(folder).state == "absent" and not (folder / "build" / "generation.yml").is_file():
+        return _refuse(
+            f"no hay approval.yml ni build/generation.yml en {folder}: falta la aprobación humana "
+            "del cuerpo y la identidad del PDF generado. Aprobá body.md o generá el PDF con "
+            "build_report_auto.py."
+        )
 
     receipt_path = folder / VALIDATION_RECEIPT
     receipt: dict = {}
@@ -152,7 +177,7 @@ def deliver(folder: Path, documents_root: Path | None = None) -> int:
     if review.state == "absent":
         warn(
             f"falta {FINAL_REVIEW_MARKER} en {folder}: falta la revisión humana final "
-            f"de {pdf.name}. Ejecutá primero la fase review; no se publica nada."
+            f"de {pdf.name}. Ejecutá primero la fase review; el PDF se entrega igual."
         )
     elif review.state == "stale":
         warn(

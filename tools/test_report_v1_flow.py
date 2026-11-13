@@ -117,14 +117,14 @@ def test_generation_reports_rubric_findings_and_warns_on_other_errors(
     finding = "rubric: criterion 'metodologia' check 1 (contains) fails in body.typeset.md: missing"
     _build(folder, monkeypatch, _Validation(errors=[finding], findings=[finding]))
     out = capsys.readouterr().out
-    assert "RUBRIC FINDINGS (no es una declaración de cumplimiento; bloquean la publicación):\n- " + finding in out
+    assert "RUBRIC FINDINGS (no es una declaración de cumplimiento; son avisos y no impiden la entrega):\n- " + finding in out
     pdf = folder / "final" / "report.pdf"
     lines = out.splitlines()
     assert (
-        f"PDF GENERADO CON HALLAZGOS DE RÚBRICA (no validado para publicar): {pdf} "
+        f"PDF GENERADO CON HALLAZGOS DE RÚBRICA (no validado): {pdf} "
         f"(SHA-256: {approval_marker.sha256_file(pdf)}). No es una declaración de cumplimiento: "
-        "revisá esta versión con el usuario y pedí una revisión (v2/v3); la publicación sigue "
-        "bloqueada mientras haya hallazgos."
+        "revisá esta versión con el usuario y pedí una revisión (v2/v3); la entrega avisa "
+        "estos hallazgos mientras sigan abiertos."
     ) in lines
     assert "VALIDADO" not in out
     assert "VALIDATION PASSED" not in out
@@ -160,14 +160,17 @@ def test_generation_without_findings_keeps_the_validated_line(
     assert "RUBRIC FINDINGS" not in out and "HALLAZGOS" not in out
 
 
-def test_unresolved_citation_still_blocks_the_route_at_draft(tmp_path: Path, capsys) -> None:
+def test_unresolved_citation_is_a_draft_warning_and_the_route_advances(tmp_path: Path, capsys) -> None:
     folder = planned_folder(tmp_path, body=BODY + "\nIncorrecta [@missing].\n")
     verification = _verification(folder, requirements=REQUIREMENTS)
     assert content_check.main([str(folder), "--verification", str(verification)]) == 0
     capsys.readouterr()
     status = doc_status.derive(folder)
     draft = next(phase for phase in status.phases if phase.name == "draft")
-    assert status.next_token == "draft"
+    # warn-only-gates S2: the body-check FAIL is a warning in the draft detail.
+    assert draft.state == doc_status.DONE and draft.blocked_reason == ""
+    assert status.next_token != "draft"
+    assert draft.detail.startswith("warning: body_check_failed: body check fails: ")
     assert "citations_resolve" in draft.detail and "missing" in draft.detail
 
 
@@ -197,7 +200,10 @@ def test_v1_publishes_and_warns_without_a_current_identity(
     # warn-only-gates S2: a stale generated identity warns; the same bytes reuse v001.
     assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 0
     err = capsys.readouterr().err
-    assert err.startswith(f"warning: {publish_pdf.GENERATION_REFUSAL}\n")
+    assert err.startswith(
+        "warning: Falta o está obsoleta la identidad del PDF generado y sus entradas; "
+        "volvé a generar y validar antes de publicar. El PDF se entrega igual.\n"
+    )
     assert len(list(documents.rglob("*.pdf"))) == 1
 
 
@@ -210,7 +216,7 @@ def test_publication_warns_on_unresolved_rubric_failures_without_an_accepted_gap
         "warning: Hay fallas de rúbrica sin resolver y sin brecha aceptada "
         "(missing: Includes a network diagram; missing: Lists recommendations). "
         "Corregí el informe o, solo si el usuario lo decide, registrá la brecha parcial con "
-        "accepted_gaps.py; no se publica nada.\n"
+        "accepted_gaps.py; el PDF se entrega igual.\n"
     )
 
 
@@ -228,7 +234,7 @@ def test_publication_warns_on_a_needs_person_partial_until_a_person_accepts_it(
         "warning: Hay fallas de rúbrica sin resolver y sin brecha aceptada "
         "(partial: Includes a network diagram). "
         "Corregí el informe o, solo si el usuario lo decide, registrá la brecha parcial con "
-        "accepted_gaps.py; no se publica nada.\n"
+        "accepted_gaps.py; el PDF se entrega igual.\n"
     )
     assert accepted_gaps.main(["accept", str(folder), "--by", "Ana Perez", "--requirement",
                                "Includes a network diagram", "--reason", "pushed by the student"]) == 0
@@ -248,7 +254,7 @@ def test_publication_warns_on_unresolved_citations(
     assert err == (
         "warning: Hay citas sin resolver en body.md (5/6 cited keys resolve to bib entries; "
         "unresolved: missing). Corregí las citas y volvé a verificar y generar antes de publicar; "
-        "no se publica nada.\n"
+        "el PDF se entrega igual.\n"
     )
 
 
@@ -259,12 +265,12 @@ def test_publication_warns_without_the_human_final_review(
     err = _deliver_warned(folder, tmp_path / "docs", capsys)
     assert err == (
         f"warning: falta final-review.yml en {folder}: falta la revisión humana final "
-        f"de {pdf.name}. Ejecutá primero la fase review; no se publica nada.\n"
+        f"de {pdf.name}. Ejecutá primero la fase review; el PDF se entrega igual.\n"
     )
     assert not (folder / "final-review.yml").exists()
 
 
-def test_publishing_without_approval_warns_without_generated_artifact_identity(tmp_path: Path, capsys) -> None:
+def test_publishing_refuses_without_approval_or_generated_artifact_identity(tmp_path: Path, capsys) -> None:
     from conftest import _body, _report
     folder = tmp_path / "wf"
     _report(folder)
@@ -272,11 +278,13 @@ def test_publishing_without_approval_warns_without_generated_artifact_identity(t
     pdf = _pdf(folder)
     _validation(folder, pdf=pdf)
     _final_review(folder, pdf=pdf)
-    err = _deliver_warned(folder, tmp_path / "docs", capsys)
-    assert err.startswith(
-        "warning: Falta o está obsoleta la identidad del PDF generado y sus entradas; "
-        "volvé a generar y validar antes de publicar. No se publica nada.\n"
+    documents = tmp_path / "docs"
+    assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 1
+    assert capsys.readouterr().err.startswith(
+        f"DELIVERY REFUSED: no hay approval.yml ni build/generation.yml en {folder}: falta la "
+        "aprobación humana del cuerpo y la identidad del PDF generado."
     )
+    assert not documents.exists()
 
 
 def test_express_option_never_forges_approval(tmp_path: Path, capsys) -> None:

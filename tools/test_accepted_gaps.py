@@ -310,12 +310,16 @@ def test_rerunning_the_check_with_the_same_matrix_keeps_the_waiver_and_records_p
     assert any(r["status"] == "partial" for r in marker(folder)["requirements"])
 
 
-def test_rerunning_the_check_with_a_changed_matrix_drops_the_waiver(tmp_path: Path) -> None:
+def test_rerunning_the_check_with_a_changed_matrix_drops_the_waiver(tmp_path: Path, capsys) -> None:
     folder = partial_only(tmp_path)
     assert accept(folder) == 0
     other = {**PARTIAL, "gap": "a different gap"}
     path = _verification(folder, requirements=[*FOUND, other])
-    assert content_check.main([str(folder), "--verification", str(path)]) == 1
+    capsys.readouterr()
+    # warn-only-gates S2: the fail verdict is recorded and warned, exit 0.
+    assert content_check.main([str(folder), "--verification", str(path)]) == 0
+    assert capsys.readouterr().err == (
+        "warning: content_check_failed: content-check.yml recorded result: fail\n")
     assert marker(folder)["result"] == "fail"
     assert content_check.content_check_state(folder) == "fail"
 

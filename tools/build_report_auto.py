@@ -189,10 +189,10 @@ def _run(args: argparse.Namespace) -> None:
     findings = [error for error in result.errors if error in set(getattr(result, "findings", []) or [])]
     if generation and findings:
         # S1: a rubric check the draft never met is reported, not a reason to
-        # suppress v1; validate_report.py and publication still fail on it.
+        # suppress v1; validate_report.py and delivery report it as a warning.
         result.errors = [error for error in result.errors if error not in findings]
         print(
-            "RUBRIC FINDINGS (no es una declaración de cumplimiento; bloquean la publicación):\n- "
+            "RUBRIC FINDINGS (no es una declaración de cumplimiento; son avisos y no impiden la entrega):\n- "
             + "\n- ".join(findings)
         )
     if result.errors and args.no_approval_check:
@@ -247,10 +247,10 @@ def _run(args: argparse.Namespace) -> None:
         elif generation and findings:
             # S1: generation is not a compliance claim; the PDF is not validated.
             print(
-                f"PDF GENERADO CON HALLAZGOS DE RÚBRICA (no validado para publicar): {config.pdf_path} "
+                f"PDF GENERADO CON HALLAZGOS DE RÚBRICA (no validado): {config.pdf_path} "
                 f"(SHA-256: {validated_pdf_hash}). No es una declaración de cumplimiento: "
-                "revisá esta versión con el usuario y pedí una revisión (v2/v3); la publicación "
-                "sigue bloqueada mientras haya hallazgos."
+                "revisá esta versión con el usuario y pedí una revisión (v2/v3); la entrega "
+                "avisa estos hallazgos mientras sigan abiertos."
             )
         else:
             print(

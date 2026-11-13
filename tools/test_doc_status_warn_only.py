@@ -142,3 +142,37 @@ def test_a_recorded_final_review_after_a_failed_validation_opens_delivery(tmp_pa
 
     assert doc_status._phase_validate(folder, config, None).state == doc_status.DONE
     assert doc_status._phase_review(folder, config, None).state == doc_status.DONE
+
+
+def test_a_failing_body_check_is_a_warning_and_the_draft_advances(tmp_path: Path) -> None:
+    """warn-only-gates S2: a body-check FAIL keeps its code in the detail; the route moves on."""
+    from test_rubric_trace import BODY, planned_folder
+
+    folder = planned_folder(tmp_path, body=BODY + "\nEl error es $e$.\n")
+
+    phase = doc_status._phase_draft(folder, None, None)
+
+    _warned(phase, "body_check_failed")
+    assert phase.state == doc_status.DONE
+    assert phase.detail.startswith("warning: body_check_failed: body check fails: ")
+    assert "plain_text: backend formatting in the plain-text draft" in phase.detail
+    assert "block" not in phase.detail
+    status = doc_status.derive(folder)
+    assert next(p for p in status.phases if p.name == "draft").state == doc_status.DONE
+    assert status.next_token == "verify"
+
+
+def test_body_check_findings_never_claim_to_block_publication(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    folder = tmp_path / "wf"
+    _report(folder)
+    _body(folder)
+    finding = {"check": "rubric_checks", "ok": False, "detail": "criterion 'x' fails"}
+    monkeypatch.setattr(content_check, "body_check_results", lambda _folder: [finding])
+
+    phase = doc_status._phase_draft(folder, None, None)
+
+    assert phase.state == doc_status.DONE and phase.blocked_reason == ""
+    assert phase.detail == (
+        "body.md present; body check findings (not a compliance pass; reported as warnings, "
+        "they never block delivery): rubric_checks: criterion 'x' fails"
+    )

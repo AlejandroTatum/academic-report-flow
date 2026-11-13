@@ -123,13 +123,15 @@ def test_draft_no_longer_checks_fixed_format_headings(tmp_path: Path) -> None:
     assert "aa_structure" not in checks
 
 
-def test_doc_status_keeps_draft_pending_on_formatting(tmp_path: Path) -> None:
+def test_doc_status_warns_on_formatting_and_the_draft_is_done(tmp_path: Path) -> None:
     folder = _folder(tmp_path, f"# Informe\n\nEl error es $e$ con {CITES}.\n")
 
     phase = doc_status._phase_draft(folder, None, None)
 
-    assert phase.state == doc_status.PENDING
-    assert phase.blocked_reason == "body_check_failed"
+    # warn-only-gates S2: a body-check FAIL is a warning; the route advances.
+    assert phase.state == doc_status.DONE
+    assert phase.blocked_reason == ""
+    assert phase.detail.startswith("warning: body_check_failed: body check fails: ")
     assert "plain_text: backend formatting in the plain-text draft at line 3 (math)" in phase.detail
 
 

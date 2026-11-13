@@ -1,5 +1,5 @@
-"""Approval gate enforced by tools (task 9.2): doc_status never offers approval
-while ``content_check --body-check`` would fail, using the very same function."""
+"""Body check in doc_status (task 9.2), using the very same function as
+``content_check --body-check``; a FAIL is a warning (warn-only-gates S2)."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,18 +29,17 @@ def test_clean_draft_reaches_the_verify_gate(tmp_path: Path) -> None:
     assert status.next_token == "verify"
 
 
-def test_body_format_defect_keeps_the_route_at_draft_and_names_the_check(tmp_path: Path) -> None:
+def test_body_format_defect_is_a_warning_that_names_the_check_and_advances(tmp_path: Path) -> None:
     folder = _ready(tmp_path / "wf", "## Informe\n\nTexto con [@key1], [@key2], [@key3], [@key4], [@key5].\n")
 
     status = doc_status.derive(folder)
 
+    # warn-only-gates S2: the body-check FAIL is a warning; the route advances to verify.
     draft = next(p for p in status.phases if p.name == "draft")
-    assert status.next_token == "draft"
-    assert draft.state == doc_status.CURRENT
+    assert status.next_token == "verify"
+    assert draft.state == doc_status.DONE and draft.blocked_reason == ""
+    assert draft.detail.startswith("warning: body_check_failed: body check fails: ")
     assert "body_format" in draft.detail and "level-1" in draft.detail
-    assert "--body-check" in status.gate
-    approval = next(p for p in status.phases if p.name == "approval")
-    assert approval.state == doc_status.PENDING
 
 
 def test_uncited_sources_block_approval_and_name_the_failing_check(tmp_path: Path) -> None:
@@ -66,9 +65,9 @@ def test_doc_status_uses_the_shared_body_check_function(
 
     status = doc_status.derive(folder)
 
-    assert status.next_token == "draft"
+    assert status.next_token == "verify"
     detail = next(p for p in status.phases if p.name == "draft").detail
-    assert "citations_resolve: forced failure" in detail
+    assert detail == "warning: body_check_failed: body check fails: citations_resolve: forced failure"
     assert "rubric_checks" not in detail
 
 

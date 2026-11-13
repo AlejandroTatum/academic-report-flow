@@ -366,14 +366,14 @@ def _phase_draft(folder: Path, _config: ReportConfig, _documents_root: Path | No
         return PhaseState("draft", BLOCKED, "body.md unreadable", "draft_unreadable")
     if not text.strip():
         return PhaseState("draft", PENDING, "body.md empty")
-    # Tools enforce the quality rules before the human decision: while the same
-    # body check `content_check.py --body-check` runs would fail, approval is
-    # not offered. A current approval marker is never re-gated (the user already
-    # approved those exact bytes). A carried approval is not exempt: its bytes
-    # changed, and the body check still runs after every edit.
+    # The same body check `content_check.py --body-check` runs is reported here.
+    # A current approval marker is never re-checked (the user already approved
+    # those exact bytes). A carried approval is not exempt: its bytes changed,
+    # and the body check still runs after every edit.
     # S1 (v1 flow): rubric checks and uncited eligible sources are content
-    # findings -- shown here, never a reason to stop v1, and still publication
-    # conditions through content-check.yml. Every other check still blocks.
+    # findings, shown here and warned again at delivery through content-check.yml.
+    # warn-only-gates S2: every other failing check is a `body_check_failed`
+    # warning in the detail; the draft is done and the route advances.
     if approval_state(folder).state != "current":
         try:
             failed = [c for c in content_check.body_check_results(folder) if not c["ok"]]
@@ -383,15 +383,18 @@ def _phase_draft(folder: Path, _config: ReportConfig, _documents_root: Path | No
         if blocking:
             return PhaseState(
                 "draft",
-                PENDING,
-                "body check fails: " + "; ".join(f"{c['check']}: {c['detail']}" for c in blocking),
-                "body_check_failed",
+                DONE,
+                _warning(
+                    "body_check_failed",
+                    "body check fails: " + "; ".join(f"{c['check']}: {c['detail']}" for c in blocking),
+                ),
             )
         if failed:
             return PhaseState(
                 "draft",
                 DONE,
-                "body.md present; body check findings (not a compliance pass; they block publication): "
+                "body.md present; body check findings (not a compliance pass; reported as warnings, "
+                "they never block delivery): "
                 + "; ".join(f"{c['check']}: {c['detail']}" for c in failed),
             )
     return PhaseState("draft", DONE, "body.md present and passes the body check")

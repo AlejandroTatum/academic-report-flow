@@ -5,6 +5,10 @@
 (``VALIDATION FAILED`` naming the offending file), never let a parse
 exception escape uncaught -- a single bad file in a folder validate run
 must not crash the whole invocation.
+
+warn-only-gates S2: a finding is a quality judgment on the figures, so it is a
+``warning: VALIDATION FAILED:`` line on stderr, the figure stays and the command
+exits 0. A missing target or a folder with no figures still fails.
 """
 from __future__ import annotations
 
@@ -20,7 +24,7 @@ FIXTURES = TOOLS / "fixtures" / "connector_geometry"
 import visual_builder as vb  # noqa: E402
 
 
-def test_connector_audit_parse_error_becomes_a_reported_finding(tmp_path) -> None:
+def test_connector_audit_parse_error_becomes_a_reported_finding(tmp_path, capsys) -> None:
     bad_svg = tmp_path / "broken.svg"
     # Malformed XML (unclosed tag): xml.etree.ElementTree.ParseError.
     bad_svg.write_text(
@@ -28,15 +32,17 @@ def test_connector_audit_parse_error_becomes_a_reported_finding(tmp_path) -> Non
         '<g class="node" id="A"><rect x="0" y="0" width="10" height="10"/>',
         encoding="utf-8",
     )
+    before = bad_svg.read_bytes()
     args = vb.build_parser().parse_args(["validate", str(bad_svg), "--no-metadata"])
-    with pytest.raises(SystemExit) as excinfo:
-        vb.command_validate(args)
-    message = str(excinfo.value)
-    assert "VALIDATION FAILED" in message
-    assert "broken.svg" in message or str(bad_svg) in message
+    assert vb.command_validate(args) == 0
+    captured = capsys.readouterr()
+    assert captured.err.startswith("warning: VALIDATION FAILED:\n- ")
+    assert "broken.svg" in captured.err
+    assert "VALIDATION_OK" not in captured.out
+    assert bad_svg.read_bytes() == before  # the figure output is kept
 
 
-def test_connector_audit_indexerror_becomes_a_reported_finding(tmp_path) -> None:
+def test_connector_audit_indexerror_becomes_a_reported_finding(tmp_path, capsys) -> None:
     """Same guard, a different exception class (#43 T2): the previous guard
     caught only (ET.ParseError, ValueError, KeyError, TypeError) and let an
     IndexError from corrupted path/point data escape uncaught."""
@@ -50,12 +56,14 @@ def test_connector_audit_indexerror_becomes_a_reported_finding(tmp_path) -> None
         '<g class="edgePaths"><path data-id="L_A_B_0" d="M 5 5 L 10"/></g></svg>',
         encoding="utf-8",
     )
+    before = bad_svg.read_bytes()
     args = vb.build_parser().parse_args(["validate", str(bad_svg), "--no-metadata"])
-    with pytest.raises(SystemExit) as excinfo:
-        vb.command_validate(args)
-    message = str(excinfo.value)
-    assert "VALIDATION FAILED" in message
-    assert "corrupted.svg" in message or str(bad_svg) in message
+    assert vb.command_validate(args) == 0
+    captured = capsys.readouterr()
+    assert captured.err.startswith("warning: VALIDATION FAILED:\n- ")
+    assert "corrupted.svg" in captured.err
+    assert "VALIDATION_OK" not in captured.out
+    assert bad_svg.read_bytes() == before  # the figure output is kept
 
 
 def test_no_source_informational_finding_is_shown(capsys) -> None:
@@ -71,3 +79,15 @@ def test_no_source_informational_finding_is_shown(capsys) -> None:
     out = capsys.readouterr().out
     assert "VALIDATION_OK" in out
     assert "CONNECTOR_DIRECTION_NO_SOURCE" in out
+
+
+def test_a_missing_target_still_fails(tmp_path) -> None:
+    args = vb.build_parser().parse_args(["validate", str(tmp_path / "nope.svg"), "--no-metadata"])
+    with pytest.raises(SystemExit, match="No existe target"):
+        vb.command_validate(args)
+
+
+def test_a_folder_without_figures_still_fails(tmp_path) -> None:
+    args = vb.build_parser().parse_args(["validate", str(tmp_path), "--no-metadata"])
+    with pytest.raises(SystemExit, match="no hay visuales SVG/PNG/PDF para validar"):
+        vb.command_validate(args)

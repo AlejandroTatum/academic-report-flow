@@ -83,11 +83,14 @@ def test_failed_validation_after_v1_is_a_warning_and_review_offers_a_revision(
     assert _payload(_cli(folder, "--json").stdout)["next"] == "deliver"
 
     documents = tmp_path / "docs"
-    assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 1
-    assert capsys.readouterr().err.startswith(
-        "DELIVERY REFUSED: validation.yml no registra result: pass (registró: fail)."
-    )
-    assert not documents.exists()
+    # warn-only-gates S2: a failed receipt warns and the PDF is still delivered.
+    assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 0
+    captured = capsys.readouterr()
+    err = captured.err.splitlines()
+    assert "warning: validation.yml no registra result: pass (registró: fail)." in err
+    assert not any(line.startswith("DELIVERY REFUSED") for line in err)
+    assert "CON ADVERTENCIAS" in captured.out
+    assert len(list(documents.rglob("*.pdf"))) == 1
 
 
 def test_without_a_generated_v1_a_failed_validation_is_a_warning_without_revision_guidance(tmp_path: Path) -> None:
