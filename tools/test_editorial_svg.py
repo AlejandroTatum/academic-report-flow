@@ -109,8 +109,8 @@ def test_cli_render_and_check(tmp_path: Path, capsys) -> None:
     assert out.is_file() and f"rendered {out}" in capsys.readouterr().out
     assert editorial_svg.main(["check", str(out)]) == 0
     assert "print size check: PASS" in capsys.readouterr().out
-    assert editorial_svg.main(["check", str(out), "--min-pt", "40"]) == 1
-    assert "print size check: FAIL" in capsys.readouterr().out
+    assert editorial_svg.main(["check", str(out), "--min-pt", "40"]) == 0  # warn-only-gates S2
+    assert "warning: print size check: FAIL" in capsys.readouterr().err
     bad = tmp_path / "bad.yml"
     bad.write_text("kind: radar\n", encoding="utf-8")
     assert editorial_svg.main(["render", str(bad), "--out", str(out)]) == 2

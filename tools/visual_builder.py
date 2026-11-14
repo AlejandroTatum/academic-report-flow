@@ -379,9 +379,10 @@ def command_validate(args: argparse.Namespace) -> int:
     files = [target] if target.is_file() else sorted(
         p for p in target.rglob("*") if p.suffix.lower() in {".svg", ".png", ".pdf"}
     )
-    errors: list[str] = []
     if not files:
-        errors.append("no hay visuales SVG/PNG/PDF para validar")
+        # Nothing to work on is a hard failure, not a quality finding.
+        raise SystemExit("VALIDATION FAILED:\n- no hay visuales SVG/PNG/PDF para validar")
+    errors: list[str] = []
     for file in files:
         errors.extend(validate_image(file))
         if file.suffix.lower() == ".svg":
@@ -404,7 +405,10 @@ def command_validate(args: argparse.Namespace) -> int:
     if target.is_dir() and not args.no_metadata:
         errors.extend(metadata_errors(target))
     if errors:
-        raise SystemExit("VALIDATION FAILED:\n- " + "\n- ".join(errors))
+        # warn-only-gates S2: a finding judges the figures' quality; it is
+        # reported on stderr, the figures stay and the command exits 0.
+        print("warning: VALIDATION FAILED:\n- " + "\n- ".join(errors), file=sys.stderr)
+        return 0
     print(f"VALIDATION_OK {target}")
     return 0
 

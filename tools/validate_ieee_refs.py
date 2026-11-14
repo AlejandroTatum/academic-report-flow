@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import re
 import subprocess
+import sys
 import tempfile
 import zlib
 from dataclasses import dataclass, field
@@ -302,7 +303,9 @@ def main() -> None:
     config = load_report_config(args.folder)
     result = validate_ieee(config)
     if result.errors:
-        raise SystemExit("IEEE validation failed:\n- " + "\n- ".join(result.errors))
+        # warn-only-gates S2: reference errors are reported, never a block (exit 0).
+        print("warning: IEEE validation failed:\n- " + "\n- ".join(result.errors), file=sys.stderr)
+        return
     if result.warnings:
         print("IEEE validation warnings:\n- " + "\n- ".join(result.warnings))
     else:

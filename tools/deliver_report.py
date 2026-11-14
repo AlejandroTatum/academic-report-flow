@@ -12,8 +12,19 @@ human review marker ``final-review.yml`` (schema
 then delegates to the publisher, which re-checks the human markers and performs
 the atomic, versioned, hash-verified copy.
 
-No new states, gates or approvals are introduced: a refusal is a non-zero exit
-with the named missing evidence, and a rerun after fixing it is the only exit.
+No new states, gates or approvals are introduced. warn-only-gates S2: a quality
+gap (missing, failed or stale receipt, missing or stale final review, and the
+publisher's quality refusals: missing generated identity, unresolved rubric,
+unmapped inventory, a carried gate over an unrebuilt PDF) prints
+``warning: <message>`` on stderr and the PDF is still delivered. Only nothing to
+deliver or nothing readable refuses with a non-zero exit: a missing PDF or
+declared bibliography, an invalid report.yml, an unparseable receipt or final
+review, a missing publication identity, a stale or malformed approval.yml (the
+user's explicit approve) whatever ``build/generation.yml`` holds, a report with
+no approval.yml whose generated v1 identity (``build/generation.yml``) is
+missing or not current, and version-claim errors.
+A warning never says "no se publica nada": the publisher's refusal texts are
+reworded to "el PDF se entrega igual" before they are printed.
 The destination is the report's shared delivery folder (``config.delivery_folder``):
 the academic route is scoped by the confirmed subject's canonical slug
 (``Academicos/<subject-slug>/<document-slug>/``); every other route keeps the flat
@@ -24,12 +35,13 @@ either with an explicit folder. The publisher and ``doc_status`` both ask
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
-from approval_marker import sha256_file
+from approval_marker import approval_state, generation_record_current, sha256_file
 from final_review_marker import final_review_state
-from publish_pdf import PublicationError, publish_validated_pdf
+from publish_pdf import GENERATION_REFUSAL, PublicationError, _approval_refusal, publish_validated_pdf
 from report_config import load_report_config, read_yaml
 
 VALIDATION_RECEIPT = "validation.yml"
@@ -45,9 +57,9 @@ KNOWN_GATES = ("BUILD_PASS", "VALIDATION_PASS", "VISUAL_PASS", "HUMAN_REVIEW", "
 def _granted_gates(receipt: dict) -> list[str]:
     """Return the ``KNOWN_GATES`` the receipt's ``gates:`` actually names.
 
-    By the time this runs, delivery already happened: ``result: pass`` and the
-    artifact hash were already checked, and the publisher already copied the
-    PDF. ``gates:`` only feeds the informational message below, so a
+    By the time this runs, delivery already happened and the caller passes only
+    a receipt whose ``result: pass`` and artifact hash checked out (a warned
+    receipt grants nothing); the publisher already copied the PDF. ``gates:`` only feeds the informational message below, so a
     malformed value (a string, a mapping, ``None``, or a list with
     non-string entries) grants no gate instead of refusing an already
     completed delivery -- a naive ``gate in receipt.get("gates")`` would turn
@@ -66,8 +78,34 @@ def _refuse(reason: str) -> int:
     return 1
 
 
+_NOTHING_PUBLISHED = re.compile(r"([;.]) [Nn]o se publica nada\.")
+
+
+def delivered_anyway(message: str) -> str:
+    """Reword a refusal text so it is truthful when the PDF is delivered anyway."""
+    return _NOTHING_PUBLISHED.sub(
+        lambda match: "; el PDF se entrega igual." if match.group(1) == ";" else ". El PDF se entrega igual.",
+        message,
+    )
+
+
+def _warn(reason: str) -> None:
+    """Report a quality gap; delivery continues (warn-only-gates S2)."""
+    print(f"warning: {delivered_anyway(reason)}", file=sys.stderr)
+
+
 def deliver(folder: Path, documents_root: Path | None = None) -> int:
-    """Gate and publish the final PDF of ``folder``; return 0 or 1."""
+    """Check and publish the final PDF of ``folder``; return 0 or 1.
+
+    Quality gaps are warnings (``warning: <message>`` on stderr) and the PDF is
+    delivered; only a hard input failure returns 1.
+    """
+    warnings: list[str] = []
+
+    def warn(reason: str) -> None:
+        warnings.append(reason)
+        _warn(reason)
+
     try:
         config = load_report_config(folder)
     except SystemExit as exc:
@@ -84,56 +122,80 @@ def deliver(folder: Path, documents_root: Path | None = None) -> int:
     except ValueError as exc:
         return _refuse(str(exc))
 
-    receipt_path = folder / VALIDATION_RECEIPT
-    if not receipt_path.is_file():
-        return _refuse(
-            f"falta {VALIDATION_RECEIPT} en {folder}. Ejecutá primero la fase validate."
-        )
-    try:
-        receipt = read_yaml(receipt_path)
-    except Exception:
-        return _refuse(f"{VALIDATION_RECEIPT} no es YAML válido en {folder}.")
+    # Something must vouch for these bytes: the user's approve of body.md or the
+    # generated v1 identity. With neither there is nothing to warn about, only
+    # an unapproved PDF, so it refuses before any warning or write.
+    # A present but stale or malformed approval.yml refuses whatever
+    # build/generation.yml holds; without approval.yml the generated identity
+    # must be current, since it is then the only integrity anchor (L3).
+    approval = approval_state(folder)
+    if approval.state in ("stale", "malformed"):
+        return _refuse(_approval_refusal(approval, folder))
+    if approval.state == "absent":
+        if not (folder / "build" / "generation.yml").is_file():
+            return _refuse(
+                f"no hay approval.yml ni build/generation.yml en {folder}: falta la aprobación humana "
+                "del cuerpo y la identidad del PDF generado. Aprobá body.md o generá el PDF con "
+                "build_report_auto.py."
+            )
+        if not generation_record_current(folder, pdf):
+            return _refuse(GENERATION_REFUSAL)
 
-    result = str(receipt.get("result") or "").strip().lower()
-    if result != "pass":
-        return _refuse(
-            f"{VALIDATION_RECEIPT} no registra result: pass (registró: {result or 'nada'})."
-        )
+    receipt_path = folder / VALIDATION_RECEIPT
+    receipt: dict = {}
+    receipt_ok = False
+    if not receipt_path.is_file():
+        warn(f"falta {VALIDATION_RECEIPT} en {folder}. Ejecutá primero la fase validate.")
+    else:
+        try:
+            receipt = read_yaml(receipt_path)
+        except Exception:
+            return _refuse(f"{VALIDATION_RECEIPT} no es YAML válido en {folder}.")
+        receipt_ok = True
 
     pdf_hash = sha256_file(pdf)
-    recorded = str(receipt.get("artifact_sha256") or "").strip().lower()
-    if recorded != pdf_hash:
-        return _refuse(
-            f"{VALIDATION_RECEIPT} artifact_sha256 no coincide con los bytes actuales de "
-            f"{pdf.name}; la evidencia está obsoleta. Volvé a validar."
-        )
+    if receipt_ok:
+        result = str(receipt.get("result") or "").strip().lower()
+        if result != "pass":
+            receipt_ok = False
+            warn(f"{VALIDATION_RECEIPT} no registra result: pass (registró: {result or 'nada'}).")
 
-    if bibliography is not None:
-        recorded_bib = str(receipt.get("bibliography_sha256") or "").strip().lower()
-        if not recorded_bib:
-            return _refuse(
-                f"deliver_bibliography está activo pero {VALIDATION_RECEIPT} no registra "
-                "bibliography_sha256; volvé a validar para vincular los bytes declarados."
+        recorded = str(receipt.get("artifact_sha256") or "").strip().lower()
+        if recorded != pdf_hash:
+            receipt_ok = False
+            warn(
+                f"{VALIDATION_RECEIPT} artifact_sha256 no coincide con los bytes actuales de "
+                f"{pdf.name}; la evidencia está obsoleta. Volvé a validar."
             )
-        if recorded_bib != sha256_file(bibliography):
-            return _refuse(
-                f"{VALIDATION_RECEIPT} bibliography_sha256 no coincide con los bytes actuales "
-                f"de {bibliography.name}; la evidencia está obsoleta. Volvé a validar."
-            )
+
+        if bibliography is not None:
+            recorded_bib = str(receipt.get("bibliography_sha256") or "").strip().lower()
+            if not recorded_bib:
+                receipt_ok = False
+                warn(
+                    f"deliver_bibliography está activo pero {VALIDATION_RECEIPT} no registra "
+                    "bibliography_sha256; volvé a validar para vincular los bytes declarados."
+                )
+            elif recorded_bib != sha256_file(bibliography):
+                receipt_ok = False
+                warn(
+                    f"{VALIDATION_RECEIPT} bibliography_sha256 no coincide con los bytes actuales "
+                    f"de {bibliography.name}; la evidencia está obsoleta. Volvé a validar."
+                )
 
     review = final_review_state(folder, pdf, bibliography=bibliography)
     if review.state == "absent":
-        return _refuse(
+        warn(
             f"falta {FINAL_REVIEW_MARKER} en {folder}: falta la revisión humana final "
-            f"de {pdf.name}. Ejecutá primero la fase review; no se publica nada."
+            f"de {pdf.name}. Ejecutá primero la fase review; el PDF se entrega igual."
         )
-    if review.state == "stale":
-        return _refuse(
+    elif review.state == "stale":
+        warn(
             f"{FINAL_REVIEW_MARKER} no corresponde a los bytes actuales de {pdf.name} "
             f"({review.detail}); el PDF cambió después de la revisión final. "
             "Volvé a revisar."
         )
-    if review.state == "malformed":
+    elif review.state == "malformed":
         return _refuse(
             f"{FINAL_REVIEW_MARKER} es inválido en {folder}: {review.detail}. "
             "No se publica nada y el marcador nunca se repara automáticamente."
@@ -147,6 +209,14 @@ def deliver(folder: Path, documents_root: Path | None = None) -> int:
     except (KeyError, ValueError):
         return _refuse("identidad de publicación (categoría/slug) no disponible en report.yml.")
 
+    review_warned = review.state in ("absent", "stale")
+
+    def publisher_warn(code: str, message: str) -> None:
+        # The final review gap was already reported above in this tool's words.
+        if code == "final_review" and review_warned:
+            return
+        warn(message)
+
     try:
         publication = publish_validated_pdf(
             pdf,
@@ -158,12 +228,14 @@ def deliver(folder: Path, documents_root: Path | None = None) -> int:
             subject=subject,
             bibliography=bibliography,
             destination=destination,
+            warn=publisher_warn,
         )
     except PublicationError as exc:
         return _refuse(str(exc))
 
     action = "ENTREGADO" if publication.created else "REUTILIZADO"
-    granted = _granted_gates(receipt)
+    # A missing, failed or stale receipt grants none of its gates.
+    granted = _granted_gates(receipt) if receipt_ok else []
     if final_review_state(folder, pdf).ok:
         granted = [gate for gate in KNOWN_GATES if gate == "HUMAN_REVIEW" or gate in granted]
     else:
@@ -176,6 +248,12 @@ def deliver(folder: Path, documents_root: Path | None = None) -> int:
     status_note = f"gates otorgados: {', '.join(granted) if granted else 'ninguno'}"
     if missing:
         status_note += f"; sin {', '.join(missing)}"
+    if warnings:
+        print(
+            f"PDF {action} CON ADVERTENCIAS: {publication.path} (SHA-256: {publication.sha256}); "
+            f"{len(warnings)} advertencia(s) en stderr; no es una declaración de cumplimiento; {status_note}."
+        )
+        return 0
     print(
         f"PDF {action}: {publication.path} (SHA-256: {publication.sha256}); "
         f"copia técnicamente validada y revisada por una persona; {status_note}."

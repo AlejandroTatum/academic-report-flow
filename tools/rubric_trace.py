@@ -5,7 +5,7 @@ Read-only. For every criterion of ``rubric.yml`` it reports the weight, the body
 sections that cover it (the planned section plus the sections holding the
 verifier's evidence quotes), the deterministic checks that pass, and the
 requirements the current verification found. It lists the uncovered criteria and
-exits 1 when there are any, so the same command serves every point of the flow:
+warns when there are any (``warning:`` on stderr, exit 0: warn-only-gates S2), so the same command serves every point of the flow:
 at plan (no body yet: all red), per section while drafting (``--section``), in
 the approval packet, and in validate against ``body.typeset.md`` (``--body``)
 and the final PDF text (``--pdf``).
@@ -358,7 +358,12 @@ def main(argv: list[str] | None = None) -> int:
     if pdf is not None and not pdf.available:
         trace.notes.append("PDF text unavailable: PDF checks not run")
     print(render(trace, folder), end="")
-    return 1 if trace.uncovered else 0
+    if trace.uncovered:
+        # warn-only-gates S2: an uncovered criterion is a quality finding, not a block.
+        ids = ", ".join(criterion.id for criterion in trace.uncovered)
+        print(f"warning: rubric trace: {len(trace.uncovered)} uncovered criteria ({ids}); "
+              "see Uncovered above. The flow continues.", file=sys.stderr)
+    return 0
 
 
 if __name__ == "__main__":

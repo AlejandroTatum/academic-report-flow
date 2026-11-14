@@ -2,9 +2,11 @@
 
 Generation no longer publishes; delivery does, through the existing guarded
 publisher (``publish_validated_pdf``). Delivery is thin: it adds the validation
-receipt gate (``validation.yml`` with ``result: pass`` bound to the exact final
+receipt check (``validation.yml`` with ``result: pass`` bound to the exact final
 PDF bytes) on top of the publisher's approval gate, preserves hash continuity
 across checking and copying, and creates no new states or human approvals.
+warn-only-gates S2: quality gaps warn and deliver; only nothing to deliver or
+nothing readable refuses (``test_deliver_report_warn_only.py``).
 
 Artifact shapes come from ``tools/conftest.py``; the Documents root is always a
 temporary directory, never the real ``~/Documents``.
@@ -148,56 +150,56 @@ def test_delivery_is_idempotent_for_identical_bytes(tmp_path: Path, capsys) -> N
 # -- Validation receipt gate ----------------------------------------------------
 
 
-def test_delivery_refuses_missing_validation_receipt(tmp_path: Path, capsys) -> None:
-    """No validation.yml means no delivery, and nothing is created."""
+def test_delivery_warns_on_missing_validation_receipt(tmp_path: Path, capsys) -> None:
+    """No validation.yml is a warning (warn-only-gates S2); the PDF is still delivered."""
     folder, _ = tmp_path / "wf", None
     _report(folder)
     _approval(folder)
     _pdf(folder)
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 1
+    assert _run(folder, documents_root) == 0
 
     captured = capsys.readouterr()
-    assert "validation.yml" in captured.err
-    assert not (documents_root / CATEGORY).exists()
+    assert f"warning: falta validation.yml en {folder}. Ejecutá primero la fase validate." in captured.err
+    assert (documents_root / CATEGORY).exists()  # warn-only-gates S2: delivered
 
 
-def test_delivery_refuses_failed_validation_receipt(tmp_path: Path) -> None:
-    """A recorded ``result: fail`` is a refusal, never a delivery."""
+def test_delivery_warns_on_failed_validation_receipt(tmp_path: Path) -> None:
+    """A recorded ``result: fail`` is a warning, never a block."""
     folder, _ = _ready_folder(tmp_path)
     _validation(folder, result="fail")
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 1
-    assert not (documents_root / CATEGORY).exists()
+    assert _run(folder, documents_root) == 0
+    assert (documents_root / CATEGORY).exists()  # warn-only-gates S2: delivered
 
 
-def test_delivery_refuses_receipt_bound_to_other_bytes(tmp_path: Path) -> None:
-    """The receipt's artifact_sha256 must match the current final PDF bytes."""
+def test_delivery_warns_on_receipt_bound_to_other_bytes(tmp_path: Path) -> None:
+    """A receipt bound to other bytes warns; the PDF is still delivered."""
     folder, _ = _ready_folder(tmp_path)
     _validation(folder, artifact_sha256="0" * 64)
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 1
-    assert not (documents_root / CATEGORY).exists()
+    assert _run(folder, documents_root) == 0
+    assert (documents_root / CATEGORY).exists()  # warn-only-gates S2: delivered
 
 
-def test_delivery_refuses_pdf_changed_after_validation(tmp_path: Path) -> None:
-    """Editing the PDF after the receipt stales the evidence: delivery refuses."""
+def test_delivery_warns_on_pdf_changed_after_validation(tmp_path: Path) -> None:
+    """Editing the PDF after the receipt stales the evidence: delivery warns."""
     folder, pdf = _ready_folder(tmp_path)
     pdf.write_bytes(b"%PDF-1.4\n%%EOF\nedited after validation\n")
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 1
-    assert not (documents_root / CATEGORY).exists()
+    assert _run(folder, documents_root) == 0
+    assert (documents_root / CATEGORY).exists()  # warn-only-gates S2: delivered
 
 
 # -- Approval gate (enforced by the shared publisher) ---------------------------
 
 
-def test_delivery_refuses_without_current_approval(tmp_path: Path, capsys) -> None:
-    """Without approval.yml (a v1) and without its generated identity the publisher refuses."""
+def test_delivery_refuses_without_approval_or_generated_identity(tmp_path: Path, capsys) -> None:
+    """Without approval.yml and without a generated v1 identity nothing vouches for the PDF."""
     folder = tmp_path / "wf"
     _report(folder)
     pdf = _pdf(folder)
@@ -209,7 +211,26 @@ def test_delivery_refuses_without_current_approval(tmp_path: Path, capsys) -> No
 
     captured = capsys.readouterr()
     assert "identidad del PDF generado" in captured.err
-    assert not (documents_root / CATEGORY).exists()
+    assert not documents_root.exists()  # a refusal creates nothing
+
+
+def test_delivery_warns_with_a_stale_generated_identity(tmp_path: Path, capsys) -> None:
+    """An approved report whose generated identity is stale warns and is still delivered (S2, L3 d)."""
+    folder = tmp_path / "wf"
+    _report(folder)
+    _approval(folder)
+    pdf = _pdf(folder)
+    _validation(folder)
+    _final_review(folder, pdf=pdf)
+    (folder / "build").mkdir(exist_ok=True)
+    (folder / "build" / "generation.yml").write_text("pdf_sha256: stale\n", encoding="utf-8")
+    documents_root = tmp_path / "docs"
+
+    assert _run(folder, documents_root) == 0
+
+    captured = capsys.readouterr()
+    assert "warning: Falta o está obsoleta la identidad del PDF generado" in captured.err
+    assert (documents_root / CATEGORY).exists()
 
 
 def test_delivery_refuses_stale_approval(tmp_path: Path) -> None:
@@ -257,17 +278,17 @@ def _rebuild(folder: Path, pdf: Path) -> None:
     _validation(folder, pdf=pdf)
 
 
-def test_delivery_refuses_a_carried_approval_when_the_pdf_was_not_rebuilt(tmp_path: Path, capsys) -> None:
-    """The old PDF still matches the review, but it was not built from the edited body."""
+def test_delivery_warns_on_a_carried_approval_when_the_pdf_was_not_rebuilt(tmp_path: Path, capsys) -> None:
+    """The old PDF was not built from the edited body: a warning, still delivered."""
     folder, _pdf_path = _approved_and_reviewed(tmp_path)
     _edit_body(folder, NEW_BODY)
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 1
+    assert _run(folder, documents_root) == 0
 
     err = capsys.readouterr().err
     assert "body.md" in err and "generar" in err
-    assert not (documents_root / CATEGORY).exists()
+    assert (documents_root / CATEGORY).exists()  # warn-only-gates S2: delivered
 
 
 def test_delivery_accepts_a_carried_approval_and_a_carried_review_after_a_rebuild(tmp_path: Path) -> None:
@@ -280,8 +301,8 @@ def test_delivery_accepts_a_carried_approval_and_a_carried_review_after_a_rebuil
     assert (documents_root / CATEGORY).exists()
 
 
-def test_delivery_refuses_a_carried_review_when_the_pdf_predates_the_edit(tmp_path: Path, capsys) -> None:
-    """Rebuilt after the review but before the latest edit: no timestamp can fake the body binding."""
+def test_delivery_warns_on_a_carried_review_when_the_pdf_predates_the_edit(tmp_path: Path, capsys) -> None:
+    """Rebuilt before the latest edit: no timestamp fakes the body binding; it warns."""
     folder, pdf = _approved_and_reviewed(tmp_path)
     _edit_body(folder, NEW_BODY)
     _rebuild(folder, pdf)
@@ -289,21 +310,21 @@ def test_delivery_refuses_a_carried_review_when_the_pdf_predates_the_edit(tmp_pa
     os.utime(folder / "body.md", (1_000_000_000.0, 1_000_000_000.0))  # older than the PDF
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 1
+    assert _run(folder, documents_root) == 0
 
     assert "body.md" in capsys.readouterr().err
-    assert not (documents_root / CATEGORY).exists()
+    assert (documents_root / CATEGORY).exists()  # warn-only-gates S2: delivered
 
 
-def test_delivery_refuses_a_carried_gate_when_no_build_record_exists(tmp_path: Path, capsys) -> None:
-    """A PDF built before body records existed cannot prove its input: rebuild."""
+def test_delivery_warns_on_a_carried_gate_when_no_build_record_exists(tmp_path: Path, capsys) -> None:
+    """A PDF built before body records existed cannot prove its input: it warns."""
     folder, pdf = _approved_and_reviewed(tmp_path)
     approval_marker.draft_record_path(pdf).unlink()
     _edit_body(folder, NEW_BODY)
     _rebuild(folder, pdf)
     approval_marker.draft_record_path(pdf).unlink()
 
-    assert _run(folder, tmp_path / "docs") == 1
+    assert _run(folder, tmp_path / "docs") == 0
     assert "body.md" in capsys.readouterr().err
 
 
@@ -364,7 +385,7 @@ def test_delivery_accepts_a_final_review_carried_across_a_bounded_edit(tmp_path:
     assert (documents_root / CATEGORY).exists()
 
 
-def test_delivery_refuses_a_final_review_stale_after_an_unbounded_edit(tmp_path: Path) -> None:
+def test_delivery_warns_on_a_final_review_stale_after_an_unbounded_edit(tmp_path: Path) -> None:
     import final_review_marker
 
     folder = tmp_path / "wf"
@@ -380,39 +401,39 @@ def test_delivery_refuses_a_final_review_stale_after_an_unbounded_edit(tmp_path:
     _validation(folder, pdf=pdf)
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 1
-    assert not (documents_root / CATEGORY).exists()
+    assert _run(folder, documents_root) == 0
+    assert (documents_root / CATEGORY).exists()  # warn-only-gates S2: delivered
 
 
 # -- Final review gate ---------------------------------------------------------
 
 
-def test_delivery_refuses_missing_final_review_marker(tmp_path: Path, capsys) -> None:
-    """The human must review the final PDF before delivery; no marker, no delivery."""
+def test_delivery_warns_on_missing_final_review_marker(tmp_path: Path, capsys) -> None:
+    """No final review marker warns; the PDF is still delivered."""
     folder, _ = _ready_folder(tmp_path)
     (folder / "final-review.yml").unlink()
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 1
+    assert _run(folder, documents_root) == 0
 
     captured = capsys.readouterr()
     assert "final-review.yml" in captured.err
     assert "revisión humana final" in captured.err
-    assert not (documents_root / CATEGORY).exists()
+    assert (documents_root / CATEGORY).exists()  # warn-only-gates S2: delivered
 
 
-def test_delivery_refuses_stale_final_review_marker(tmp_path: Path, capsys) -> None:
-    """A marker whose pdf_sha256 no longer matches the PDF bytes refuses delivery."""
+def test_delivery_warns_on_stale_final_review_marker(tmp_path: Path, capsys) -> None:
+    """A marker whose pdf_sha256 no longer matches the PDF bytes warns."""
     folder, pdf = _ready_folder(tmp_path)
     _final_review(folder, pdf=pdf, pdf_sha256="0" * 64)
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 1
+    assert _run(folder, documents_root) == 0
 
     captured = capsys.readouterr()
     assert "final-review.yml" in captured.err
     assert pdf.name in captured.err
-    assert not (documents_root / CATEGORY).exists()
+    assert (documents_root / CATEGORY).exists()  # warn-only-gates S2: delivered
 
 
 def test_delivery_refuses_malformed_final_review_marker(tmp_path: Path, capsys) -> None:
@@ -522,16 +543,15 @@ def test_canonical_alias_spelling_delivers_to_the_same_versioned_folder(tmp_path
 
 
 def test_refused_delivery_never_creates_the_subject_folder(tmp_path: Path, capsys) -> None:
-    """A missing receipt refuses before the course level exists on disk."""
+    """A missing final PDF refuses before the course level exists on disk."""
     folder = tmp_path / "wf"
     _report(folder, subject="Sistemas Operativos")
     _approval(folder)
-    _pdf(folder)
     documents_root = tmp_path / "docs"
 
     assert _run(folder, documents_root) == 1
 
-    assert "validation.yml" in capsys.readouterr().err
+    assert "falta el PDF final" in capsys.readouterr().err
     assert not (documents_root / "Academicos").exists()
 
 
@@ -595,26 +615,26 @@ def test_delivery_without_opt_in_never_copies_sources_bib(tmp_path: Path) -> Non
     assert [path.name for path in delivered.iterdir()] == [f"{SLUG}-v001.pdf"]
 
 
-def test_delivery_refuses_receipt_without_bibliography_hash(tmp_path: Path, capsys) -> None:
-    """An opted-in delivery requires validation.yml to bind the bibliography bytes."""
+def test_delivery_warns_on_receipt_without_bibliography_hash(tmp_path: Path, capsys) -> None:
+    """An opted-in delivery without a bibliography binding in validation.yml warns."""
     folder, _, _ = _ready_pair_folder(tmp_path)
     _validation(folder, drop=("bibliography_sha256",))
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 1
+    assert _run(folder, documents_root) == 0
 
     assert "bibliography_sha256" in capsys.readouterr().err
-    assert not (documents_root / "Academicos").exists()
+    assert (documents_root / "Academicos").exists()  # warn-only-gates S2: delivered
 
 
-def test_delivery_refuses_stale_bibliography_receipt_hash(tmp_path: Path) -> None:
-    """Editing the bibliography after validation stales the receipt: refusal."""
+def test_delivery_warns_on_stale_bibliography_receipt_hash(tmp_path: Path) -> None:
+    """Editing the bibliography after validation stales the receipt: a warning."""
     folder, _, bib = _ready_pair_folder(tmp_path)
     bib.write_text('@book{bib1, title = "EDITED"}\n', encoding="utf-8")
     documents_root = tmp_path / "docs"
 
-    assert _run(folder, documents_root) == 1
-    assert not (documents_root / "Academicos").exists()
+    assert _run(folder, documents_root) == 0
+    assert (documents_root / "Academicos").exists()  # warn-only-gates S2: delivered
 
 
 def test_delivery_refuses_final_review_without_bibliography_binding(tmp_path: Path, capsys) -> None:

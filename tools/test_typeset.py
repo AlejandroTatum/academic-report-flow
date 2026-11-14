@@ -348,17 +348,18 @@ def test_preview_build_failure_still_fails(
     assert str(exc.value) == "latex failed"
 
 
-def test_final_build_validation_errors_still_fail(
+def test_final_build_validation_errors_warn(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """warn-only-gates S2: final-build validation errors warn on stderr, never stop the build."""
     folder = _approved(tmp_path)
     typeset.bind(folder)
 
-    with pytest.raises(SystemExit) as exc:
-        _run_build(folder, monkeypatch, [], ["La tabla 1 no cabe"])
+    _run_build(folder, monkeypatch, [], ["La tabla 1 no cabe"])
 
-    assert str(exc.value).startswith("VALIDATION FAILED:\n- La tabla 1 no cabe")
-    assert PREVIEW_LINE not in capsys.readouterr().out
+    captured = capsys.readouterr()
+    assert captured.err.startswith("warning: VALIDATION FAILED:\n- La tabla 1 no cabe")
+    assert PREVIEW_LINE not in captured.out
 
 
 def test_approval_guidance_is_content_review_not_layout_repair() -> None:

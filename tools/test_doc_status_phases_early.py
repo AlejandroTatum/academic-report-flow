@@ -309,27 +309,29 @@ def test_plan_missing_rubric_is_pending(tmp_path: Path) -> None:
     assert phase.detail == "rubric.yml missing"
 
 
-def test_plan_schema_invalid_rubric_is_blocked(tmp_path: Path) -> None:
+def test_plan_schema_invalid_rubric_is_a_warning(tmp_path: Path) -> None:
     folder = tmp_path / "wf"
     _report(folder)
     _rubric(folder, criteria=())
 
     phase = doc_status._phase_plan(folder, _config(folder), None)
 
-    assert phase.state == doc_status.BLOCKED
-    assert phase.blocked_reason == "rubric_malformed"
+    assert phase.state == doc_status.DONE
+    assert phase.blocked_reason == ""
+    assert phase.detail.startswith("warning: rubric_malformed: ")
 
 
-def test_plan_unparsable_rubric_is_blocked(tmp_path: Path) -> None:
-    """TRIANGULATE: a bad plan is named, never silently treated as absent."""
+def test_plan_unparsable_rubric_is_a_warning(tmp_path: Path) -> None:
+    """TRIANGULATE: a bad plan is named, never silently treated as absent, and never blocks."""
     folder = tmp_path / "wf"
     _report(folder)
     (folder / "rubric.yml").write_text("schema: [unclosed\n", encoding="utf-8")
 
     phase = doc_status._phase_plan(folder, _config(folder), None)
 
-    assert phase.state == doc_status.BLOCKED
-    assert phase.blocked_reason == "rubric_malformed"
+    assert phase.state == doc_status.DONE
+    assert phase.blocked_reason == ""
+    assert phase.detail.startswith("warning: rubric_malformed: ")
 
 
 def test_plan_derivation_never_repairs_the_rubric(tmp_path: Path) -> None:

@@ -13,6 +13,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from approval_marker import ApprovalState, approval_state, draft_is_fresh, generation_record_current, sha256_file
 from final_review_marker import FinalReviewState, final_review_state
@@ -239,6 +240,7 @@ def publish_validated_pdf(
     subject: str | None = None,
     bibliography: Path | None = None,
     destination: Path | None = None,
+    warn: Callable[[str, str], None] | None = None,
 ) -> Publication:
     """Atomically publish a validated PDF, reusing identical hashes by version.
 
@@ -271,7 +273,29 @@ def publish_validated_pdf(
 
     It remains a technical-copy operation: it never grants ``VISUAL_PASS``,
     ``HUMAN_REVIEW``, or ``READY_TO_SUBMIT``.
+
+    warn-only-gates S2: with ``warn``, each quality refusal is handed to
+    ``warn(code, message)`` and publication proceeds instead of raising. The
+    codes are ``generation_identity`` (a stale generated identity next to a
+    valid approval),
+    ``content_check`` (unmapped inventory or unresolved content check),
+    ``final_review`` (missing or stale final review) and ``stale_draft`` (a
+    carried gate over a PDF not rebuilt from the current body.md). A missing PDF
+    or bibliography, a missing category/slug, a stale or malformed approval.yml
+    (the user's explicit approve, not a quality check) whatever
+    build/generation.yml holds, a missing approval.yml without a current
+    generated identity (the only integrity anchor then), a malformed
+    final-review.yml and version-claim errors always raise. ``warn=None`` keeps
+    every refusal raising. The message handed to ``warn`` is the raw refusal
+    text; a caller that delivers anyway rewords its "no se publica nada" clause
+    (``deliver_report.delivered_anyway``) before printing it.
     """
+
+    def refuse_or_warn(code: str, message: str) -> None:
+        if warn is None:
+            raise PublicationError(message)
+        warn(code, message)
+
     source = Path(source)
     work_folder = Path(work_folder)
     bibliography = Path(bibliography) if bibliography is not None else None
@@ -287,32 +311,41 @@ def publish_validated_pdf(
     # A report built as v1 (no draft approval, or a generation record) is
     # bound to its generated artifact identity and re-checks the verify gate
     # the approval used to vouch for; a legacy approval keeps its own path.
+    #
+    # Integrity, not quality (L3): a present but stale or malformed approval.yml
+    # always refuses, whatever build/generation.yml holds. Without approval.yml
+    # the generated identity is the only anchor, so a missing or stale record
+    # refuses too. Only a stale identity next to a valid approval is a warning.
     generation_record = work_folder / "build" / "generation.yml"
-    if generation_record.is_file() or state.state == "absent":
+    if state.state in ("stale", "malformed"):
+        raise PublicationError(_approval_refusal(state, work_folder))
+    if state.state == "absent":
         if not generation_record_current(work_folder, source):
             raise PublicationError(GENERATION_REFUSAL)
-        if not state.ok:
-            refusal = _content_refusal(work_folder)
-            if refusal:
-                raise PublicationError(refusal)
-    elif not state.ok:
-        raise PublicationError(_approval_refusal(state, work_folder))
+        refusal = _content_refusal(work_folder)
+        if refusal:
+            refuse_or_warn("content_check", refusal)
+    elif generation_record.is_file() and not generation_record_current(work_folder, source):
+        refuse_or_warn("generation_identity", GENERATION_REFUSAL)
 
     review = final_review_state(work_folder, source, bibliography=bibliography)
     if not review.ok:
         message = _final_review_refusal(review, work_folder, source)
         if bibliography is not None and review.detail:
             message = f"{message} Detalle: {review.detail}."
-        raise PublicationError(message)
+        if review.state == "malformed":
+            raise PublicationError(message)
+        refuse_or_warn("final_review", message)
 
     # A carried gate skips the human question, never the rebuild: the build
     # record next to the PDF must hold the sha256 of the body.md as it is now.
     if (state.state == "carried" or review.state == "carried") and not draft_is_fresh(
         source, work_folder / "body.md"
     ):
-        raise PublicationError(
+        refuse_or_warn(
+            "stale_draft",
             "Hubo una edición acotada de body.md y el PDF no se generó desde el body.md actual. "
-            "Volvé a generar y validar el PDF antes de publicar; no se publica nada."
+            "Volvé a generar y validar el PDF antes de publicar; no se publica nada.",
         )
 
     if destination is not None:

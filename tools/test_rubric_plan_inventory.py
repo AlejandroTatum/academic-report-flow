@@ -68,12 +68,17 @@ def test_no_guide_or_no_valid_rubric_means_no_inventory_problems(tmp_path: Path)
     assert rubric_plan.inventory_problems(tmp_path / "missing") == []
 
 
-def test_cli_rejects_an_unmapped_item_and_accepts_the_mapped_rubric(
+def test_cli_warns_on_an_unmapped_item_and_accepts_the_mapped_rubric(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert rubric_plan.main([str(folder_with_guide(tmp_path / "a"))]) == 1
-    out = capsys.readouterr().out
-    assert "guide_inventory_unmapped" in out and "G5" in out
+    """warn-only-gates S2: guide_inventory_unmapped is a warning on stderr, exit 0."""
+    folder = folder_with_guide(tmp_path / "a")
+    unmapped = rubric_plan.inventory_problems(folder)
+    assert unmapped
+    assert rubric_plan.main([str(folder)]) == 0
+    captured = capsys.readouterr()
+    assert captured.err == "warning: guide_inventory_unmapped:\n- " + "\n- ".join(unmapped) + "\n"
+    assert "G5" in captured.err and "OK" not in captured.out
     assert rubric_plan.main([str(folder_with_guide(tmp_path / "b", ALL_MAPPED))]) == 0
     assert "OK" in capsys.readouterr().out
 

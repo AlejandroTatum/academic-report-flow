@@ -1,7 +1,12 @@
 """The AI declaration is part of every format unless the user opts out."""
 from __future__ import annotations
 
+import shlex
+import sys
 from pathlib import Path
+
+import pytest
+import yaml
 
 import doc_status
 from conftest import (
@@ -115,9 +120,73 @@ def test_a_preview_pdf_older_than_approval_does_not_waive_the_declaration(tmp_pa
     assert _format_phase(folder).state == doc_status.PENDING
 
 
+APPROVAL_NOTE = (
+    "; ai_declaration is not part of this batch: after approval the format phase applies the "
+    "course decision, or asks it once on its own"
+)
+
+
 def test_approval_batch_never_asks_the_user_for_the_declaration(tmp_path: Path) -> None:
     folder = _folder(tmp_path)
     suffix = doc_status._approval_format_suffix(folder, _config(folder), None)
 
     assert "still missing: ai_declaration" not in suffix
-    assert "ai_declaration" in suffix and "no question" in suffix
+    assert suffix.endswith(APPROVAL_NOTE)
+    assert "never ask whether to include it" not in suffix
+
+
+@pytest.fixture
+def content_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    root = tmp_path / "content"
+    root.mkdir()
+    monkeypatch.setenv("REPORT_CONTENT_ROOT", str(root))
+    return root
+
+
+def _ask_clause(folder: Path, content_root: Path) -> str:
+    command = shlex.join([sys.executable, str(doc_status.ROOT / "tools" / "course_memory.py"), str(folder)])
+    return (
+        "; when ai_declaration is missing and the course has no decision in "
+        f"{content_root / 'academic-sources' / 'fisica' / 'feedback.yml'}, ask ONE ask_user_choice question "
+        "with the options \"Incluir declaracion de IA (recomendado)\" first and \"Omitir\" second "
+        "(show the first label with the accent on declaracion), record the answer with "
+        f"{command} --ai-declaration include (or omit; that course is never asked again), then write it in "
+        f"{folder / 'report.yml'}"
+    )
+
+
+def test_guidance_asks_once_when_neither_the_course_nor_report_yml_decides(tmp_path: Path, content_root: Path) -> None:
+    folder = _folder(tmp_path)
+    guidance = doc_status._guidance("format", folder, _config(folder))
+
+    assert _ask_clause(folder, content_root) in guidance
+    assert "it is not a question" not in guidance and "never ask whether" not in guidance
+    assert guidance.isascii()
+    assert doc_status.AI_DECLARATION_OPTIONS == ("Incluir declaración de IA (recomendado)", "Omitir")
+
+
+@pytest.mark.parametrize("decision", ["include", "omit"])
+def test_guidance_applies_a_recorded_course_decision_without_asking(
+    tmp_path: Path, content_root: Path, decision: str
+) -> None:
+    course = content_root / "academic-sources" / "fisica"
+    course.mkdir(parents=True)
+    (course / "feedback.yml").write_text(
+        yaml.safe_dump({"schema": "academic.course-feedback/v1", "ai_declaration": decision}), encoding="utf-8"
+    )
+    folder = _folder(tmp_path)
+    guidance = doc_status._guidance("format", folder, _config(folder))
+
+    assert (
+        f"; when ai_declaration is missing, apply the course decision ai_declaration: {decision} "
+        f"({course / 'feedback.yml'}) without asking: write it in {folder / 'report.yml'}"
+    ) in guidance
+    assert "Incluir declaracion de IA (recomendado)" not in guidance
+
+
+def test_guidance_maps_include_and_omit_to_report_yml(tmp_path: Path, content_root: Path) -> None:
+    folder = _folder(tmp_path)
+    guidance = doc_status._guidance("format", folder, _config(folder))
+
+    assert "include writes the declaration text as `ai_declaration: {format: markdown, text: ...}`" in guidance
+    assert "omit writes `ai_declaration: false`" in guidance

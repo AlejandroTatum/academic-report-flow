@@ -419,18 +419,26 @@ def test_render_machine_schema_and_payload(tmp_path: Path) -> None:
 
 
 def test_render_machine_lists_blocked_reasons(tmp_path: Path) -> None:
-    """TRIANGULATE: a blocked route surfaces its bounded reason token."""
+    """TRIANGULATE: a blocked route surfaces its bounded reason token; a quality warning does not."""
     folder = tmp_path / "wf"
-    _report(folder)
-    _sources_bib(folder)
-    _rubric(folder)
-    _body(folder)
-    (folder / "content-check.yml").write_text("result: [unclosed\n", encoding="utf-8")
+    _report(folder, route="galactic")
 
     text = doc_status.render_machine(doc_status.derive(folder))
 
-    assert "content_check_malformed" in text
-    assert _payload_block(text)["blockedReasons"] == ["content_check_malformed"]
+    assert "- unknown_route" in text
+    assert _payload_block(text)["blockedReasons"] == ["unknown_route"]
+
+    warned = tmp_path / "warned"
+    _report(warned)
+    _sources_bib(warned)
+    _rubric(warned)
+    _body(warned)
+    (warned / "content-check.yml").write_text("result: [unclosed\n", encoding="utf-8")
+
+    text = doc_status.render_machine(doc_status.derive(warned))
+
+    assert "warning: content_check_malformed: " in text
+    assert _payload_block(text)["blockedReasons"] == []
 
 
 def test_main_json_routes_machine_to_stdout_and_human_to_stderr(tmp_path: Path, capsys) -> None:

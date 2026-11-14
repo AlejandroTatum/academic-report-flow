@@ -51,10 +51,16 @@ def _planned(tmp_path: Path, **keys: object) -> Path:
     return _with_rubric_keys(folder, **keys) if keys else folder
 
 
-def _check(folder: Path, requirements: list[dict], capsys: pytest.CaptureFixture[str]) -> tuple[int, list[str]]:
+FAILED_WARNING = "warning: content_check_failed: content-check.yml recorded result: fail"
+
+
+def _check(
+    folder: Path, requirements: list[dict], capsys: pytest.CaptureFixture[str]
+) -> tuple[int, list[str], list[str]]:
     capsys.readouterr()
     code = content_check.main([str(folder), "--verification", str(_verification(folder, requirements=requirements))])
-    return code, capsys.readouterr().out.splitlines()
+    captured = capsys.readouterr()
+    return code, captured.out.splitlines(), captured.err.splitlines()
 
 
 # --- the plan ---------------------------------------------------------------
@@ -78,8 +84,11 @@ def test_malformed_needs_person_entries_are_rejected(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], value: object, error: str
 ) -> None:
     folder = _planned(tmp_path, needs_person=value)
-    assert rubric_plan.main([str(folder)]) == 1
-    assert capsys.readouterr().out == f"rubric_malformed:\n- {error}\n"
+    # warn-only-gates S2: a malformed rubric is a warning on stderr, exit 0.
+    assert rubric_plan.main([str(folder)]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == f"warning: rubric_malformed:\n- {error}\n"
     assert rubric_plan.rubric_state(folder) == "malformed"
 
 
@@ -87,9 +96,11 @@ def test_an_item_cannot_be_both_needs_person_and_not_applicable(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     folder = _planned(tmp_path, needs_person=[PERSON], not_applicable=[{"item": "g26", "reason": "no aplica"}])
-    assert rubric_plan.main([str(folder)]) == 1
-    assert capsys.readouterr().out == (
-        "rubric_malformed:\n- rubric.yml needs_person 1 item 'G26' is also listed under not_applicable\n")
+    assert rubric_plan.main([str(folder)]) == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == (
+        "warning: rubric_malformed:\n- rubric.yml needs_person 1 item 'G26' is also listed under not_applicable\n")
 
 
 def test_a_rubric_without_needs_person_is_unchanged(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -126,8 +137,8 @@ def test_the_verification_output_labels_the_partial_waiting_for_a_person(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     folder = _planned(tmp_path, needs_person=[PERSON])
-    code, out = _check(folder, [*FOUND, NEEDS_PERSON_PARTIAL], capsys)
-    assert code == 1
+    code, out, err = _check(folder, [*FOUND, NEEDS_PERSON_PARTIAL], capsys)
+    assert (code, err) == (0, [FAILED_WARNING])
     assert out[0] == "content check: fail"
     assert out.count(f"  {LABEL}") == 1
 
@@ -135,8 +146,8 @@ def test_the_verification_output_labels_the_partial_waiting_for_a_person(
 def test_a_fixable_partial_is_not_labelled(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     folder = _planned(tmp_path, needs_person=[PERSON])
     found = [r for r in FOUND if r["requirement"] != OTHER_PARTIAL["requirement"]]
-    code, out = _check(folder, [*found, NEEDS_PERSON_PARTIAL, OTHER_PARTIAL], capsys)
-    assert code == 1
+    code, out, err = _check(folder, [*found, NEEDS_PERSON_PARTIAL, OTHER_PARTIAL], capsys)
+    assert (code, err) == (0, [FAILED_WARNING])
     assert [line for line in out if "waiting for a person" in line] == [f"  {LABEL}"]
     verify = doc_status._phase_verify(folder, None, None)
     assert verify.state == doc_status.DONE
@@ -157,8 +168,8 @@ def test_without_needs_person_the_same_partial_reads_as_today(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     folder = _planned(tmp_path)
-    code, out = _check(folder, [*FOUND, NEEDS_PERSON_PARTIAL], capsys)
-    assert code == 1
+    code, out, err = _check(folder, [*FOUND, NEEDS_PERSON_PARTIAL], capsys)
+    assert (code, err) == (0, [FAILED_WARNING])
     assert not [line for line in out if "waiting for a person" in line]
     verify = doc_status._phase_verify(folder, None, None)
     assert verify.detail == "rubric findings (not a compliance pass): partial: Includes a network diagram"

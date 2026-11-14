@@ -63,13 +63,14 @@ def _v1(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, *, body: str = 
     return folder, pdf
 
 
-def _deliver_refused(folder: Path, documents: Path, capsys) -> str:
+def _deliver_warned(folder: Path, documents: Path, capsys) -> str:
+    """warn-only-gates S2: the gap is a ``warning:`` on stderr and the PDF is delivered."""
     review = folder / "final-review.yml"
     before = review.read_bytes() if review.is_file() else None
-    assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 1
+    assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 0
     output = capsys.readouterr()
-    assert output.out == ""
-    assert not documents.exists()
+    assert "CON ADVERTENCIAS" in output.out
+    assert len(list(documents.rglob("*.pdf"))) == 1
     assert not (folder / "approval.yml").exists()
     assert (review.read_bytes() if review.is_file() else None) == before
     return output.err
@@ -88,7 +89,7 @@ def test_typeset_bind_needs_no_draft_approval(tmp_path: Path, capsys) -> None:
 def test_missing_rubric_findings_remain_visible_but_do_not_stop_route(tmp_path: Path, capsys) -> None:
     folder = planned_folder(tmp_path)
     verification = _verification(folder, requirements=REQUIREMENTS)
-    assert content_check.main([str(folder), "--verification", str(verification)]) == 1
+    assert content_check.main([str(folder), "--verification", str(verification)]) == 0
     capsys.readouterr()
     status = doc_status.derive(folder)
     verify = next(phase for phase in status.phases if phase.name == "verify")
@@ -106,7 +107,7 @@ def test_preexisting_rubric_failure_is_a_finding_and_still_a_validation_error(tm
     assert validate_report.rubric_validation(_config(folder)).errors == result.errors
 
 
-def test_generation_reports_rubric_findings_and_still_fails_on_other_errors(
+def test_generation_reports_rubric_findings_and_warns_on_other_errors(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     folder = planned_folder(tmp_path)
@@ -116,14 +117,14 @@ def test_generation_reports_rubric_findings_and_still_fails_on_other_errors(
     finding = "rubric: criterion 'metodologia' check 1 (contains) fails in body.typeset.md: missing"
     _build(folder, monkeypatch, _Validation(errors=[finding], findings=[finding]))
     out = capsys.readouterr().out
-    assert "RUBRIC FINDINGS (no es una declaración de cumplimiento; bloquean la publicación):\n- " + finding in out
+    assert "RUBRIC FINDINGS (no es una declaración de cumplimiento; son avisos y no impiden la entrega):\n- " + finding in out
     pdf = folder / "final" / "report.pdf"
     lines = out.splitlines()
     assert (
-        f"PDF GENERADO CON HALLAZGOS DE RÚBRICA (no validado para publicar): {pdf} "
+        f"PDF GENERADO CON HALLAZGOS DE RÚBRICA (no validado): {pdf} "
         f"(SHA-256: {approval_marker.sha256_file(pdf)}). No es una declaración de cumplimiento: "
-        "revisá esta versión con el usuario y pedí una revisión (v2/v3); la publicación sigue "
-        "bloqueada mientras haya hallazgos."
+        "revisá esta versión con el usuario y pedí una revisión (v2/v3); la entrega avisa "
+        "estos hallazgos mientras sigan abiertos."
     ) in lines
     assert "VALIDADO" not in out
     assert "VALIDATION PASSED" not in out
@@ -131,11 +132,13 @@ def test_generation_reports_rubric_findings_and_still_fails_on_other_errors(
     assert approval_marker.generation_record_current(folder, folder / "final" / "report.pdf")
     assert not (folder / "approval.yml").exists()
 
+    # warn-only-gates S2: another validation error warns; the build finishes and records v1.
     (folder / "build" / "generation.yml").unlink()
-    with pytest.raises(SystemExit) as exc:
-        _build(folder, monkeypatch, _Validation(errors=[finding, "La tabla 1 no cabe"], findings=[finding]))
-    assert str(exc.value).startswith("VALIDATION FAILED:\n- La tabla 1 no cabe\n")
-    assert not (folder / "build" / "generation.yml").exists()
+    _build(folder, monkeypatch, _Validation(errors=[finding, "La tabla 1 no cabe"], findings=[finding]))
+    captured = capsys.readouterr()
+    assert captured.err.startswith("warning: VALIDATION FAILED:\n- La tabla 1 no cabe\n")
+    assert "PDF GENERADO CON ADVERTENCIAS DE VALIDACIÓN" in captured.out
+    assert (folder / "build" / "generation.yml").is_file()
 
 
 def test_generation_without_findings_keeps_the_validated_line(
@@ -157,14 +160,17 @@ def test_generation_without_findings_keeps_the_validated_line(
     assert "RUBRIC FINDINGS" not in out and "HALLAZGOS" not in out
 
 
-def test_unresolved_citation_still_blocks_the_route_at_draft(tmp_path: Path, capsys) -> None:
+def test_unresolved_citation_is_a_draft_warning_and_the_route_advances(tmp_path: Path, capsys) -> None:
     folder = planned_folder(tmp_path, body=BODY + "\nIncorrecta [@missing].\n")
     verification = _verification(folder, requirements=REQUIREMENTS)
-    assert content_check.main([str(folder), "--verification", str(verification)]) == 1
+    assert content_check.main([str(folder), "--verification", str(verification)]) == 0
     capsys.readouterr()
     status = doc_status.derive(folder)
     draft = next(phase for phase in status.phases if phase.name == "draft")
-    assert status.next_token == "draft"
+    # warn-only-gates S2: the body-check FAIL is a warning in the draft detail.
+    assert draft.state == doc_status.DONE and draft.blocked_reason == ""
+    assert status.next_token != "draft"
+    assert draft.detail.startswith("warning: body_check_failed: body check fails: ")
     assert "citations_resolve" in draft.detail and "missing" in draft.detail
 
 
@@ -180,7 +186,7 @@ def test_missing_sources_still_stop_research(tmp_path: Path) -> None:
     assert status.next_token == "research"
 
 
-def test_v1_publishes_only_with_a_passing_check_review_and_identity(
+def test_v1_publishes_only_with_a_current_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     folder, pdf = _v1(tmp_path, monkeypatch, capsys, requirements=FOUND_ONLY)
@@ -191,27 +197,27 @@ def test_v1_publishes_only_with_a_passing_check_review_and_identity(
     assert len(list(documents.rglob("*.pdf"))) == 1
     capsys.readouterr()
     (folder / "body.md").write_text("# Changed\n\nChanged content.\n")
+    # warn-only-gates L3: without approval.yml the generated identity is the integrity anchor.
     assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 1
     err = capsys.readouterr().err
     assert err.startswith(f"DELIVERY REFUSED: {publish_pdf.GENERATION_REFUSAL}\n")
     assert len(list(documents.rglob("*.pdf"))) == 1
 
 
-def test_publication_refuses_unresolved_rubric_failures_without_an_accepted_gap(
+def test_publication_warns_on_unresolved_rubric_failures_without_an_accepted_gap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     folder, _ = _v1(tmp_path, monkeypatch, capsys)
-    err = _deliver_refused(folder, tmp_path / "docs", capsys)
+    err = _deliver_warned(folder, tmp_path / "docs", capsys)
     assert err == (
-        "DELIVERY REFUSED: Hay fallas de rúbrica sin resolver y sin brecha aceptada "
+        "warning: Hay fallas de rúbrica sin resolver y sin brecha aceptada "
         "(missing: Includes a network diagram; missing: Lists recommendations). "
         "Corregí el informe o, solo si el usuario lo decide, registrá la brecha parcial con "
-        "accepted_gaps.py; no se publica nada.\n"
-        "No se publicó nada. Resolvé lo indicado y volvé a ejecutar deliver_report.py.\n"
+        "accepted_gaps.py; el PDF se entrega igual.\n"
     )
 
 
-def test_publication_still_refuses_a_needs_person_partial_until_a_person_accepts_it(
+def test_publication_warns_on_a_needs_person_partial_until_a_person_accepts_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     # faster-verify-loop S5: needs_person only labels the partial; it never accepts it.
@@ -220,50 +226,48 @@ def test_publication_still_refuses_a_needs_person_partial_until_a_person_accepts
                "location": "Metodologia", "evidence": "Se configuro la topologia", "gap": gap}
     folder, _ = _v1(tmp_path, monkeypatch, capsys, requirements=[*FOUND_ONLY, partial],
                     needs_person=[{"item": "G26", "reason": gap}])
-    err = _deliver_refused(folder, tmp_path / "docs", capsys)
+    err = _deliver_warned(folder, tmp_path / "docs", capsys)
     assert err == (
-        "DELIVERY REFUSED: Hay fallas de rúbrica sin resolver y sin brecha aceptada "
+        "warning: Hay fallas de rúbrica sin resolver y sin brecha aceptada "
         "(partial: Includes a network diagram). "
         "Corregí el informe o, solo si el usuario lo decide, registrá la brecha parcial con "
-        "accepted_gaps.py; no se publica nada.\n"
-        "No se publicó nada. Resolvé lo indicado y volvé a ejecutar deliver_report.py.\n"
+        "accepted_gaps.py; el PDF se entrega igual.\n"
     )
     assert accepted_gaps.main(["accept", str(folder), "--by", "Ana Perez", "--requirement",
                                "Includes a network diagram", "--reason", "pushed by the student"]) == 0
     capsys.readouterr()
     documents = tmp_path / "docs"
     assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 0
+    assert capsys.readouterr().err == ""  # the accepted gap leaves nothing to warn about
     assert len(list(documents.rglob("*.pdf"))) == 1
 
 
-def test_publication_refuses_unresolved_citations(
+def test_publication_warns_on_unresolved_citations(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     folder, _ = _v1(tmp_path, monkeypatch, capsys, body=BODY + "\nIncorrecta [@missing].\n",
                     requirements=FOUND_ONLY)
-    err = _deliver_refused(folder, tmp_path / "docs", capsys)
+    err = _deliver_warned(folder, tmp_path / "docs", capsys)
     assert err == (
-        "DELIVERY REFUSED: Hay citas sin resolver en body.md (5/6 cited keys resolve to bib entries; "
+        "warning: Hay citas sin resolver en body.md (5/6 cited keys resolve to bib entries; "
         "unresolved: missing). Corregí las citas y volvé a verificar y generar antes de publicar; "
-        "no se publica nada.\n"
-        "No se publicó nada. Resolvé lo indicado y volvé a ejecutar deliver_report.py.\n"
+        "el PDF se entrega igual.\n"
     )
 
 
-def test_publication_refuses_without_the_human_final_review(
+def test_publication_warns_without_the_human_final_review(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
     folder, pdf = _v1(tmp_path, monkeypatch, capsys, requirements=FOUND_ONLY, review=False)
-    err = _deliver_refused(folder, tmp_path / "docs", capsys)
+    err = _deliver_warned(folder, tmp_path / "docs", capsys)
     assert err == (
-        f"DELIVERY REFUSED: falta final-review.yml en {folder}: falta la revisión humana final "
-        f"de {pdf.name}. Ejecutá primero la fase review; no se publica nada.\n"
-        "No se publicó nada. Resolvé lo indicado y volvé a ejecutar deliver_report.py.\n"
+        f"warning: falta final-review.yml en {folder}: falta la revisión humana final "
+        f"de {pdf.name}. Ejecutá primero la fase review; el PDF se entrega igual.\n"
     )
     assert not (folder / "final-review.yml").exists()
 
 
-def test_publishing_without_approval_needs_generated_artifact_identity(tmp_path: Path, capsys) -> None:
+def test_publishing_refuses_without_approval_or_generated_artifact_identity(tmp_path: Path, capsys) -> None:
     from conftest import _body, _report
     folder = tmp_path / "wf"
     _report(folder)
@@ -271,11 +275,13 @@ def test_publishing_without_approval_needs_generated_artifact_identity(tmp_path:
     pdf = _pdf(folder)
     _validation(folder, pdf=pdf)
     _final_review(folder, pdf=pdf)
-    err = _deliver_refused(folder, tmp_path / "docs", capsys)
-    assert err.startswith(
-        "DELIVERY REFUSED: Falta o está obsoleta la identidad del PDF generado y sus entradas; "
-        "volvé a generar y validar antes de publicar. No se publica nada.\n"
+    documents = tmp_path / "docs"
+    assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 1
+    assert capsys.readouterr().err.startswith(
+        f"DELIVERY REFUSED: no hay approval.yml ni build/generation.yml en {folder}: falta la "
+        "aprobación humana del cuerpo y la identidad del PDF generado."
     )
+    assert not documents.exists()
 
 
 def test_express_option_never_forges_approval(tmp_path: Path, capsys) -> None:

@@ -69,8 +69,8 @@ awkward, or styling is weak; use custom CSS or HTML/Playwright instead.
   crossings always fail), and `validate_report.py`'s LaTeX visual validator
   independently re-audits every diagram SVG at its real final print scale
   through `connector_pdf_stage` (the 0.80-SVG-unit rule's final-scale
-  equivalent, derived from the template's own page geometry), blocking the
-  report there too. A figure reference that cannot be resolved, or has no
+  equivalent, derived from the template's own page geometry), flagging the
+  report there too as a warning (never blocking). A figure reference that cannot be resolved, or has no
   matching SVG next to it, is reported as a warning naming the figure — never
   silently skipped, so the gate cannot pass having audited nothing. The
   isolated run is precheck evidence only; the final-size run is the

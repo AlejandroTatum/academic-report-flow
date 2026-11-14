@@ -26,6 +26,7 @@ import json
 import os
 import shlex
 import sys
+import unicodedata
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -152,13 +153,13 @@ _GUIDANCE = {
         "for APE, AA, ACD or libre, plus Proyecto for a project report, PDF or DOCX, and each remaining "
         "metadata gap with suggested "
         "options (never free text); decide group work and members here; "
-        "record the answer in {report_yml}, then re-run doc_status; when ai_declaration is missing "
-        "it is not a question: write it yourself in {report_yml} for every work, as "
+        "record the answer in {report_yml}, then re-run doc_status"
+        "{ai_declaration_rule}; include writes the declaration text as "
         "`ai_declaration: {{format: markdown, text: ...}}` (title optional: the default heading is used) "
         "plus `ai_declaration_position: after_bibliography`, with Tabla A (herramientas: tool, use) and "
         "Tabla B (prompts per iteration: the prompt verbatim when available, otherwise explicitly labeled "
-        "as a summary, never invented as literal); write `ai_declaration: false` only when the user "
-        "explicitly orders removing it"
+        "as a summary, never invented as literal); omit writes `ai_declaration: false`, as does an "
+        "explicit later order from the user to remove it"
     ),
     "typeset": (
         "run {build_command} (its typeset step is typeset.py auto: it copies {body} to {typeset_body} "
@@ -178,15 +179,22 @@ _GUIDANCE = {
     "deliver": "wait for the user's explicit instruction; only then publish with {deliver_command}, then re-run doc_status",
 }
 
-# S2: a current v1 whose validation failed is reviewed for a revision (v2/v3);
-# validate stays blocked and delivery stays locked behind it.
-REVISION_REVIEW_DETAIL = "v1 failed validation: review it and request a revision (v2/v3); publication stays blocked"
+# warn-only-gates S2: a quality check never blocks a phase; it reports
+# ``warning: <code>: <message>`` in the phase detail and the route continues.
+VALIDATION_FAILED_WARNING = "warning: validation_failed: validation.yml recorded result: fail"
+# S2: a current v1 whose validation failed is reviewed with its findings; the
+# user asks for a revision (v2/v3) or records the review to continue as it stands.
 REVISION_REVIEW_GUIDANCE = (
-    "v1 failed validation ({validation} records result: fail) and publication stays blocked: "
-    "ask the user to review {pdf} with its findings and to request a revision (v2/v3) that "
-    "resolves them; apply it in {body}, rebuild and re-validate, then re-run doc_status; "
-    "a final review recorded now does not open delivery"
+    "warning: v1 failed validation ({validation} records result: fail): ask the user to review "
+    "{pdf} with its findings and either request a revision (v2/v3) that resolves them (apply it "
+    "in {body}, rebuild and re-validate, then re-run doc_status) or record {final_review} to "
+    "continue with v1 as it stands"
 )
+
+
+def _warning(code: str, message: str) -> str:
+    """A quality finding shown in a phase detail; it never makes the phase ``blocked``."""
+    return f"warning: {code}: {message}"
 
 
 @dataclass(frozen=True)
@@ -331,9 +339,9 @@ def _phase_plan(folder: Path, config: ReportConfig, _documents_root: Path | None
     """Map the rubric-plan predicate onto one phase state (new-report-flow T3).
 
     A valid ``rubric.yml`` is the plan artifact; an absent one is ordinary
-    progress and a malformed one -- unparsable or schema-invalid -- is
-    ``blocked`` data the plan phase must fix. The rubric is never written or
-    repaired here.
+    progress and a malformed one -- unparsable or schema-invalid -- is a
+    ``rubric_malformed`` warning (warn-only-gates S2): the plan is done and the
+    route continues. The rubric is never written or repaired here.
     """
     state = rubric_plan.rubric_state(folder)
     if state == "valid":
@@ -346,7 +354,7 @@ def _phase_plan(folder: Path, config: ReportConfig, _documents_root: Path | None
         return PhaseState("plan", DONE, f"{detail}; {_teacher_rubric_note(folder, config)}{warnings}")
     if state == "absent":
         return PhaseState("plan", PENDING, "rubric.yml missing")
-    return PhaseState("plan", BLOCKED, "rubric.yml malformed", "rubric_malformed")
+    return PhaseState("plan", DONE, _warning("rubric_malformed", "rubric.yml malformed (run rubric_plan.py for the errors)"))
 
 
 def _phase_draft(folder: Path, _config: ReportConfig, _documents_root: Path | None) -> PhaseState:
@@ -358,14 +366,14 @@ def _phase_draft(folder: Path, _config: ReportConfig, _documents_root: Path | No
         return PhaseState("draft", BLOCKED, "body.md unreadable", "draft_unreadable")
     if not text.strip():
         return PhaseState("draft", PENDING, "body.md empty")
-    # Tools enforce the quality rules before the human decision: while the same
-    # body check `content_check.py --body-check` runs would fail, approval is
-    # not offered. A current approval marker is never re-gated (the user already
-    # approved those exact bytes). A carried approval is not exempt: its bytes
-    # changed, and the body check still runs after every edit.
+    # The same body check `content_check.py --body-check` runs is reported here.
+    # A current approval marker is never re-checked (the user already approved
+    # those exact bytes). A carried approval is not exempt: its bytes changed,
+    # and the body check still runs after every edit.
     # S1 (v1 flow): rubric checks and uncited eligible sources are content
-    # findings -- shown here, never a reason to stop v1, and still publication
-    # conditions through content-check.yml. Every other check still blocks.
+    # findings, shown here and warned again at delivery through content-check.yml.
+    # warn-only-gates S2: every other failing check is a `body_check_failed`
+    # warning in the detail; the draft is done and the route advances.
     if approval_state(folder).state != "current":
         try:
             failed = [c for c in content_check.body_check_results(folder) if not c["ok"]]
@@ -375,15 +383,18 @@ def _phase_draft(folder: Path, _config: ReportConfig, _documents_root: Path | No
         if blocking:
             return PhaseState(
                 "draft",
-                PENDING,
-                "body check fails: " + "; ".join(f"{c['check']}: {c['detail']}" for c in blocking),
-                "body_check_failed",
+                DONE,
+                _warning(
+                    "body_check_failed",
+                    "body check fails: " + "; ".join(f"{c['check']}: {c['detail']}" for c in blocking),
+                ),
             )
         if failed:
             return PhaseState(
                 "draft",
                 DONE,
-                "body.md present; body check findings (not a compliance pass; they block publication): "
+                "body.md present; body check findings (not a compliance pass; reported as warnings, "
+                "they never block delivery): "
                 + "; ".join(f"{c['check']}: {c['detail']}" for c in failed),
             )
     return PhaseState("draft", DONE, "body.md present and passes the body check")
@@ -429,9 +440,11 @@ def _phase_verify(folder: Path, _config: ReportConfig, _documents_root: Path | N
     the draft starts. In a recorded fail, a ``partial`` whose gap is a rubric
     ``needs_person`` reason is listed last as ``waiting for a person``, apart from
     the fixable findings; it still keeps the verdict ``fail`` (S5).
-    A recorded fail is ``blocked`` with ``content_check_failed``: the findings
-    must be fixed through the user's edit orders, never silently polished. A
-    malformed marker is ``blocked`` too. The check is never run or repaired
+    A technical failure in a recorded fail is a ``content_check_failed`` warning
+    (warn-only-gates S2): verify is done and the route continues. A malformed
+    marker is a ``content_check_malformed`` warning and, like a stale one, waits
+    ``pending`` for the verifier to run again. Findings are still fixed through the
+    user's edit orders, never silently polished. The check is never run or repaired
     here; ``content_check_state`` already re-derives the verdict, so a forged
     pass cannot clear this phase.
     """
@@ -462,7 +475,7 @@ def _phase_verify(folder: Path, _config: ReportConfig, _documents_root: Path | N
                           or (item.get("check") == "rubric_checks" and "body_format:" in item.get("detail", "")))]
         if technical:
             detail = "; ".join(f"{item['check']}: {item.get('detail', '')}" for item in technical)
-            return PhaseState("verify", BLOCKED, f"content check technical failure: {detail}", "content_check_failed")
+            return PhaseState("verify", DONE, _warning("content_check_failed", f"content check technical failure: {detail}"))
         findings = marker.get("findings") or []
         requirements = marker.get("requirements") or []
         # faster-verify-loop S5: a needs_person partial waits for a person, apart from fixable findings.
@@ -473,7 +486,12 @@ def _phase_verify(folder: Path, _config: ReportConfig, _documents_root: Path | N
         labels = [content_check.waiting_label(record) for record in waiting]
         detail = "; ".join(str(item) for item in [*gaps, *findings, *labels]) or "rubric findings remain"
         return PhaseState("verify", DONE, f"rubric findings (not a compliance pass): {detail}")
-    return PhaseState("verify", BLOCKED, "content-check.yml malformed", "content_check_malformed")
+    # Like a stale marker, a malformed one is no check yet: verify waits for the verifier, never blocks.
+    return PhaseState(
+        "verify", PENDING,
+        _warning("content_check_malformed", "content-check.yml malformed; re-run the verifier and content_check.py"),
+        "content_check_malformed",
+    )
 
 
 def _has_legacy_pdf(folder: Path, config: ReportConfig, documents_root: Path | None) -> bool:
@@ -526,9 +544,36 @@ _APPROVAL_FORMAT_RECORDED = (
 
 
 _AI_DECLARATION_NOTE = (
-    "; ai_declaration is not a question: after approval the format phase tells you to write it "
-    "yourself (no question to the user, and never ask whether to include it)"
+    "; ai_declaration is not part of this batch: after approval the format phase applies the "
+    "course decision, or asks it once on its own"
 )
+# warn-only-gates S1: academic work carries the AI declaration unless the user says otherwise.
+# The guidance is ASCII (portable human block), so it spells the first label without its
+# accent and tells the agent to show it accented, exactly as AI_DECLARATION_OPTIONS.
+AI_DECLARATION_OPTIONS = ("Incluir declaración de IA (recomendado)", "Omitir")
+
+
+def _ai_declaration_rule(folder: Path, config: ReportConfig) -> str:
+    """How the format phase settles a missing ``ai_declaration``: the course decision, else one question."""
+    decision, slug = course_memory.course_ai_decision(config)
+    try:
+        feedback = str(course_memory.course_dir(slug) / "feedback.yml") if slug else "its feedback.yml"
+    except Exception:  # an unresolvable content root only loses the path in the sentence
+        feedback = "its feedback.yml"
+    feedback = feedback.replace("{", "{{").replace("}", "}}")
+    if decision:
+        return (f"; when ai_declaration is missing, apply the course decision ai_declaration: {decision} "
+                f"({feedback}) without asking: write it in {{report_yml}}")
+    command = _tool_command("course_memory.py", folder).replace("{", "{{").replace("}", "}}")
+    include, omit = (unicodedata.normalize("NFKD", label).encode("ascii", "ignore").decode()
+                     for label in AI_DECLARATION_OPTIONS)
+    return (
+        f"; when ai_declaration is missing and the course has no decision in {feedback}, ask ONE "
+        f"ask_user_choice question with the options \"{include}\" first and \"{omit}\" second "
+        "(show the first label with the accent on declaracion), record the "
+        f"answer with {command} --ai-declaration include (or omit; that course is never asked again), then "
+        "write it in {report_yml}"
+    )
 
 
 def _approval_format_suffix(folder: Path, config: ReportConfig, documents_root: Path | None) -> str:
@@ -767,9 +812,10 @@ def _phase_validate(folder: Path, config: ReportConfig, _documents_root: Path | 
     ``result: pass`` and its ``artifact_sha256`` equals the final PDF's bytes.
     Receipt identity is checked before the recorded outcome: a receipt bound to
     other bytes is stale evidence -- a stale ``result: fail`` included -- and
-    returns to ``pending`` so the new build can revalidate. Only a fail bound to
-    the current bytes is the ``blocked`` ``validation_failed`` outcome. The
-    receipt is never written or repaired here.
+    returns to ``pending`` so the new build can revalidate. A fail bound to the
+    current bytes is a ``validation_failed`` warning (warn-only-gates S2): validate
+    is done and the route continues to review. The receipt is never written or
+    repaired here.
     """
     receipt = folder / "validation.yml"
     if not receipt.is_file():
@@ -792,7 +838,7 @@ def _phase_validate(folder: Path, config: ReportConfig, _documents_root: Path | 
         return PhaseState("validate", PENDING, "validation.yml artifact_sha256 does not match final PDF")
     result = str(data.get("result") or "").strip().lower()
     if result == "fail":
-        return PhaseState("validate", BLOCKED, "validation.yml recorded result: fail", "validation_failed")
+        return PhaseState("validate", DONE, VALIDATION_FAILED_WARNING)
     if result != "pass":
         return PhaseState("validate", PENDING, "validation.yml result is not pass")
     # course-deliverables T2: when the bibliography is a declared deliverable,
@@ -834,7 +880,7 @@ def _v1_revision_review(folder: Path, config: ReportConfig) -> bool:
         validate = _phase_validate(folder, config, None)
     except Exception:  # an unreadable artifact keeps the route as it was
         return False
-    return validate.state == BLOCKED and validate.blocked_reason == "validation_failed"
+    return validate.detail == VALIDATION_FAILED_WARNING
 
 
 def _phase_review(folder: Path, config: ReportConfig, _documents_root: Path | None) -> PhaseState:
@@ -844,8 +890,9 @@ def _phase_review(folder: Path, config: ReportConfig, _documents_root: Path | No
     validation of the current PDF) are ``done``: an absent marker stays
     ``pending`` so the route waits at review, and a stale one -- the PDF changed since the human
     looked at it -- also returns to ``pending``, because reviewing the current
-    build is the normal loop. Only a malformed marker is ``blocked``, with the
-    predicate's own bounded reason. The marker is never written here. When the
+    build is the normal loop. A malformed marker is a warning with the
+    predicate's own bounded reason (warn-only-gates S2) and review stays
+    ``pending`` until the review is recorded again. The marker is never written here. When the
     bibliography is a declared deliverable, the predicate binds its bytes too,
     exactly like the publisher's gate.
     """
@@ -860,7 +907,7 @@ def _phase_review(folder: Path, config: ReportConfig, _documents_root: Path | No
         return PhaseState("review", DONE, state.detail)
     if state.state in ("absent", "stale"):
         return PhaseState("review", PENDING, state.detail)
-    return PhaseState("review", BLOCKED, state.detail, state.reason)
+    return PhaseState("review", PENDING, _warning(state.reason, state.detail))
 
 
 def _phase_deliver(folder: Path, config: ReportConfig, documents_root: Path | None) -> PhaseState:
@@ -945,12 +992,6 @@ def derive(folder: Path, *, documents_root: Path | None = None) -> DocStatus:
         phases.append(phase)
 
     focus = next((phase for phase in phases if phase.state != DONE), None)
-    if focus is not None and focus.name == "validate" and _v1_revision_review(folder, config):
-        # S2: the failure stays visible on validate and delivery stays locked,
-        # but the human reviews v1 and asks for a revision instead of a dead end.
-        # A recorded final review never makes this review done.
-        focus = PhaseState("review", PENDING, REVISION_REVIEW_DETAIL)
-        phases[PHASES.index("review")] = focus
     if focus is None:
         current, next_token, gate = DONE, DONE, ""
     else:
@@ -1061,6 +1102,7 @@ def _guidance(
             "through a single-choice prompt (do not auto-fill, never invent a name)"
         )
     if phase_name == "format":
+        template = template.replace("{ai_declaration_rule}", _ai_declaration_rule(folder, config))
         facts = load_guide_facts(folder, config)
         family = facts.get("family") or config.format_hint
         if family:

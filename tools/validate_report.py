@@ -8,6 +8,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -1664,7 +1665,13 @@ def main() -> None:
     with timings.timed(args.folder, "validate", "validate_report.py"):
         result = validate(config)
     if result.errors:
-        raise SystemExit("VALIDATION FAILED:\n- " + "\n- ".join(result.errors) + f"\n\nReporte: {config.quality_report_path}")
+        # warn-only-gates S2: the findings are already in the quality report; they
+        # are reported as a warning and never block the flow (exit 0).
+        print(
+            "warning: VALIDATION FAILED:\n- " + "\n- ".join(result.errors) + f"\n\nReporte: {config.quality_report_path}",
+            file=sys.stderr,
+        )
+        return
     if result.warnings:
         print("VALIDATION PASSED WITH WARNINGS:\n- " + "\n- ".join(result.warnings))
     else:

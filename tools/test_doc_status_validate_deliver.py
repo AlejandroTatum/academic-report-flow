@@ -2,7 +2,8 @@
 
 Slice 2b-iii ships the last two derivations. Validate is ``done`` when
 ``validation.yml`` records ``result: pass`` for the exact bytes of the final PDF,
-``blocked`` with ``validation_failed`` when it records a fail, and ``pending`` when
+``done`` with a ``warning: validation_failed`` detail when it records a fail
+(warn-only-gates S2), and ``pending`` when
 the receipt is missing or its hash no longer matches. Deliver is ``done`` when a
 ``<slug>-vNNN.pdf`` under the Documents root hash-matches the final PDF and
 ``pending`` otherwise. Like the 2a/2b-i/2b-ii suites these tests call the handlers
@@ -73,17 +74,17 @@ def test_validate_pass_with_mismatched_hash_is_pending(tmp_path: Path) -> None:
     assert phase.state != doc_status.DONE
 
 
-def test_validate_result_fail_is_blocked_with_validation_failed(tmp_path: Path) -> None:
-    """A recorded failure stops the route instead of advancing to delivery."""
+def test_validate_result_fail_is_a_validation_failed_warning(tmp_path: Path) -> None:
+    """A recorded failure is a warning: the route continues to review (warn-only-gates S2)."""
     folder = tmp_path / "wf"
     pdf = _final_pdf(folder)
     _validation(folder, pdf=pdf, result="fail")
 
     phase = doc_status._phase_validate(folder, _config(folder), None)
 
-    assert phase.state == doc_status.BLOCKED
-    assert phase.blocked_reason == "validation_failed"
-    assert phase.state != doc_status.DONE
+    assert phase.state == doc_status.DONE
+    assert phase.blocked_reason == ""
+    assert phase.detail == "warning: validation_failed: validation.yml recorded result: fail"
 
 
 def test_validate_stale_fail_receipt_does_not_block_a_new_pdf(tmp_path: Path) -> None:
@@ -423,8 +424,8 @@ def test_review_phase_uses_bibliography_binding_when_opted_in(tmp_path: Path) ->
 
     _final_review(folder, pdf=pdf)
     phase = doc_status._phase_review(folder, _config(folder), None)
-    assert phase.state == doc_status.BLOCKED
-    assert phase.blocked_reason == "final_review_marker_malformed"
+    assert phase.state == doc_status.PENDING
+    assert phase.detail.startswith("warning: final_review_marker_malformed: ")
 
     _final_review(folder, pdf=pdf, bibliography=bib)
     phase = doc_status._phase_review(folder, _config(folder), None)

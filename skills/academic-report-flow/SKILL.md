@@ -19,7 +19,7 @@ Recommend at most one type with a reason, never select it. Ambiguity stops the r
 
 ## Hard Rules
 
-Tools record phase durations in `timings.yml` (informational, never a gate; `tools/timings.py <folder>`). Tools enforce quality (`doc_status`, `content_check --body-check`, verify, `validate_report.py`, visual audit, `deliver_report.py`); run them and obey their blocks. There is no draft approval: after data and format the first formatted build is v1, with rubric findings shown honestly; generation is not a compliance claim. The human reviews the formatted version, then asks for v2, v3 or gives an explicit instruction to publish (`references/delivery.md`).
+Tools record phase durations in `timings.yml` (informational, never a gate; `tools/timings.py <folder>`). Tools check quality (`doc_status`, `content_check --body-check`, verify, `validate_report.py`, visual audit, `deliver_report.py`); run them and relay their non-blocking warnings. There is no draft approval: after data and format the first formatted build is v1, with rubric findings shown honestly; generation is not a compliance claim. The human reviews the formatted version, then asks for v2, v3 or gives an explicit instruction to publish (`references/delivery.md`).
 
 - Present the human block verbatim and every human gate losslessly; never proceed on silence.
 - Quality over quantity: no minimum length; preserve complete coverage. Cut redundancy or add necessary evidence or explanation when needed (`references/content.md`).
@@ -31,8 +31,8 @@ Tools record phase durations in `timings.yml` (informational, never a gate; `too
 - Apply batched edit orders verbatim, then build the next version; a bounded edit (at most 40 changed words, no heading touched) keeps the final review and the verification without asking; validation still runs.
 - The draft is plain text: `# Title` headings and `[@key]` citations only, no math, tables, images or bold (`references/content.md`); backend formatting goes in `body.typeset.md`, never in `body.md`.
 - No draft PDF or approval packet is required (`approval.md`). Format, typeset, preview with `build.py`, inspect every page while the verifier works; fix visual and verifier findings in ONE edit round: v1 is the build made after that round. Build v1 once `verify`, `format` and `typeset` are `done`.
-- Stop at the earliest failed gate; never substitute an unsupported backend or executor.
-- Publish only through `deliver_report.py`, on the user's explicit instruction; it refuses unresolved rubric failures without an accepted gap, unresolved citations, a missing final review or generation record (legacy reports: `APPROVAL_CURRENT`). Publication is not approval.
+- Stop only on a hard failure; never substitute an unsupported backend or executor.
+- Publish only through `deliver_report.py`, on the user's explicit instruction; it flags unresolved rubric failures without an accepted gap, unresolved citations, a missing final review or generation record (legacy reports: `APPROVAL_CURRENT`). Publication is not approval.
 - No script, validator, or auditor ever grants `VISUAL_PASS`; `visual_pdf_auditor.py` PASS is only `AUDITOR_PRECHECK` evidence. Only independent semantic inspection of the assembled report grants it; `HUMAN_REVIEW` against immutable hashes precedes `READY_TO_SUBMIT`.
 - Never ghostwrite a final submission. Preserve privacy, provenance, citations, and consent boundaries.
 - Use `academic-visual-builder` for figures and inspect them again in the assembled report; the visual direction changes hierarchy and composition, not only decoration.
@@ -46,7 +46,7 @@ Tools record phase durations in `timings.yml` (informational, never a gate; `too
 | `next` names a phase | Load its reference and run its executor (this skill, `research-workflow`, or the verifier). |
 | Intake data missing or ambiguous | Stop and ask; recording the contract is never approval. |
 | `next: review` | Present the current version with its findings; write `final-review.yml` only on an explicit answer, via `final_review_marker.py record`, never `printf`. |
-| Only `partial` requirements keep publication refused | Offer `accepted_gaps.py`; run it only after the user names requirement and reason. |
+| Only `partial` requirements stay open | Offer `accepted_gaps.py`; run it only after the user names requirement and reason. |
 | Type ambiguous or non-academic | Recommend or resolve a route; never fall back to Route A. |
 | Script PASS contradicts visible evidence | Record `VISUAL_FAIL`, correct, rebuild, repeat all gates. |
 | Inspection incomplete | Return `REVIEW_REQUIRED`, without `VISUAL_PASS`. |

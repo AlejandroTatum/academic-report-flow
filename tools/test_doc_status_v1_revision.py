@@ -1,9 +1,9 @@
-"""After a v1 with a failing validation, doc_status routes to review for a revision (S2).
+"""After a v1 with a failing validation, doc_status asks for a review with its findings (S2).
 
-The validation failure stays visible (validate ``blocked`` ``validation_failed``)
-and delivery stays blocked, but the human is pointed to reviewing v1 and asking
-for a revision (v2/v3) instead of a dead end at validate. Reports without a
-current v1, or with a passing validation, route as before.
+warn-only-gates S2: the validation failure is a warning (validate ``done`` with
+``warning: validation_failed``), never a block. The human reviews v1 with its
+findings and either asks for a revision (v2/v3) or records the review to continue.
+Reports without a current v1, or with a passing validation, route as before.
 """
 from __future__ import annotations
 
@@ -15,20 +15,21 @@ from pathlib import Path
 import pytest
 
 import deliver_report
-from conftest import _body, _final_review, _pdf, _report, _validation
+import doc_status
+from conftest import _body, _config, _final_review, _pdf, _report, _validation
 from test_report_v1_flow import FOUND_ONLY, _v1
 
 TOOLS = Path(__file__).resolve().parent
 
-REVISION_DETAIL = "v1 failed validation: review it and request a revision (v2/v3); publication stays blocked"
+VALIDATION_WARNING = "warning: validation_failed: validation.yml recorded result: fail"
 
 
 def _revision_guidance(folder: Path, pdf: Path) -> str:
     return (
-        f"v1 failed validation ({folder / 'validation.yml'} records result: fail) and publication stays "
-        f"blocked: ask the user to review {pdf} with its findings and to request a revision (v2/v3) "
-        f"that resolves them; apply it in {folder / 'body.md'}, rebuild and re-validate, then re-run "
-        "doc_status; a final review recorded now does not open delivery"
+        f"warning: v1 failed validation ({folder / 'validation.yml'} records result: fail): ask the user "
+        f"to review {pdf} with its findings and either request a revision (v2/v3) that resolves them "
+        f"(apply it in {folder / 'body.md'}, rebuild and re-validate, then re-run doc_status) or record "
+        f"{folder / 'final-review.yml'} to continue with v1 as it stands"
     )
 
 
@@ -48,10 +49,10 @@ def _states(payload: dict) -> dict[str, tuple[str, str, str]]:
     return {p["name"]: (p["state"], p["detail"], p["blockedReason"]) for p in payload["phases"]}
 
 
-def test_failed_validation_after_v1_routes_to_review_for_a_revision(
+def test_failed_validation_after_v1_is_a_warning_and_review_offers_a_revision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
-    folder, pdf = _v1(tmp_path, monkeypatch, capsys)  # rubric findings, final review recorded
+    folder, pdf = _v1(tmp_path, monkeypatch, capsys, review=False)  # rubric findings, no final review
     _validation(folder, pdf=pdf, result="fail", reason="rubric findings")
     folder = folder.resolve()
 
@@ -61,10 +62,10 @@ def test_failed_validation_after_v1_routes_to_review_for_a_revision(
     states = _states(payload)
     assert payload["next"] == "review" and payload["current"] == "review"
     assert states["generate"][0] == "done"
-    assert states["validate"] == ("blocked", "validation.yml recorded result: fail", "validation_failed")
-    assert states["review"] == ("current", REVISION_DETAIL, "")
+    assert states["validate"] == ("done", VALIDATION_WARNING, "")
+    assert states["review"][0] == "current"
     assert states["deliver"] == ("pending", "waiting for an earlier phase", "")
-    assert payload["blockedReasons"] == ["validation_failed"]
+    assert payload["blockedReasons"] == []
     guidance = _revision_guidance(folder, pdf.resolve())
     assert payload["gate"].startswith("review pending - " + guidance + "; open the PDF for the user")
     assert "\nnext: review\n" in machine.stdout
@@ -72,22 +73,27 @@ def test_failed_validation_after_v1_routes_to_review_for_a_revision(
     human = _cli(folder)
     assert human.returncode == 0
     lines = human.stdout.splitlines()
-    assert "- validate: blocked - validation.yml recorded result: fail" in lines
-    assert f"- review: current - {REVISION_DETAIL}" in lines
-    assert "- deliver: pending" in lines
+    assert f"- validate: done - {VALIDATION_WARNING}" in lines
     assert any(line.startswith("**Next**: review - " + guidance + "; open the PDF") for line in lines)
     assert "Route: " in human.stdout and "> [review] >" in human.stdout
     assert human.stdout.split("## Document Workflow Status", 1)[0] == machine.stderr
 
+    # Recording the review continues with v1 as it stands.
+    _final_review(folder, pdf=pdf)
+    assert _payload(_cli(folder, "--json").stdout)["next"] == "deliver"
+
     documents = tmp_path / "docs"
-    assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 1
-    assert capsys.readouterr().err.startswith(
-        "DELIVERY REFUSED: validation.yml no registra result: pass (registró: fail)."
-    )
-    assert not documents.exists()
+    # warn-only-gates S2: a failed receipt warns and the PDF is still delivered.
+    assert deliver_report.main([str(folder), "--documents-root", str(documents)]) == 0
+    captured = capsys.readouterr()
+    err = captured.err.splitlines()
+    assert "warning: validation.yml no registra result: pass (registró: fail)." in err
+    assert not any(line.startswith("DELIVERY REFUSED") for line in err)
+    assert "CON ADVERTENCIAS" in captured.out
+    assert len(list(documents.rglob("*.pdf"))) == 1
 
 
-def test_without_a_generated_v1_a_failed_validation_still_blocks_at_validate(tmp_path: Path) -> None:
+def test_without_a_generated_v1_a_failed_validation_is_a_warning_without_revision_guidance(tmp_path: Path) -> None:
     folder = (tmp_path / "wf").resolve()
     _report(folder)
     _body(folder)
@@ -95,12 +101,11 @@ def test_without_a_generated_v1_a_failed_validation_still_blocks_at_validate(tmp
     _validation(folder, pdf=pdf, result="fail")
     _final_review(folder, pdf=pdf)
 
-    payload = _payload(_cli(folder, "--json").stdout)
-    states = _states(payload)
-    assert payload["next"] != "review"
-    assert states["review"] == ("pending", "waiting for an earlier phase", "")
-    assert REVISION_DETAIL not in json.dumps(payload)
-    assert "request a revision" not in payload["gate"]
+    config = _config(folder)
+    validate = doc_status._phase_validate(folder, config, None)
+    assert (validate.state, validate.detail, validate.blocked_reason) == ("done", VALIDATION_WARNING, "")
+    assert doc_status._phase_review(folder, config, None).state == "done"
+    assert "request a revision" not in doc_status._guidance("review", folder, config)
 
 
 def test_passing_validation_after_v1_routes_as_before(
@@ -113,7 +118,8 @@ def test_passing_validation_after_v1_routes_as_before(
     states = _states(payload)
     assert payload["next"] == "review"
     assert states["validate"] == ("done", f"validation.yml passes for {pdf.name}", "")
-    assert states["review"][0] == "current" and states["review"][1] != REVISION_DETAIL
+    assert states["review"][0] == "current"
+    assert "request a revision" not in payload["gate"]
     assert payload["blockedReasons"] == []
     assert payload["gate"].startswith(f"review pending - ask the user to review {pdf.resolve()}, then record ")
 
