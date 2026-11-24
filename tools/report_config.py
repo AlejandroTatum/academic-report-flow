@@ -297,6 +297,14 @@ MIN_SOURCES_KEY = "min_sources"
 UNCITED_BIBLIOGRAPHY_KEY = "uncited_bibliography"
 FIGURE_PLACEMENT_KEY = "figure_placement"
 FIGURE_PLACEMENTS = ("float", "here")
+# Consecutive screenshots set two per row (skill-visual-organization S4).
+# Absent: runs of 3+ images are grouped; true: runs of 2+; false: never.
+FIGURE_GRID_KEY = "figure_grid"
+FIGURE_GRID_DEFAULT_MIN_RUN = 3
+# Failing typeset checks stop the build only where report.yml opts in
+# (skill-visual-organization S7): `block` stops it, `warn` (default) prints them.
+TYPESET_GATE_KEY = "typeset_gate"
+TYPESET_GATES = ("block", "warn")
 CITATION_STYLE_KEY = "citation_style"
 CITATION_STYLES = ("ieee", "apa")
 DEFAULT_STUDENT = "Alejandro Padilla"
@@ -561,6 +569,36 @@ class ReportConfig:
         if not isinstance(value, str) or value not in FIGURE_PLACEMENTS:
             raise ValueError(
                 f"{FIGURE_PLACEMENT_KEY} debe ser uno de {', '.join(FIGURE_PLACEMENTS)} "
+                f"en report.yml (recibido: {value!r})"
+            )
+        return value
+
+    @property
+    def figure_grid_min_run(self) -> int:
+        """Shortest run of consecutive images set two per row; 0 turns it off.
+
+        ``figure_grid`` absent groups runs of three or more, ``true`` runs of
+        two or more, ``false`` none. Any non-boolean value raises ValueError.
+        """
+        if FIGURE_GRID_KEY not in self.raw:
+            return FIGURE_GRID_DEFAULT_MIN_RUN
+        value = self.raw[FIGURE_GRID_KEY]
+        if not isinstance(value, bool):
+            raise ValueError(
+                f"{FIGURE_GRID_KEY} debe ser true o false en report.yml (recibido: {value!r})"
+            )
+        return 2 if value else 0
+
+    @property
+    def typeset_gate(self) -> str:
+        """``block`` when failing typeset checks stop the build, else ``warn`` (default).
+
+        Any other value raises ValueError.
+        """
+        value = self.raw.get(TYPESET_GATE_KEY, "warn")
+        if not isinstance(value, str) or value not in TYPESET_GATES:
+            raise ValueError(
+                f"{TYPESET_GATE_KEY} debe ser uno de {', '.join(TYPESET_GATES)} "
                 f"en report.yml (recibido: {value!r})"
             )
         return value
@@ -1171,6 +1209,8 @@ def load_report_config(folder: Path) -> ReportConfig:
         _ = config.min_sources
         _ = config.uncited_bibliography
         _ = config.figure_placement
+        _ = config.figure_grid_min_run
+        _ = config.typeset_gate
         _ = config.citation_style
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc

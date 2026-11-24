@@ -365,6 +365,48 @@ def convert_inline(text: str) -> str:
     return escaped
 
 
+# A long run of hex groups joined by ':' '.' or '-' — a MAC (0001.6453.DBC1,
+# 38:A7:46:39:D2:7B), an IPv4/IPv6 address or a range of them, with an
+# optional /prefix. TeX sees one unbreakable word and pushes it past a
+# tabularx X column (skill-visual-organization S3).
+BREAKABLE_TOKEN = re.compile(
+    r"(?<![\w\\@])(?=[0-9A-Fa-f:.\-]*\d)"
+    r"[0-9A-Fa-f]{0,4}(?:[:.\-][0-9A-Fa-f]{0,4}){2,}(?:/\d{1,3})?(?![\w@])"
+)
+BREAKABLE_TOKEN_MIN_LENGTH = 12
+# Spans whose characters must reach LaTeX untouched: a break inside a URL or a
+# citation key changes what it points at, and math has its own spacing.
+_PROTECTED_CELL_SPAN = re.compile(r"\\(?:url|nolinkurl|href|cite|path)\{[^}]*\}|\$[^$]*\$")
+
+
+def allow_token_breaks(latex: str) -> str:
+    r"""Let long address-like tokens break after each ``:`` ``.`` or ``-``.
+
+    The same zero-width ``\allowbreak{}`` inline code already uses: no hyphen
+    is added and the glyphs do not change. URLs, citations and math are left
+    alone.
+    """
+    def breakable(match: re.Match[str]) -> str:
+        token = match.group(0)
+        if len(token) < BREAKABLE_TOKEN_MIN_LENGTH:
+            return token
+        return re.sub(r"([:.\-])(?=.)", r"\1\\allowbreak{}", token)
+
+    pieces: list[str] = []
+    position = 0
+    for span in _PROTECTED_CELL_SPAN.finditer(latex):
+        pieces.append(BREAKABLE_TOKEN.sub(breakable, latex[position:span.start()]))
+        pieces.append(span.group(0))
+        position = span.end()
+    pieces.append(BREAKABLE_TOKEN.sub(breakable, latex[position:]))
+    return "".join(pieces)
+
+
+def convert_table_cell(text: str) -> str:
+    """``convert_inline`` for a table cell, where long addresses may break."""
+    return allow_token_breaks(convert_inline(text))
+
+
 # Fenced code blocks: ``` or ~~~ (three or more), with an optional language
 # word. Anything between an opening fence and its closing fence is literal.
 # Fence language word -> listings language. Anything absent renders plain
@@ -902,20 +944,59 @@ def table_column_weights(rows: list[list[str]], columns: int) -> list[float]:
     return weights
 
 
+# Screenshot grid cells (skill-visual-organization S4): half the line minus
+# the gutter, and a height cap so a tall capture cannot fill the page.
+GRID_CELL_WIDTH = "0.48"
+GRID_CELL_MAX_HEIGHT = "0.32"
+
+
+def warn_short_table_rows(rows: list[list[str]], lines: list[str], table_start: int) -> None:
+    """Report every row with fewer cells than the table (S3).
+
+    The renderer still completes the row with empty cells so the LaTeX stays
+    valid, but an empty cell in a delivered table is a visible gap: it must be
+    pointed at, not filled in silently.
+    """
+    if len(rows) < 2:
+        return
+    columns = max(len(row) for row in rows)
+    label = f"Tabla en la línea {table_start + 1}"
+    for back in range(table_start - 1, max(-1, table_start - 6), -1):
+        caption = re.match(r"^(?:Tabla|Table)\s+([0-9A-Z]+)\.", lines[back].strip())
+        if caption:
+            label = f"Tabla {caption.group(1)} (línea {table_start + 1})"
+            break
+    for number, row in enumerate(rows):
+        if len(row) < columns:
+            where = "el encabezado" if number == 0 else f"la fila {number}"
+            print(
+                f"Aviso: {label}: {where} tiene {len(row)} de {columns} celdas; "
+                "se completa con celdas vacías. Completá la fila en el cuerpo.",
+                file=sys.stderr,
+            )
+
+
 def markdown_to_latex(
     markdown: str,
     suppress_bibliography_heading: bool = False,
     build_dir: Path | None = None,
     table_styles: TableStylesContext | None = None,
-    figure_placement: str = "tbp",
+    figure_placement: str = "!htbp",
     definition_lists: bool = False,
     booktabs_tables: bool = False,
     compact_headings: bool = False,
     column_layout: bool = False,
     keep_blocks_together: bool = False,
     emphasised_tables: bool = False,
+    figure_grid_min_run: int = 3,
 ) -> str:
     r"""Convert the report body to LaTeX.
+
+    ``figure_grid_min_run`` sets a run of at least that many consecutive
+    images (blank lines only between them, no explicit ``{width=..}``) two per
+    row, one ``figure`` per row and one numbered ``\caption`` per image, so the
+    numbering is the one the images would get standing alone. 0 turns it off;
+    a column page never groups.
 
     ``definition_lists`` turns Pandoc-style definition lists (a term line
     followed by ``: definition``) into ``description`` environments. It is off
@@ -987,6 +1068,32 @@ def markdown_to_latex(
         if keep_blocks_together:
             keep_chain[2] = len(output)
 
+    # grid_run: index of the first line after the last image of the run.
+    run_end = [0]
+
+    def grid_run(start: int) -> list[re.Match[str]]:
+        """The run of groupable images that starts at line *start*, or []."""
+        if figure_grid_min_run < 2 or column_layout:
+            return []
+        matches: list[re.Match[str]] = []
+        index, end = start, start
+        while index < len(lines):
+            line = lines[index].strip()
+            if not line:
+                index += 1
+                continue
+            match = IMAGE_PATTERN.fullmatch(line)
+            # An image with its own {width=..}/{height=..} keeps that size.
+            if match is None or figure_size(match.group("attrs")):
+                break
+            matches.append(match)
+            index += 1
+            end = index
+        if len(matches) < figure_grid_min_run:
+            return []
+        run_end[0] = end
+        return matches
+
     def split_table_row(row: str) -> list[str]:
         # GFM: `\|` is a literal pipe inside a cell, never a column break.
         stripped = re.sub(r"(?<!\\)\|$", "", row.strip()).lstrip("|")
@@ -1040,7 +1147,7 @@ def markdown_to_latex(
             for weight, name in zip(weights, alignments)
         )
         header_cells = rows[0] + [""] * (columns - len(rows[0]))
-        header_latex = [r"\reporttablehead{" + convert_inline(cell) + "}" for cell in header_cells]
+        header_latex = [r"\reporttablehead{" + convert_table_cell(cell) + "}" for cell in header_cells]
         if emphasised_tables:
             # Numeric columns are natural-width `r` columns, as wide as their
             # widest cell or header line, so a header word never hyphenates;
@@ -1111,7 +1218,7 @@ def markdown_to_latex(
             and re.sub(r"[*_\s]", "", body_rows[-1][0] if body_rows[-1] else "").lower().startswith("total")
         )
         for index, row in enumerate(body_rows):
-            cells = [convert_inline(cell) for cell in row + [""] * (columns - len(row))]
+            cells = [convert_table_cell(cell) for cell in row + [""] * (columns - len(row))]
             if total and index == len(body_rows) - 1:
                 output.append(r"\midrule")
                 cells = [rf"\textbf{{{cell}}}" for cell in cells]
@@ -1178,12 +1285,12 @@ def markdown_to_latex(
             table_open,
             r"\hline",
             r"\rowcolor[gray]{0.92}",
-            " & ".join(r"\textbf{" + convert_inline(cell) + "}" for cell in header_cells) + r" \\",
+            " & ".join(r"\textbf{" + convert_table_cell(cell) + "}" for cell in header_cells) + r" \\",
             r"\hline",
             r"\endhead",
         ])
         for idx, row in enumerate(rows[1:]):
-            output.append(" & ".join(convert_inline(cell) for cell in normalized(row)) + r" \\")
+            output.append(" & ".join(convert_table_cell(cell) for cell in normalized(row)) + r" \\")
             output.append(r"\hline")
         output.extend([
             rf"\end{{{env}}}",
@@ -1403,6 +1510,7 @@ def markdown_to_latex(
             while i < len(lines) and "|" in lines[i].strip() and lines[i].strip():
                 table_rows.append(split_table_row(lines[i]))
                 i += 1
+            warn_short_table_rows(table_rows, lines, table_start)
             if table_styles is not None:
                 header, body_rows = table_rows[0], table_rows[1:]
                 table_key, context = context_for_table(lines, table_start, header, body_rows)
@@ -1421,7 +1529,7 @@ def markdown_to_latex(
                     rows=body_rows,
                     style=selected_style,
                     status_indicators=table_styles.catalog.status_indicators,
-                    convert_inline=convert_inline,
+                    convert_inline=convert_table_cell,
                     emphasis_column=context.emphasis_column,
                 ))
             else:
@@ -1469,6 +1577,35 @@ def markdown_to_latex(
             continue
 
         image = IMAGE_PATTERN.match(stripped)
+        run = grid_run(i) if image else []
+        if run:
+            flush_paragraph(); close_list()
+            placement = "H" if in_annex else figure_placement
+            for start in range(0, len(run), 2):
+                row = run[start:start + 2]
+                output.extend([
+                    r"\Needspace{6\baselineskip}",
+                    rf"\begin{{figure}}[{placement}]",
+                    r"\centering",
+                ])
+                for position, match in enumerate(row):
+                    caption = convert_inline(match.group("caption"))
+                    caption = re.sub(r"\\url\{([^}]+)\}", r"\\protect\\url{\1}", caption)
+                    raw_src = match.group("src")
+                    resolved = resolve_figure(raw_src, build_dir) if build_dir is not None else None
+                    src = latex_escape(
+                        os.path.relpath(resolved, build_dir) if resolved is not None and build_dir is not None else raw_src
+                    )
+                    output.extend([
+                        r"\begin{minipage}[t]{" + GRID_CELL_WIDTH + r"\linewidth}",
+                        r"\centering",
+                        rf"\includegraphics[width=\linewidth,height={GRID_CELL_MAX_HEIGHT}\textheight,keepaspectratio]{{{src}}}",
+                        rf"\caption{{{caption}}}",
+                        r"\end{minipage}" + (r"\hfill" if position == 0 and len(row) == 2 else ""),
+                    ])
+                output.extend([r"\end{figure}", ""])
+            i = run_end[0]
+            continue
         if image:
             flush_paragraph(); close_list()
             caption = convert_inline(image.group("caption"))
@@ -1775,8 +1912,11 @@ def render_tex(config: ReportConfig) -> str:
     if config.figure_placement == "here":
         figure_spec = "H"
     else:
-        # `h` first: the figure stays where it is introduced when it fits.
-        figure_spec = "htbp" if template_key in INLINE_FIGURE_TEMPLATE_KEYS else "tbp"
+        # `h` first: the figure stays where it is introduced when it fits;
+        # `!` relaxes the float limits. Without `h`, a figure that misses the
+        # top of the page stays pending until the next \FloatBarrier, which
+        # then breaks the page and leaves its foot blank (S4).
+        figure_spec = "!htbp"
     definition_lists = template_key in DEFINITION_LIST_TEMPLATE_KEYS
     table_layout = {
         "definition_lists": definition_lists,
@@ -1785,6 +1925,7 @@ def render_tex(config: ReportConfig) -> str:
         "column_layout": template_key in COLUMN_LAYOUT_TEMPLATE_KEYS,
         "keep_blocks_together": template_key in KEEP_TOGETHER_TEMPLATE_KEYS,
         "emphasised_tables": template_key in EMPHASISED_TABLE_TEMPLATE_KEYS,
+        "figure_grid_min_run": config.figure_grid_min_run,
     }
     body = markdown_to_latex(
         main_source, build_dir=build_dir, table_styles=table_styles, figure_placement=figure_spec,

@@ -48,27 +48,27 @@ def test_rejects_other_values_at_load(tmp_path: Path, value: object) -> None:
         make_config(tmp_path, figure_placement=value)
 
 
-def test_markdown_to_latex_defaults_to_tbp() -> None:
+def test_markdown_to_latex_defaults_to_float_h_first() -> None:
     tex = build_latex_report.markdown_to_latex(BODY)
-    assert r"\begin{figure}[tbp]" in tex
+    assert r"\begin{figure}[!htbp]" in tex
 
 
 def test_markdown_to_latex_here_emits_H_and_keeps_needspace() -> None:
     tex = build_latex_report.markdown_to_latex(BODY, figure_placement="H")
     assert r"\begin{figure}[H]" in tex
     assert r"\Needspace{6\baselineskip}" in tex
-    assert "[tbp]" not in tex
+    assert "[!htbp]" not in tex
 
 
 def test_render_tex_default_keeps_float(tmp_path: Path) -> None:
     tex = build_latex_report.render_tex(make_config(tmp_path))
-    assert r"\begin{figure}[tbp]" in tex
+    assert r"\begin{figure}[!htbp]" in tex
 
 
 def test_render_tex_here_pins_figures(tmp_path: Path) -> None:
     tex = build_latex_report.render_tex(make_config(tmp_path, figure_placement="here"))
     assert r"\begin{figure}[H]" in tex
-    assert "[tbp]" not in tex
+    assert "[!htbp]" not in tex
 
 
 ANNEX_BODY = (
@@ -82,5 +82,5 @@ def test_annex_figures_stay_where_they_are_written() -> None:
     # leave that page empty and jump to the next one.
     tex = build_latex_report.markdown_to_latex(ANNEX_BODY)
     before, after = tex.split(r"\section{Anexos}")
-    assert r"\begin{figure}[tbp]" in before and r"\begin{figure}[H]" not in before
-    assert r"\begin{figure}[H]" in after and "[tbp]" not in after
+    assert r"\begin{figure}[!htbp]" in before and r"\begin{figure}[H]" not in before
+    assert r"\begin{figure}[H]" in after and "[!htbp]" not in after

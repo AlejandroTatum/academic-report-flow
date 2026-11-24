@@ -62,7 +62,7 @@ def test_a_figure_stays_before_the_next_subsection_heading(
 
     config = build_latex_report.build(folder, compile_pdf=True)
 
-    assert r"\begin{figure}[tbp]" in config.tex_path.read_text(encoding="utf-8")
+    assert r"\begin{figure}[!htbp]" in config.tex_path.read_text(encoding="utf-8")
     text = subprocess.run(
         ["pdftotext", "-layout", str(config.pdf_path), "-"],
         check=True, capture_output=True, text=True,

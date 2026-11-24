@@ -168,19 +168,19 @@ def test_unresolvable_figure_falls_back_to_the_historical_width_only_default(
 
 
 # ---------------------------------------------------------------------------
-# Floats stay bound to their section (#38): [tbp] lets a figure drift within
+# Floats stay bound to their section (#38): [!htbp] lets a figure drift within
 # the page, but nothing bounded how far until a \FloatBarrier closes every
 # section.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("template", TEMPLATE_KEYS)
-def test_figure_is_emitted_with_tbp_placement(tmp_path: Path, template: str) -> None:
-    """Figures float ([tbp]), not fixed ([H]), across every template (#36)."""
+def test_figure_is_emitted_with_float_placement(tmp_path: Path, template: str) -> None:
+    """Figures float ([!htbp], h first: S4), not fixed ([H]), across every template (#36)."""
     config = make_config(tmp_path, BODY_WITH_FIGURE, template)
     config.tex_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = build_latex_report.render_tex(config)
-    assert r"\begin{figure}[tbp]" in rendered
+    assert r"\begin{figure}[!htbp]" in rendered
 
 
 @pytest.mark.parametrize("template", (*TEMPLATE_KEYS, "ape"))

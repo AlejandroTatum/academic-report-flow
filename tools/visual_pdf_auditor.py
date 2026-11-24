@@ -7,6 +7,7 @@ each page for common visual risks in academic PDF output:
 
   - Near-blank pages (almost no ink at all)
   - Excessive whitespace (content stopping well short of the page bottom)
+  - Large blank gaps above, below or beside the figures of a figure page
   - Ink/tone blocks touching page edges (possible clipping)
   - Possible orphan headings near page bottom
   - Suspiciously low content density
@@ -112,6 +113,18 @@ WHITESPACE_SOLID_RUN_FRAC = 0.60  # a page whose ink is one contiguous block
 # tables break into lines, so they never come close — 0.21 is the highest value
 # measured on the reference corpus.
 
+# Figure gaps (skill-visual-organization S4) — the whitespace check above
+# exempts figure-dominated pages, so a float page with its figure centred
+# between two blank bands, or a pinned figure followed by a third of a page of
+# nothing, never surfaced. A page counts as a figure page when one contiguous
+# inked block is at least FIGURE_BLOCK_MIN_FRAC of the page height: text and
+# table lines break into rows far shorter than that.
+FIGURE_BLOCK_MIN_FRAC = 0.15
+FIGURE_GAP_MIN_FRAC = 0.25  # blank band, as a fraction of page height, worth
+# a warning — the same quarter page the whitespace tail uses.
+FIGURE_GAP_TOP_FRAC = 0.10  # where the text area starts (2.5 cm of A4 is
+# 0.084); a running header above it is not content to measure from.
+
 # Orphan-heading detection — "a short ink strip whose blank tail reaches the
 # page bottom". Every pixel threshold below is normalized against `dpi`
 # (inch * dpi); every other threshold is a fraction of page height/width.
@@ -150,6 +163,9 @@ class PageFinding:
     density_frac: Optional[float] = None
     excessive_whitespace: bool = False
     whitespace_frac: Optional[float] = None
+    figure_gap: bool = False
+    figure_gap_frac: Optional[float] = None
+    figure_gap_side: Optional[str] = None
     table_suspect: bool = False
     table_confidence: Optional[float] = None
     ink_center_of_mass_y: Optional[float] = None
@@ -233,6 +249,15 @@ def page_issues(finding: PageFinding, total_pages: int) -> list[PageIssue]:
                 WARNING,
                 "EXCESSIVE_WHITESPACE",
                 f"blank tail={finding.whitespace_frac} of page height",
+            ),
+        )
+
+    if finding.figure_gap:
+        issues.append(
+            PageIssue(
+                WARNING,
+                "FIGURE_GAP",
+                f"blank gap={finding.figure_gap_frac} of page height {finding.figure_gap_side} the figure",
             ),
         )
 
@@ -719,6 +744,58 @@ def check_excessive_whitespace(
     return True, round(blank_tail, 3)
 
 
+def check_figure_gaps(
+    img: Image.Image,
+    *,
+    is_cover: bool = False,
+    is_last_page: bool = False,
+) -> tuple[bool, Optional[float], Optional[str]]:
+    """Report a large blank band on a page that carries a figure.
+
+    Returns (is_reported, gap_fraction, side) where side is ``above`` (from
+    the top of the text area to the first content), ``below`` (from the last
+    content to the footer band) or ``between`` (inside the page, between two
+    blocks of content). Only pages with a figure-sized solid block are
+    measured; text pages belong to ``check_excessive_whitespace()``. Like that
+    check it is a WARNING: whether the gap is wanted is a human judgement.
+    The cover and the closing page are exempt for the same reasons.
+    """
+    if is_cover or is_last_page:
+        return False, None, None
+    if ink_fraction(img) < MIN_CONTENT_FRAC:
+        return False, None, None  # the density checks own this page
+
+    gs = _grayscale(img)
+    h = gs.height
+    rows = _row_ink_profile(gs)
+    top = int(h * FIGURE_GAP_TOP_FRAC)
+    scan_end = int(h * (1.0 - ORPHAN_FOOTER_BAND_FRAC))
+    inked = [rows[y] > WHITESPACE_INK_ROW_MIN for y in range(scan_end)]
+
+    longest = run = 0
+    for y in range(top, scan_end):
+        run = run + 1 if inked[y] else 0
+        longest = max(longest, run)
+    if longest / h < FIGURE_BLOCK_MIN_FRAC:
+        return False, None, None
+
+    ink_rows = [y for y in range(top, scan_end) if inked[y]]
+    first, last = ink_rows[0], ink_rows[-1]
+    candidates = [((first - top) / h, "above"), ((scan_end - 1 - last) / h, "below")]
+    blank = 0
+    for y in range(first, last + 1):
+        if inked[y]:
+            if blank:
+                candidates.append((blank / h, "between"))
+            blank = 0
+        else:
+            blank += 1
+    gap, side = max(candidates, key=lambda item: item[0])
+    if gap < FIGURE_GAP_MIN_FRAC:
+        return False, None, None
+    return True, round(gap, 3), side
+
+
 def check_table_like(img: Image.Image) -> tuple[bool, Optional[float]]:
     """Detect likely table regions via edge density + row-band transitions."""
     gs = _grayscale(img)
@@ -994,6 +1071,18 @@ def audit_pdf(
             )
             finding.excessive_whitespace = blank
             finding.whitespace_frac = tail
+
+            # Figure gaps — the pages the whitespace check exempts as
+            # figure-dominated; a page it already flagged is not told twice.
+            if not blank:
+                gap, gap_frac, gap_side = check_figure_gaps(
+                    img,
+                    is_cover=(page_num == 1),
+                    is_last_page=(page_num == n_pages),
+                )
+                finding.figure_gap = gap
+                finding.figure_gap_frac = gap_frac
+                finding.figure_gap_side = gap_side
 
             # Table suspect
             tbl, tblc = check_table_like(img)

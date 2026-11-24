@@ -8,7 +8,8 @@ deterministic part of that, scoped to the templates that opt in:
   1. ``markdown_to_latex`` only emits the booktabs table with
      ``booktabs_tables=True``; the default keeps the legacy grid (S6);
   2. ``render_tex`` turns it on for ``aa`` and ``acd`` and for no other
-     template (APE, UNL keep the grid, the ``tbp`` figure and the look-ahead);
+     template (APE, UNL keep the grid and the look-ahead; every template
+     floats figures ``[!htbp]`` by default since skill-visual-organization S4);
   3. the two templates define the macros that output relies on.
 
 Purely visual tweaks (indentation, gaps, footer) are checked on the rendered
@@ -120,8 +121,10 @@ def test_booktabs_tables_are_off_by_default_and_keep_the_grid() -> None:
     assert r"\toprule" not in tex and r"\reporttablehead" not in tex
 
 
-def test_default_figure_placement_is_unchanged() -> None:
-    assert r"\begin{figure}[tbp]" in build_latex_report.markdown_to_latex(FIGURE)
+def test_default_figure_placement_floats_with_h_first() -> None:
+    # skill-visual-organization S4: `h` first and `!` so a figure is not left
+    # pending until a \FloatBarrier breaks the page.
+    assert r"\begin{figure}[!htbp]" in build_latex_report.markdown_to_latex(FIGURE)
 
 
 def test_compact_look_ahead_replaces_the_page_sized_needspace() -> None:
@@ -173,7 +176,7 @@ def test_aa_and_acd_render_booktabs_inline_figures_and_compact_headings(render, 
     assert len(blocks) == 2
     for block in blocks:
         assert r"\toprule" in block and r"\hline" not in block
-    assert r"\begin{figure}[htbp]" in tex
+    assert r"\begin{figure}[!htbp]" in tex
     assert r"\Needspace{5\baselineskip}" in tex
     assert not re.search(r"\\Needspace\{(16|18)\\baselineskip\}", tex)
 
@@ -184,13 +187,13 @@ def test_explicit_here_placement_still_pins_the_figure(render, tmp_path: Path) -
     assert r"\begin{figure}[H]" in tex
 
 
-def test_other_templates_keep_the_grid_the_tbp_figure_and_the_look_ahead(tmp_path: Path) -> None:
+def test_other_templates_keep_the_grid_and_the_look_ahead(tmp_path: Path) -> None:
     """S6: `template: unl` (and APE, by key) render exactly as before."""
     tex = aa_render(tmp_path, template="unl")
     blocks = table_blocks(tex)
     assert len(blocks) == 2 and all(r"\hline" in block for block in blocks)
     assert r"\toprule" not in tex
-    assert r"\begin{figure}[tbp]" in tex
+    assert r"\begin{figure}[!htbp]" in tex
     assert r"\Needspace{18\baselineskip}" in tex
 
 

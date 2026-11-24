@@ -581,3 +581,44 @@ def test_citation_style_accepts_known_values(tmp_path: Path, value: str) -> None
 def test_citation_style_rejects_other_values_at_load(tmp_path: Path, value: object) -> None:
     with pytest.raises(SystemExit, match="citation_style"):
         load_report_config(_citation_style_folder(tmp_path, citation_style=value))
+
+
+# figure_grid (skill-visual-organization S4): consecutive screenshots share a row.
+
+
+def test_figure_grid_defaults_to_runs_of_three(tmp_path: Path) -> None:
+    config = load_report_config(_citation_style_folder(tmp_path))
+    assert config.figure_grid_min_run == 3
+
+
+@pytest.mark.parametrize(("value", "min_run"), [(True, 2), (False, 0)])
+def test_figure_grid_true_groups_pairs_and_false_turns_it_off(tmp_path: Path, value: bool, min_run: int) -> None:
+    config = load_report_config(_citation_style_folder(tmp_path, figure_grid=value))
+    assert config.figure_grid_min_run == min_run
+
+
+@pytest.mark.parametrize("value", ["yes", 2, None, "auto"])
+def test_figure_grid_rejects_non_booleans_at_load(tmp_path: Path, value: object) -> None:
+    with pytest.raises(SystemExit, match="figure_grid"):
+        load_report_config(_citation_style_folder(tmp_path, figure_grid=value))
+
+
+# typeset_gate (skill-visual-organization S7): failing typeset checks block the
+# build only for subjects that opt in; everyone else gets warnings.
+
+
+def test_typeset_gate_defaults_to_warn(tmp_path: Path) -> None:
+    config = load_report_config(_citation_style_folder(tmp_path))
+    assert config.typeset_gate == "warn"
+
+
+@pytest.mark.parametrize("value", ["block", "warn"])
+def test_typeset_gate_accepts_block_and_warn(tmp_path: Path, value: str) -> None:
+    config = load_report_config(_citation_style_folder(tmp_path, typeset_gate=value))
+    assert config.typeset_gate == value
+
+
+@pytest.mark.parametrize("value", ["BLOCK", "strict", "", True, 1, None])
+def test_typeset_gate_rejects_other_values_at_load(tmp_path: Path, value: object) -> None:
+    with pytest.raises(SystemExit, match="typeset_gate"):
+        load_report_config(_citation_style_folder(tmp_path, typeset_gate=value))
