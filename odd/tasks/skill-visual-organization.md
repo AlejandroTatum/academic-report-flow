@@ -21,9 +21,9 @@ Evidence: APE 7 work folder university/.reports-system/automation/reports/redes-
 - [x] T2 (S3, S5) typeset tools: tools/typeset_auto.py, tools/typeset.py headers from caption parentheses, cell audit, inline/leftover 'Figura:' handling, with tests — writer W2.
 - [x] T3 (S3, S4) layout: tools/build_latex_report.py float default + screenshot grouping + breakable tokens in table cells, tools/visual_pdf_auditor.py gaps on figure pages, with tests — writer W3.
 - [x] T4 verify (Risk: item 3, shared build/typeset code used by every report) — independent verifier; rebuild APE 7 to compare.
-- [ ] T6 (S7) per-subject typeset gate: report.yml `typeset_gate: block|warn` (default warn); Redes reports block (profile/intake sets it); build.py, build_report_auto.py and doc_status honor it — writer.
-- [ ] T7 (S8) commit the user's templates/ape-report.tex change on its own with the 2 test_ape_template expectations updated — inline.
-- [ ] T5 commits per unit on feat/visual-organization; push/PR is the user's call.
+- [x] T6 (S7) per-subject typeset gate: report.yml `typeset_gate: block|warn` (default warn); Redes reports block (profile/intake sets it); build.py, build_report_auto.py and doc_status honor it — writer.
+- [x] T7 (S8) commit the user's templates/ape-report.tex change on its own with the 2 test_ape_template expectations updated — inline.
+- [x] T5 commits per unit on feat/visual-organization; push/PR is the user's call.
 
 ## Log
 
@@ -34,3 +34,4 @@ Evidence: APE 7 work folder university/.reports-system/automation/reports/redes-
 - L5 (2026-11-24) T1-T3 done by W1-W3 (uncommitted). APE 7 rebuilt with new tools: typeset auto regenerated 12 tables/20 figures with zero manual fixes, all typeset checks ok, 29 -> 25 pages, no overflow, auditor no warnings; screenshots in 2-per-row grids. Comparison PDF ~/Downloads/APE2-F2-comparacion-skill-nueva.pdf; previous in backups/pre-skill-rebuild. Verifier mwuxv7sa-9-twt5 running.
 - L6 Verifier T4: S1,S3,S4,S5 pass; S2 partial (diagram requirement enforced only via plan deliverables); S6 partial (typeset checks gate build). SKILL.md trim lost ': this skill owns intake' -> restored, new rule line shortened to keep the 1000-word budget (tests/skills 242 pass). 2 test_ape_template failures confirmed caused by the user's template change (pass with HEAD template).
 - L7 User answers: gate -> "podriamos ahcer la regla salte en ciertas materias, por ejemplo en redes va de ley"; grid -> "Cualquier imagen seguida (Recomendado)"; template -> "Commit aparte con tests al día".
+- L8 Commits on feat/visual-organization: 65fbf35 T7 template; 183651f T1 rules; f9bd765 T3 layout (+ typeset_gate key validation in report_config); 70985de T2+T6 typeset + per-subject gate + Redes profile. Full suite at tip: 3576 passed. Existing Redes report.yml files lack typeset_gate (default warn) until course_profile.py runs or the key is added. Push/PR: user's decision.
