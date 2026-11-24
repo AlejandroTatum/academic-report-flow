@@ -78,6 +78,15 @@ def test_body_check_long_paragraph_warns_without_blocking_budget(monkeypatch: py
     assert "FAIL" in capsys.readouterr().out
 
 
+def test_body_check_paragraph_over_120_words_fails_but_exits_zero(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    body = "# A\n\n" + " ".join(["palabra"] * 121)
+    monkeypatch.setattr(content_check, "body_check_results", lambda folder: content_check.concision.concision_results(body, [], None))
+    assert content_check.run_body_check(Path("unused")) == 0
+    captured = capsys.readouterr()
+    assert "[FAIL] long_paragraphs" in captured.out
+    assert "body_check_failed: long_paragraphs" in captured.err
+
+
 def test_matrix_derives_cumple_falta_per_criterion_with_no_flojo(tmp_path: Path) -> None:
     folder = _verify_folder(tmp_path / "wf")
     matrix = _verification(folder, findings=["shared"], requirements=[

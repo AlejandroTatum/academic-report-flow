@@ -9,7 +9,9 @@ The direction sets how a table or figure looks; these rules decide whether it be
 - Content: show the project's actual data, components or relationships (measured values, the real circuit, modules, states or decisions of this work); never a generic or decorative template that would fit any report on the topic.
 - Title: an informative title that says what the visual shows and, when it fits, what it reveals; units in headers or axes and the source (own measurement, guide, cited reference) when applicable.
 - Data: never invent measurements, results or values to fill a table or chart; a value that is not available stays out or is marked as pending in the text.
-- Count: no quota of tables or figures; add one only where it supports analysis or a comparison the text needs, and none is a valid outcome.
+- Diagrams by default: every major concept section (each `##` of Resultados and each control question that explains a concept, mechanism, structure or process) carries at least one explanatory own diagram built with `academic-visual-builder`, planned in the plan. Screenshots alone (simulator, terminal, guide captures) never count as explanatory diagrams; they are evidence, not explanation.
+- Organized by default: each Resultados subsection and each control question carries at least one table, list or own diagram; an enumerable run of 3+ items is a list or a table, never a sentence.
+- Count: beyond those defaults there is no quota of tables or figures; add one more only where it supports analysis or a comparison the text needs.
 - Prose interprets: the surrounding paragraph says what the visual shows and why it matters; it never repeats the cells or labels one by one.
 
 ## Technical

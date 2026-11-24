@@ -3,7 +3,8 @@
 No guide asks for more text, so these checks only cap: a per-section word
 budget (explicit ``max_words`` per criterion, or the criterion's weight share of
 the rubric's total ``max_words``), the total budget, stock filler phrases, and
-a warning for paragraphs longer than ``LONG_PARAGRAPH_WORDS``. Only prose counts: headings,
+a warning for paragraphs longer than ``LONG_PARAGRAPH_WORDS`` and a failure for
+paragraphs (not list items) longer than ``FAILING_PARAGRAPH_WORDS``. Only prose counts: headings,
 tables, code, display math, images and citation keys are excluded.
 
 ``prose_findings`` adds advisory text-quality lint (empty openers, wordy phrases,
@@ -20,6 +21,8 @@ import unicodedata
 from markdown_image import IMAGE_PATTERN
 
 LONG_PARAGRAPH_WORDS = 80
+# A paragraph over this fails the body check (a work-time check; delivery never reads it).
+FAILING_PARAGRAPH_WORDS = 120
 
 # Stock padding; matched case- and accent-insensitively on whole words.
 FILLER_PHRASES = (
@@ -136,16 +139,29 @@ def _prose_blocks(body: str) -> list[str]:
 
 def _located_blocks(body: str) -> list[tuple[str, int, str]]:
     """Prose blocks as ``(heading, number within that heading, text)``."""
-    blocks: list[tuple[str, int, str]] = []
+    return [(heading, number, text) for heading, number, text, _is_item in _typed_blocks(body)]
+
+
+def _paragraphs(body: str) -> list[str]:
+    """Prose paragraphs only: list items are excluded."""
+    return [text for _heading, _number, text, is_item in _typed_blocks(body) if not is_item]
+
+
+def _typed_blocks(body: str) -> list[tuple[str, int, str, bool]]:
+    """Prose blocks as ``(heading, number, text, is_list_item)``."""
+    blocks: list[tuple[str, int, str, bool]] = []
     current: list[str] = []
     heading = ""
     counts: dict[str, int] = {}
+    item = False
 
     def flush() -> None:
+        nonlocal item
         if current:
             counts[heading] = counts.get(heading, 0) + 1
-            blocks.append((heading, counts[heading], " ".join(current)))
+            blocks.append((heading, counts[heading], " ".join(current), item))
             current.clear()
+        item = False
 
     lines = body.splitlines()
     index = 0
@@ -179,6 +195,7 @@ def _located_blocks(body: str) -> list[tuple[str, int, str]]:
             continue
         if _LIST_ITEM.match(line):
             flush()
+            item = True
             current.append(_LIST_ITEM.sub("", line, count=1))
             continue
         current.append(stripped)
@@ -332,6 +349,28 @@ def long_paragraph_problems(body: str, limit: int = LONG_PARAGRAPH_WORDS) -> lis
     return problems
 
 
+def failing_paragraph_problems(body: str, limit: int = FAILING_PARAGRAPH_WORDS) -> list[str]:
+    """Paragraphs (list items and tables excluded) over ``limit`` words."""
+    problems = []
+    for block in _paragraphs(body):
+        count = _count(block)
+        if count > limit:
+            problems.append(f"{count} words (> {limit}): {block[:60]}")
+    return problems
+
+
+def _long_paragraphs_result(body: str) -> dict:
+    """``long_paragraphs``: fails on a paragraph over 120 words, warns over 80."""
+    failing = failing_paragraph_problems(body)
+    if failing:
+        return {"check": "long_paragraphs", "ok": False,
+                "detail": "split into a list, table or shorter paragraphs; " + "; ".join(failing)}
+    long = long_paragraph_problems(body)
+    return {"check": "long_paragraphs", "ok": True,
+            "detail": "warning: review readability; " + "; ".join(long) if long
+            else f"no paragraph over {LONG_PARAGRAPH_WORDS} words"}
+
+
 def _mask(text: str) -> str:
     """``text`` with citations, images and inline math blanked, offsets unchanged."""
     for pattern in (_CITATION, IMAGE_PATTERN, _INLINE_MATH):
@@ -483,15 +522,12 @@ def word_budget_result(body: str, criteria: list[dict], total: int | None) -> di
 
 
 def concision_results(body: str, criteria: list[dict], total: int | None) -> list[dict]:
-    """Blocking budget, filler and formulaic-conclusion checks plus advisory warnings."""
+    """Blocking budget, filler, paragraph-over-120 and formulaic-conclusion checks plus advisory warnings."""
     findings = prose_findings(body)
     filler = filler_problems(body)
     results = [word_budget_result(body, criteria, total),
                {"check": "filler_phrases", "ok": not filler, "detail": "; ".join(filler) or "no stock filler phrases"}]
-    long = long_paragraph_problems(body)
-    results.append({"check": "long_paragraphs", "ok": True,
-                    "detail": "warning: review readability; " + "; ".join(long) if long
-                    else f"no paragraph over {LONG_PARAGRAPH_WORDS} words"})
+    results.append(_long_paragraphs_result(body))
     # Appended after the original three so consumers reading them by position keep working.
     formulaic = formulaic_conclusion_problems(findings)
     results.append({"check": "formulaic_conclusion", "ok": not formulaic,

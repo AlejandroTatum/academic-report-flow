@@ -132,6 +132,32 @@ def test_long_paragraph_is_advisory_but_explicit_budget_still_blocks() -> None:
     assert limited["word_budget"]["ok"] is False
 
 
+def test_paragraph_over_120_words_fails_the_long_paragraphs_check() -> None:
+    body = "# A\n\n" + " ".join(["palabra"] * 121) + "\n"
+    results = {r["check"]: r for r in concision.concision_results(body, [], total=None)}
+    assert results["long_paragraphs"]["ok"] is False
+    assert "121 words (> 120)" in results["long_paragraphs"]["detail"]
+
+
+def test_paragraph_of_100_words_passes_with_a_warning() -> None:
+    body = "# A\n\n" + " ".join(["palabra"] * 100) + "\n"
+    results = {r["check"]: r for r in concision.concision_results(body, [], total=None)}
+    assert results["long_paragraphs"]["ok"] is True
+    assert results["long_paragraphs"]["detail"].startswith("warning:")
+    assert "100 words (> 80)" in results["long_paragraphs"]["detail"]
+
+
+def test_list_items_and_tables_are_not_failing_paragraphs() -> None:
+    long_item = " ".join(["palabra"] * 130)
+    draft_table = "Tabla 1. Datos (a; b; c).\n\n" + "\n".join("- " + "; ".join(["celda"] * 50) for _ in range(3))
+    pipe_table = "| " + " | ".join(["celda"] * 130) + " |"
+    body = f"# A\n\n- {long_item}\n\n1. {long_item}\n\n{draft_table}\n\n{pipe_table}\n"
+    assert concision.failing_paragraph_problems(body) == []
+    results = {r["check"]: r for r in concision.concision_results(body, [], total=None)}
+    assert results["long_paragraphs"]["ok"] is True
+    assert "warning" in results["long_paragraphs"]["detail"]  # long list items still warn
+
+
 def test_inline_math_is_not_counted_as_prose() -> None:
     assert concision.prose_words(r"Con $V_f \approx 2\ \text{V}$ enciende.") == 2
 
