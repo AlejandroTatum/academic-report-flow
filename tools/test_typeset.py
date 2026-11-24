@@ -637,3 +637,21 @@ def test_final_build_follows_the_typeset_gate(
         assert built and exc.value.code == 0
     else:
         assert not built and "TYPESET REQUIRED" in str(exc.value) and "body_format" in str(exc.value)
+
+
+# odd/tasks/skill-visual-organization.md S9: a bold term inside a sentence is
+# fine; a line that is only bold still fails as a pseudo-heading.
+def test_check_accepts_bold_terms_in_sentences_but_not_bold_only_lines(tmp_path: Path) -> None:
+    folder = _approved(tmp_path)
+    (folder / "body.typeset.md").write_text(
+        "# Informe\n\nLa **dirección MAC** identifica la tarjeta y el **ARP** la resuelve.\n\n"
+        "- Cada entrada **ARP** dura minutos.\n",
+        encoding="utf-8",
+    )
+    typeset.bind(folder)
+    assert _check(folder)["body_format"]["ok"]
+
+    (folder / "body.typeset.md").write_text("# Informe\n\n**Dirección MAC**\n\nTexto.\n", encoding="utf-8")
+    typeset.bind(folder)
+    check = _check(folder)["body_format"]
+    assert not check["ok"] and "bold-only line" in check["detail"]

@@ -12,6 +12,17 @@ directive follows it. Otherwise the table gets an empty header row. A
 ``Figura:`` line with a sentence after its path becomes the image and that
 sentence as its own paragraph.
 
+Technical tokens (``TECHNICAL_TOKENS``: file names, MAC and IP addresses,
+prefixes, interface names, binary and hex values, the ``CLI_COMMANDS``) are
+wrapped in inline code in prose, list items and table cells; headings,
+captions, image lines, URLs, links, citations, math (inline and display) and
+existing code stay as they are. In each ``#``/``##`` section, in prose and list
+items only and never as a bold-only line, a term is bolded once: terms listed in
+report.yml ``key_terms`` at their first use, then the term that opens a
+definition paragraph or list item (``El MAC flooding es un ...``).
+Both passes are idempotent: formatting an already formatted text changes
+nothing.
+
 ``pending`` lists what is left for the agent; ``empty_table_headers``,
 ``table_cell_problems`` and ``figure_leftovers`` back the ``table_headers``,
 ``table_cells`` and ``figure_leftovers`` checks of ``typeset.py check``.
@@ -42,6 +53,115 @@ _MIN_TABLE_CELLS = 3
 _TRAILING_PUNCTUATION = ".,;:!?"
 # Stripped from the end of a URL only when the same kind of mark opens right before it.
 _WRAPPING_MARKS = "*_'‘’"
+
+# Commands set in monospace when they appear in prose (skill-visual-organization
+# S9). Edit this list to add commands; matching ignores case and spacing, and an
+# address or interface right after the command joins the same code span.
+CLI_COMMANDS = (
+    "show mac address-table dynamic",
+    "show mac address-table",
+    "clear mac address-table dynamic",
+    "mac address-table static",
+    "show ip interface brief",
+    "show ipv6 interface brief",
+    "show running-config",
+    "ipconfig /all",
+    "ipconfig",
+    "ip -6 addr show",
+    "ip addr show",
+    "arp -a",
+    "ping",
+    "tracert",
+    "traceroute",
+)
+_HEX = "[0-9A-Fa-f]"
+_OCTET = r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
+_IPV4 = rf"{_OCTET}(?:\.{_OCTET}){{3}}(?:/(?:3[0-2]|[12]?\d))?"
+_GROUP = rf"{_HEX}{{1,4}}"
+_IPV6 = (
+    rf"(?:(?:{_GROUP}:){{7}}{_GROUP}|(?:{_GROUP}(?::{_GROUP}){{0,6}})?::(?:{_GROUP}(?::{_GROUP}){{0,6}})?)"
+    r"(?:/(?:12[0-8]|1[01]\d|[1-9]?\d))?"
+)
+_MAC = rf"{_HEX}{{2}}(?P<sep>[:-]){_HEX}{{2}}(?:(?P=sep){_HEX}{{2}}){{4}}"
+_CISCO_MAC = rf"{_HEX}{{4}}\.{_HEX}{{4}}\.{_HEX}{{4}}"
+_INTERFACE = (
+    r"(?i:FastEthernet|GigabitEthernet|TenGigabitEthernet|Ethernet|Serial|Fa|Gi|Te|Se|Eth|Et)"
+    r"\d+(?:/\d+){1,2}(?:\.\d+)?"
+)
+_COMMAND = "(?i:" + "|".join(
+    r"\s+".join(re.escape(word) for word in command.split())
+    for command in sorted(CLI_COMMANDS, key=len, reverse=True)
+) + ")"
+# (kind, pattern) in priority order; each pattern carries its own boundaries.
+# A sentence-final '.' after a token is punctuation, not part of it.
+# File names: a name (optionally with a relative path) ending in one of these extensions.
+FILE_EXTENSIONS = (
+    "pkt", "pka", "pcap", "pcapng", "png", "jpg", "jpeg", "svg", "pdf", "txt", "log", "md", "yml", "yaml",
+    "json", "csv", "xml", "html", "cfg", "conf", "ini", "py", "sh", "tex", "bib", "docx", "xlsx", "pptx", "zip",
+)
+_FILE = (
+    r"(?:[\w-]+/)*[\w-]+(?:\.[\w-]+)*\.(?i:"
+    + "|".join(sorted(FILE_EXTENSIONS, key=len, reverse=True))
+    + ")"
+)
+TECHNICAL_TOKENS: tuple[tuple[str, str], ...] = (
+    ("file", rf"(?<![\w./\\-]){_FILE}(?![\w/-]|\.\w)"),
+    (
+        "command",
+        rf"(?<![\w-]){_COMMAND}(?:\s+(?:{_IPV4}|{_IPV6.replace('(?P<sep>', '(?:')}|{_CISCO_MAC}|{_INTERFACE}))?"
+        r"(?![\w-])",
+    ),
+    ("mac", rf"(?<![\w:./-]){_MAC}(?![\w:/-])"),
+    ("mac", rf"(?<![\w./]){_CISCO_MAC}(?![\w/]|\.\w)"),
+    ("ipv6", rf"(?<![\w:./]){_IPV6}(?![\w:/]|\.\w)"),
+    ("ipv4", rf"(?<![\w.:/]){_IPV4}(?![\w/]|\.\w)"),
+    ("interface", rf"(?<![\w/]){_INTERFACE}(?![\w/]|\.\w)"),
+    ("binary", r"(?<![\w./])[01]{8}(?:\.[01]{8}){0,3}(?![\w/]|\.\w)"),
+    ("hex", r"(?<![\w./])0x[0-9A-Fa-f]+(?![\w/]|\.\w)"),
+)
+TECHNICAL_TOKEN_KINDS = tuple(dict.fromkeys(kind for kind, _ in TECHNICAL_TOKENS))
+TECHNICAL_TOKEN_HELP = (
+    "technical tokens set in inline code: mac (38:a7:46:39:d2:7b, 38-A7-..., 0001.6453.DBC1), "
+    "ipv4 (192.168.10.1, 192.168.10.0/24, each end of a range), ipv6 (2001:db8::1, fe80::/10, ::1), "
+    "interface (Fa0/24, FastEthernet0/1, Gi0/1), binary (00111000, dotted octets), hex (0x0800), "
+    "command (" + ", ".join(CLI_COMMANDS) + "), file (APE2-F2-mac-ip.pkt, configs/sw1.txt; extensions: "
+    + ", ".join(FILE_EXTENSIONS) + ")"
+)
+_TOKEN_RE = re.compile("|".join(f"(?P<t{index}>{pattern})" for index, (_, pattern) in enumerate(TECHNICAL_TOKENS)))
+_TOKEN_KIND = {f"t{index}": kind for index, (kind, _) in enumerate(TECHNICAL_TOKENS)}
+# Spans no token or key term is looked for in. Bold spans are protected only
+# for the key-term pass.
+_PROTECTED = (
+    r"`[^`]*`|<!--.*?-->|<[A-Za-z][A-Za-z0-9+.-]*:[^>\s]*>|!?\[[^\]]*\]\([^)\s]*\)|\[-?@[^\]]*\]"
+    r"|\$[^$\n]+\$|" + _URL_RE.pattern
+    # A '(figures/x.png)' leftover stays as it is for the figure_leftovers check.
+    + r"|(?i:\((?:[^()\s]*/)?figures/[^()\s]*\)|\([^()\s]+/[^()\s]+\.(?:png|jpe?g|pdf|svg)\))"
+)
+_PROTECTED_RE = re.compile(_PROTECTED)
+_PROTECTED_BOLD_RE = re.compile(r"\*\*[^*\n]+\*\*|" + _PROTECTED)
+# Lines that are not prose: headings, captions, images and HTML.
+_NOT_PROSE_RE = re.compile(r"^\s{0,3}#{1,6}(?:\s|$)|^\s*(?:Tabla\s+\d+\.|Table\s+\d+\.|Figura\b|Figure\b)|^\s*!\[|^\s*<")
+_SECTION_RE = re.compile(r"^\s{0,3}#{1,2}(?:\s|$)")
+_BOLD_ONLY_RE = re.compile(r"^\*\*[^*]+\*\*[.:;,!?]?$")
+_BOLD_SPAN_RE = re.compile(r"\*\*[^*\n]+\*\*")
+# Display math blocks: '$$' or '\[' opens, '$$' or '\]' closes.
+_MATH_OPEN_RE = re.compile(r"^\s*(?:\$\$|\\\[)\s*$")
+_MATH_CLOSE_RE = re.compile(r"^\s*(?:\$\$|\\\])\s*$")
+# A definition: a paragraph or list item that opens with a term of one to four
+# words, optionally followed by '(ACR)' or ', o <alias>,', and 'es un/una' or
+# 'son unos/unas' (or 'is a/an'). Only the term is bolded.
+_DEFINITION_RE = re.compile(
+    r"^(?P<lead>\s*(?:[-*+]\s+|\d+[.)]\s+)?(?:(?:El|La|Los|Las|Un|Una|The|An?)\s+)?)"
+    r"(?P<term>[^\W\d_][\w-]*(?:\s+[\w-]+){0,3}?)"
+    r"(?=(?:\s+\([^()\n]{1,40}\))?(?:,\s+o\s+[^,\n]{1,60},)?\s+(?:es\s+(?:un|una)|son\s+(?:unos|unas)|is\s+an?)\s)",
+    re.IGNORECASE,
+)
+# First words that open a sentence about something other than a defined term.
+_NOT_A_TERM = frozenset(
+    "esto eso aquello este esta ese esa ello lo no se ya también tambien aquí aqui ahora hoy cada todo "
+    "primero segundo tercero cuarto quinto último ultimo resultado objetivo problema ejemplo caso motivo "
+    "idea punto paso cual que it this that there here result first second example".split()
+)
 
 
 def _code_flags(lines: list[str]) -> list[bool]:
@@ -192,12 +312,132 @@ def _table(rows: list[list[str]], header: list[str] | None = None) -> list[str]:
     return ["| " + " | ".join(name.replace("|", "\\|") for name in names) + " |", separator, *body]
 
 
-def auto_format(text: str) -> tuple[str, dict[str, int]]:
-    """The formatted text and how many tables, figures and URLs were converted."""
+def _spans(line: str, pattern: re.Pattern[str]) -> list[tuple[int, int]]:
+    return [match.span() for match in pattern.finditer(line)]
+
+
+def _inside(spans: list[tuple[int, int]], start: int, end: int) -> bool:
+    return any(start < span_end and end > span_start for span_start, span_end in spans)
+
+
+def wrap_technical_tokens(line: str) -> tuple[str, dict[str, int]]:
+    """``line`` with every technical token outside protected spans in inline code, and the count per kind."""
+    counts = dict.fromkeys(TECHNICAL_TOKEN_KINDS, 0)
+    protected = _spans(line, _PROTECTED_RE)
+    pieces = []
+    position = 0
+    for match in _TOKEN_RE.finditer(line):
+        start, end = match.span()
+        token = match.group(0)
+        if (
+            _inside(protected, start, end)
+            or token == "::"
+            or line[start - 1 : start] == "`"
+            or line[end : end + 1] == "`"
+        ):
+            continue
+        pieces += [line[position:start], f"`{token}`"]
+        position = end
+        counts[_TOKEN_KIND[match.lastgroup]] += 1
+    pieces.append(line[position:])
+    return "".join(pieces), counts
+
+
+def _term_re(term: str) -> re.Pattern[str]:
+    return re.compile(r"(?<!\w)" + r"\s+".join(re.escape(word) for word in term.split()) + r"(?!\w)", re.IGNORECASE)
+
+
+def _bold_term(line: str, pattern: re.Pattern[str]) -> str | None:
+    """``line`` with the first usable occurrence of the term in bold, or ``None``."""
+    protected = _spans(line, _PROTECTED_BOLD_RE)
+    for match in pattern.finditer(line):
+        if _inside(protected, *match.span()):
+            continue
+        bolded = f"{line[: match.start()]}**{match.group(0)}**{line[match.end():]}"
+        if _BOLD_ONLY_RE.match(bolded.strip()):
+            return None
+        return bolded
+    return None
+
+
+def _typeset_spans(lines: list[str], key_terms: tuple[str, ...], counts: dict[str, int]) -> list[str]:
+    """Technical tokens in inline code everywhere in prose, key terms in bold once per section."""
+    flags = _code_flags(lines)
+    math = _math_flags(lines)
+    prose = [
+        not is_code and not in_math and not _NOT_PROSE_RE.match(line)
+        for line, is_code, in_math in zip(lines, flags, math)
+    ]
+    out = []
+    for line, is_prose in zip(lines, prose):
+        if is_prose:
+            line, found = wrap_technical_tokens(line)
+            for kind, number in found.items():
+                counts[f"code_{kind}"] += number
+                counts["code"] += number
+        out.append(line)
+    terms = [(term, _term_re(term)) for term in sorted(key_terms, key=len, reverse=True)]
+    starts = [index for index, line in enumerate(out) if not flags[index] and _SECTION_RE.match(line)]
+    for start, end in zip([0, *starts], [*starts, len(out)]):
+        eligible = [index for index in range(start, end) if prose[index] and not out[index].lstrip().startswith("|")]
+        bolded_terms = {_normal(span[2:-2]) for index in eligible for span in _BOLD_SPAN_RE.findall(out[index])}
+        for term, pattern in terms:
+            if any(pattern.fullmatch(bolded) for bolded in bolded_terms):
+                continue
+            for index in eligible:
+                bolded = _bold_term(out[index], pattern)
+                if bolded is not None:
+                    out[index] = bolded
+                    bolded_terms.add(_normal(term))
+                    counts["bold"] += 1
+                    break
+        for index in eligible:
+            if index > 0 and prose[index - 1] and out[index - 1].strip() and not _LIST_ITEM_RE.match(out[index]):
+                continue  # not the opening line of a paragraph or list item
+            match = _DEFINITION_RE.match(out[index])
+            if not match or match.group("term").split()[0].lower() in _NOT_A_TERM:
+                continue
+            term = match.group("term")
+            if _normal(term) in bolded_terms:
+                continue
+            out[index] = f"{out[index][: match.start('term')]}**{term}**{out[index][match.end('term'):]}"
+            bolded_terms.add(_normal(term))
+            counts["bold"] += 1
+    return out
+
+
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+
+
+def _normal(term: str) -> str:
+    return " ".join(term.split()).casefold()
+
+
+def _math_flags(lines: list[str]) -> list[bool]:
+    """Per line, whether it belongs to a display math block (its delimiters included)."""
+    flags = []
+    inside = False
+    for line in lines:
+        if inside:
+            flags.append(True)
+            inside = not _MATH_CLOSE_RE.match(line)
+        else:
+            inside = bool(_MATH_OPEN_RE.match(line))
+            flags.append(inside)
+    return flags
+
+
+def auto_format(text: str, key_terms: tuple[str, ...] | list[str] = ()) -> tuple[str, dict[str, int]]:
+    """The formatted text and how many tables, figures, URLs, code tokens and bold terms were converted.
+
+    ``counts["code"]`` is the total of the ``code_<kind>`` counts, one per
+    ``TECHNICAL_TOKEN_KINDS`` entry.
+    """
     lines = text.split("\n")
     flags = _code_flags(lines)
     out: list[str] = []
-    counts = {"tables": 0, "figures": 0, "urls": 0}
+    counts = {"tables": 0, "figures": 0, "urls": 0, "code": 0, "bold": 0}
+    counts.update({f"code_{kind}": 0 for kind in TECHNICAL_TOKEN_KINDS})
     index = 0
     while index < len(lines):
         line = lines[index]
@@ -254,7 +494,7 @@ def auto_format(text: str) -> tuple[str, dict[str, int]]:
             counts["urls"] += found
             out.append(linked)
         index += 1
-    return "\n".join(out), counts
+    return "\n".join(_typeset_spans(out, tuple(key_terms), counts)), counts
 
 
 def _unfenced(text: str) -> list[tuple[int, str]]:

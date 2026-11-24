@@ -305,6 +305,9 @@ FIGURE_GRID_DEFAULT_MIN_RUN = 3
 # (skill-visual-organization S7): `block` stops it, `warn` (default) prints them.
 TYPESET_GATE_KEY = "typeset_gate"
 TYPESET_GATES = ("block", "warn")
+# Terms `typeset.py auto` bolds at their first use per `##` section
+# (skill-visual-organization S9). Absent: no automatic bold.
+KEY_TERMS_KEY = "key_terms"
 CITATION_STYLE_KEY = "citation_style"
 CITATION_STYLES = ("ieee", "apa")
 DEFAULT_STUDENT = "Alejandro Padilla"
@@ -602,6 +605,21 @@ class ReportConfig:
                 f"en report.yml (recibido: {value!r})"
             )
         return value
+
+    @property
+    def key_terms(self) -> tuple[str, ...]:
+        """The report.yml ``key_terms`` list, stripped and without repeats; ``()`` when absent.
+
+        Anything but a list of non-empty strings raises ValueError.
+        """
+        value = self.raw.get(KEY_TERMS_KEY)
+        if value is None:
+            return ()
+        if not isinstance(value, list) or not all(isinstance(term, str) and term.strip() for term in value):
+            raise ValueError(
+                f"{KEY_TERMS_KEY} debe ser una lista de términos en report.yml (recibido: {value!r})"
+            )
+        return tuple(dict.fromkeys(term.strip() for term in value))
 
     @property
     def citation_style(self) -> str:
@@ -1211,6 +1229,7 @@ def load_report_config(folder: Path) -> ReportConfig:
         _ = config.figure_placement
         _ = config.figure_grid_min_run
         _ = config.typeset_gate
+        _ = config.key_terms
         _ = config.citation_style
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc

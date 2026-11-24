@@ -13,7 +13,8 @@ the typeset body or the text it removed is still there (issue #98).
 ``auto`` binds the same way and then applies the deterministic formatting
 (``typeset_auto``: tables from ``- a; b; c`` lines, named from the caption's
 ``(col a; col b; col c)`` when the count matches, ``Figura:`` lines, also one
-merged with the next sentence, bare URLs) to a typeset body that is still an
+merged with the next sentence, bare URLs, technical tokens in inline code,
+``key_terms`` and terms opening a definition in bold once per section) to a typeset body that is still an
 untouched copy of ``body.md``; it never rewrites one that was already
 formatted, and lists what it leaves.
 ``check`` reports and never edits a body (it only appends
@@ -149,8 +150,10 @@ def auto(folder: Path) -> tuple[Path, dict[str, int] | None]:
     body = (folder / BODY_NAME).read_bytes()
     target = folder / TYPESET_BODY_NAME
     untouched = not target.is_file() or target.read_bytes() == body
+    report = folder / "report.yml"
+    key_terms = ReportConfig(folder=folder, raw=read_yaml(report)).key_terms if report.is_file() else ()
     # Decode before binding: an unreadable body must refuse without writing anything.
-    formatted, counts = typeset_auto.auto_format(body.decode("utf-8"))
+    formatted, counts = typeset_auto.auto_format(body.decode("utf-8"), key_terms)
     bind(folder)
     if not untouched:
         return target, None
@@ -258,8 +261,10 @@ def main(argv: list[str] | None = None) -> int:
             "auto",
             "bind, then format an untouched body.typeset.md: tables from '- a; b; c' lines "
             "(column names from a caption 'Tabla N. Caption (col a; col b; col c).' when the count "
-            "matches), 'Figura:' lines (a sentence merged after the path becomes its own paragraph) "
-            "and bare URLs; lists what it leaves for you",
+            "matches), 'Figura:' lines (a sentence merged after the path becomes its own paragraph), "
+            "bare URLs and " + typeset_auto.TECHNICAL_TOKEN_HELP + ", outside headings, captions, images, "
+            "URLs, citations, math and code; once per section, report.yml key_terms: [...] at their first use "
+            "and the term opening a definition ('El X es un ...') are bolded; lists what it leaves for you",
         ),
         (
             "check",
@@ -268,7 +273,7 @@ def main(argv: list[str] | None = None) -> int:
             "a body (records timings.yml)",
         ),
     ):
-        commands.add_parser(name, help=text).add_argument("folder", type=Path)
+        commands.add_parser(name, help=text, description=text).add_argument("folder", type=Path)
     args = parser.parse_args(argv)
     return run(args.command, args.folder)[0]
 
@@ -300,7 +305,8 @@ def run(command: str, folder: Path) -> tuple[int, list[dict] | None]:
         else:
             print(
                 f"bound {target} to {BODY_NAME}; auto formatted {counts['tables']} table(s), "
-                f"{counts['figures']} figure(s), {counts['urls']} URL(s)"
+                f"{counts['figures']} figure(s), {counts['urls']} URL(s), "
+                f"{counts['code']} technical token(s) in code, {counts['bold']} key term(s) in bold"
             )
         for item in typeset_auto.pending(target.read_text(encoding="utf-8")):
             print(f"  left for you: {item}")

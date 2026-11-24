@@ -375,8 +375,8 @@ def test_auto_takes_only_the_last_parentheses_and_keeps_an_existing_directive(tm
         "<!-- table-style: clases purpose=reference -->\n\n"
         "| Clase | Rango | Máscara |\n"
         "|---|---|---:|\n"
-        "| A | 1 a 126 | 255.0.0.0 |\n"
-        "| B | 128 a 191 | 255.255.0.0 |\n"
+        "| A | 1 a 126 | `255.0.0.0` |\n"
+        "| B | 128 a 191 | `255.255.0.0` |\n"
     )
 
 
@@ -434,3 +434,286 @@ def test_auto_splits_the_sentence_merged_into_a_figura_line(tmp_path: Path) -> N
         "Sigue el texto.\n"
     )
     assert _check(folder)["figure_leftovers"]["ok"]
+
+
+# ---------------------------------------------------------------------------
+# odd/tasks/skill-visual-organization.md S9: technical tokens in monospace and
+# key terms in bold, applied by auto in body.typeset.md only.
+# ---------------------------------------------------------------------------
+
+import typeset_auto  # noqa: E402
+
+
+@pytest.mark.parametrize(
+    ("kind", "token"),
+    [
+        ("mac", "38:a7:46:39:d2:7b"),
+        ("mac", "38-A7-46-39-D2-7B"),
+        ("mac", "0001.6453.DBC1"),
+        ("ipv4", "192.168.10.0/24"),
+        ("ipv4", "10.0.0.1"),
+        ("ipv6", "fe80::/10"),
+        ("ipv6", "2001:db8::ff00:42:8329"),
+        ("ipv6", "2001:0db8:0000:0000:0000:ff00:0042:8329"),
+        ("ipv6", "::1"),
+        ("ipv6", "ff02::1"),
+        ("interface", "Fa0/24"),
+        ("interface", "FastEthernet0/1"),
+        ("interface", "Gi0/1"),
+        ("binary", "00111000"),
+        ("binary", "11000000.10101000.00001010.00000001"),
+        ("hex", "0x0800"),
+        ("command", "show mac address-table"),
+        ("command", "clear mac address-table dynamic"),
+        ("command", "mac address-table static"),
+        ("command", "ipconfig /all"),
+        ("command", "ip -6 addr show"),
+        ("command", "ping"),
+    ],
+)
+def test_auto_wraps_each_kind_of_technical_token_in_inline_code(kind: str, token: str) -> None:
+    text, counts = typeset_auto.auto_format(f"# Informe\n\nEl valor {token} aparece aquí.\n")
+
+    assert text == f"# Informe\n\nEl valor `{token}` aparece aquí.\n"
+    assert counts["code"] == 1 and counts[f"code_{kind}"] == 1
+
+
+def test_auto_wraps_tokens_in_list_items_table_cells_and_range_endpoints() -> None:
+    body = (
+        "# Informe\n\n"
+        "- La PC0 usa 192.168.1.10 en Fa0/1.\n\n"
+        "Tabla 1. Equipos (equipo; MAC; rango).\n"
+        "- PC0; 0001.6453.DBC1; 192.168.1.1-192.168.1.254\n"
+        "- PC1; 38:A7:46:39:D2:7B; 10.0.0.1 - 10.0.0.254\n\n"
+        "| Puerto | IP |\n|---|---|\n| Gi0/1 | 172.16.0.1/16 |\n"
+    )
+    text, counts = typeset_auto.auto_format(body)
+
+    assert "- La PC0 usa `192.168.1.10` en `Fa0/1`.\n" in text
+    assert "| PC0 | `0001.6453.DBC1` | `192.168.1.1`-`192.168.1.254` |" in text
+    assert "| PC1 | `38:A7:46:39:D2:7B` | `10.0.0.1` - `10.0.0.254` |" in text
+    assert "| `Gi0/1` | `172.16.0.1/16` |" in text
+    assert counts["code"] == 10
+
+
+def test_auto_leaves_tokens_alone_where_they_are_not_prose() -> None:
+    body = (
+        "# Red 192.168.1.0/24\n\n"
+        "## Puerto Fa0/1\n\n"
+        "Tabla 2. Rango 10.0.0.0/8 del laboratorio.\n\n"
+        "Figura: MAC 0001.6453.DBC1 (figures/mac.png)\n\n"
+        "![Captura de 10.0.0.1](figures/a.png)\n\n"
+        "Ver <http://192.168.0.1/x>, http://10.0.0.1/y y [panel](http://10.1.1.1/z) [@rfc4291].\n"
+        "Ya formateado `ping 10.0.0.1` y $2^{8}$.\n"
+        "<!-- table-style: tabla-2 purpose=reference 10.0.0.1 -->\n\n"
+        "```\n"
+        "show mac address-table\n"
+        "```\n\n"
+        "    ping 10.0.0.1\n"
+    )
+    text, counts = typeset_auto.auto_format(body)
+
+    expected = body.replace(
+        "Figura: MAC 0001.6453.DBC1 (figures/mac.png)", "![MAC 0001.6453.DBC1](figures/mac.png)"
+    ).replace("http://10.0.0.1/y", "<http://10.0.0.1/y>")
+    assert text == expected
+    assert counts["code"] == 0
+
+
+def test_auto_ignores_lookalikes_in_ordinary_prose() -> None:
+    body = (
+        "# Informe\n\n"
+        "A las 10:30 se midió 3.14 y la versión 1.2.3; el /24 suelto, 2024-11-24, "
+        "12345678 y el pingüino Faro0 quedan igual: hacemos pings.\n"
+    )
+    text, counts = typeset_auto.auto_format(body)
+
+    assert text == body
+    assert counts["code"] == 0
+
+
+def test_auto_token_wrapping_is_idempotent() -> None:
+    body = (
+        "# Informe\n\nUsar show mac address-table en Fa0/24 y ping 192.168.1.1 (MAC 0001.6453.DBC1, "
+        "fe80::1, 0x0800, 00111000).\n\n"
+        "Tabla 1. Equipos (equipo; MAC; IP).\n- PC0; 0001.6453.DBC1; 10.0.0.1\n- PC1; 0001.6453.DBC2; 10.0.0.2\n"
+    )
+    once, _ = typeset_auto.auto_format(body)
+    twice, counts = typeset_auto.auto_format(once)
+
+    assert twice == once
+    assert counts["code"] == 0
+    assert "``" not in once
+
+
+def test_auto_bolds_the_first_key_term_per_section_only() -> None:
+    body = (
+        "# Resultados\n\n"
+        "La dirección MAC identifica la tarjeta; la dirección MAC no cambia.\n"
+        "El ARP resuelve la MAC.\n\n"
+        "## Tabla ARP\n\n"
+        "ARP\n\n"
+        "- Cada entrada ARP guarda una dirección MAC.\n\n"
+        "| Término | Uso |\n|---|---|\n| ARP | resolver |\n\n"
+        "Ver `arp -a` y dirección MAC [@rfc826].\n"
+    )
+    text, counts = typeset_auto.auto_format(body, key_terms=["ARP", "dirección MAC"])
+
+    assert text == (
+        "# Resultados\n\n"
+        "La **dirección MAC** identifica la tarjeta; la dirección MAC no cambia.\n"
+        "El **ARP** resuelve la MAC.\n\n"
+        "## Tabla ARP\n\n"
+        "ARP\n\n"
+        "- Cada entrada **ARP** guarda una **dirección MAC**.\n\n"
+        "| Término | Uso |\n|---|---|\n| ARP | resolver |\n\n"
+        "Ver `arp -a` y dirección MAC [@rfc826].\n"
+    )
+    assert counts["bold"] == 4
+    assert typeset_auto.auto_format(text, key_terms=["ARP", "dirección MAC"])[0] == text
+
+
+def test_auto_never_bolds_without_key_terms() -> None:
+    body = "# Informe\n\nLa dirección MAC identifica la tarjeta.\n"
+    text, counts = typeset_auto.auto_format(body)
+
+    assert "**" not in text
+    assert counts["bold"] == 0
+
+
+def test_auto_reads_key_terms_from_report_yml(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    folder = _folder(tmp_path, "# Informe\n\nLa dirección MAC de la PC0 es 0001.6453.DBC1 [@key1].\n")
+    with (folder / "report.yml").open("a", encoding="utf-8") as handle:
+        handle.write("key_terms: [dirección MAC]\n")
+
+    assert typeset.main(["auto", str(folder)]) == 0
+
+    assert _typeset_text(folder) == "# Informe\n\nLa **dirección MAC** de la PC0 es `0001.6453.DBC1` [@key1].\n"
+    assert "1 technical token(s) in code, 1 key term(s) in bold" in capsys.readouterr().out
+    checks = _check(folder)
+    assert checks["body_format"]["ok"] and checks["binding"]["ok"] and checks["citations_match"]["ok"]
+
+
+def test_auto_help_documents_the_token_list(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        typeset.main(["auto", "--help"])
+
+    out = " ".join(capsys.readouterr().out.split())
+    assert "key_terms" in out
+    for command in typeset_auto.CLI_COMMANDS:
+        assert command in out
+    for kind in typeset_auto.TECHNICAL_TOKEN_KINDS:
+        assert kind in out
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("Se hizo ping 192.168.1.1 y luego ping a la PC.", "Se hizo `ping 192.168.1.1` y luego `ping` a la PC."),
+        ("Máscara 255.255.255.0.", "Máscara `255.255.255.0`."),
+        ("La ruta ::/0 y el :: suelto.", "La ruta `::/0` y el :: suelto."),
+        ("Ver figures/192.168.1.1.png y logs/0001.6453.DBC1.txt.", "Ver `figures/192.168.1.1.png` y `logs/0001.6453.DBC1.txt`."),
+        ("Ver **192.168.1.1** ahora.", "Ver **`192.168.1.1`** ahora."),
+    ],
+)
+def test_auto_token_edges(line: str, expected: str) -> None:
+    assert typeset_auto.wrap_technical_tokens(line)[0] == expected
+
+
+@pytest.mark.parametrize(
+    "token",
+    ["APE2-F2-mac-ip.pkt", "report.yml", "configs/sw1-running.txt", "captura_01.pcapng", "body.typeset.md"],
+)
+def test_auto_wraps_file_names_in_inline_code(token: str) -> None:
+    text, counts = typeset_auto.auto_format(f"# Informe\n\nEl archivo {token} se entrega.\n")
+
+    assert text == f"# Informe\n\nEl archivo `{token}` se entrega.\n"
+    assert counts["code"] == 1 and counts["code_file"] == 1
+
+
+def test_auto_leaves_dotted_words_and_figure_path_leftovers_alone() -> None:
+    # A '(figures/x.png)' leftover must stay visible to the figure_leftovers check.
+    body = "# Informe\n\nVer uic.io, acortar.link, 3.14, e.g. y (figures/diag-03.png) aquí.\n"
+    text, counts = typeset_auto.auto_format(body)
+
+    assert text == body
+    assert counts["code"] == 0
+
+
+def test_auto_leaves_display_math_blocks_alone() -> None:
+    body = "# Informe\n\n$$\n192.168.1.1 \\wedge 255.255.255.0\n$$\n\n\\[\nping 10.0.0.1\n\\]\n"
+    text, counts = typeset_auto.auto_format(body)
+
+    assert text == body
+    assert counts["code"] == 0
+
+
+def test_auto_bolds_the_first_definition_of_a_term_per_section() -> None:
+    body = (
+        "# Seguridad\n\n"
+        "El MAC flooding es un ataque que satura al switch.\n\n"
+        "El MAC flooding es un ataque frecuente en laboratorios.\n\n"
+        "- Port security es una función del switch que limita las MAC.\n\n"
+        "## Ataques\n\n"
+        "El ARP spoofing, o envenenamiento de la caché ARP, es un ataque de capa 2.\n\n"
+        "Dynamic ARP Inspection (DAI) es una defensa del switch.\n\n"
+        "El MAC flooding es un ataque que vuelve a definirse aquí.\n"
+    )
+    text, counts = typeset_auto.auto_format(body)
+
+    assert text == (
+        "# Seguridad\n\n"
+        "El **MAC flooding** es un ataque que satura al switch.\n\n"
+        "El MAC flooding es un ataque frecuente en laboratorios.\n\n"
+        "- **Port security** es una función del switch que limita las MAC.\n\n"
+        "## Ataques\n\n"
+        "El **ARP spoofing**, o envenenamiento de la caché ARP, es un ataque de capa 2.\n\n"
+        "**Dynamic ARP Inspection** (DAI) es una defensa del switch.\n\n"
+        "El **MAC flooding** es un ataque que vuelve a definirse aquí.\n"
+    )
+    assert counts["bold"] == 5
+    assert typeset_auto.auto_format(text)[0] == text
+
+
+def test_auto_does_not_bold_non_definitions() -> None:
+    body = (
+        "# Informe\n\n"
+        "El primero es la dirección real de la PC.\n\n"
+        "El resultado es un valor esperado.\n\n"
+        "Esto es una prueba.\n\n"
+        "Una dirección MAC tiene 48 bits y es un identificador.\n\n"
+        "Para mitigarlo se usa port security, que es una función del switch.\n\n"
+        "## La capa de enlace es un nivel\n\n"
+        "Tabla 1. El switch es un equipo de capa 2.\n\n"
+        "Ya **definido**: el switch es un equipo.\n"
+    )
+    text, counts = typeset_auto.auto_format(body)
+
+    assert text == body
+    assert counts["bold"] == 0
+
+
+def test_auto_definition_bold_skips_a_term_already_bolded_by_key_terms() -> None:
+    body = "# Informe\n\nEl switch reenvía tramas.\n\nEl switch es un equipo de capa 2.\n"
+    text, counts = typeset_auto.auto_format(body, key_terms=["switch"])
+
+    assert text == "# Informe\n\nEl **switch** reenvía tramas.\n\nEl switch es un equipo de capa 2.\n"
+    assert counts["bold"] == 1
+
+
+def test_auto_bolds_definitions_only_where_a_paragraph_or_list_item_opens() -> None:
+    body = (
+        "El switch es un equipo de capa 2.\n"
+        "El router es un equipo de capa 3 en la misma línea de párrafo.\n\n"
+        "# Red\n"
+        "El hub es un repetidor multipuerto.\n"
+    )
+    text, counts = typeset_auto.auto_format(body)
+
+    assert text == (
+        "El **switch** es un equipo de capa 2.\n"
+        "El router es un equipo de capa 3 en la misma línea de párrafo.\n\n"
+        "# Red\n"
+        "El **hub** es un repetidor multipuerto.\n"
+    )
+    assert counts["bold"] == 2

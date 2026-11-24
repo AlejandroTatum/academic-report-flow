@@ -622,3 +622,23 @@ def test_typeset_gate_accepts_block_and_warn(tmp_path: Path, value: str) -> None
 def test_typeset_gate_rejects_other_values_at_load(tmp_path: Path, value: object) -> None:
     with pytest.raises(SystemExit, match="typeset_gate"):
         load_report_config(_citation_style_folder(tmp_path, typeset_gate=value))
+
+
+# key_terms (skill-visual-organization S9): terms typeset auto bolds once per
+# section; absent means no automatic bold.
+
+
+def test_key_terms_default_to_none(tmp_path: Path) -> None:
+    config = load_report_config(_citation_style_folder(tmp_path))
+    assert config.key_terms == ()
+
+
+def test_key_terms_keep_order_and_drop_blanks_and_duplicates(tmp_path: Path) -> None:
+    config = load_report_config(_citation_style_folder(tmp_path, key_terms=["ARP", " dirección MAC ", "ARP"]))
+    assert config.key_terms == ("ARP", "dirección MAC")
+
+
+@pytest.mark.parametrize("value", ["ARP", [1], [""], ["ok", None], {"a": 1}])
+def test_key_terms_reject_anything_but_a_list_of_terms_at_load(tmp_path: Path, value: object) -> None:
+    with pytest.raises(SystemExit, match="key_terms"):
+        load_report_config(_citation_style_folder(tmp_path, key_terms=value))

@@ -154,6 +154,33 @@ def test_styled_tables_also_receive_breakable_tokens() -> None:
     assert cell.count(r"\allowbreak{}") == 7
 
 
+# S9: typeset auto wraps tokens in inline code; inside a cell they render as the
+# same breakable \texttt as in prose, never with a second \allowbreak.
+@pytest.mark.parametrize(
+    "token",
+    ["0001.6453.DBC1", "38:A7:46:39:D2:7B", "2001:0db8:0000:0000:0000:ff00:0042:8329", "192.168.10.0/24",
+     "fe80::/10", "Fa0/24", "show mac address-table", "11000000.10101000.00001010.00000001"],
+)
+def test_backticked_tokens_in_cells_render_as_breakable_texttt_once(token: str) -> None:
+    cell = build_latex_report.convert_table_cell(f"`{token}` y **clave**")
+    assert cell == build_latex_report.inline_code(token) + r" y \textbf{clave}"
+    assert r"\allowbreak{}\allowbreak{}" not in cell
+
+
+@pytest.mark.parametrize("options", [{}, {"booktabs_tables": True}])
+def test_backticked_tokens_and_bold_render_inside_table_cells(options: dict) -> None:
+    table = (
+        "| Equipo | MAC | Nota |\n|---|---|---|\n"
+        "| `Fa0/1` | `0001.6453.DBC1` | la **dirección MAC** de `192.168.1.1`-`192.168.1.254` |\n"
+    )
+    tex = md(table, **options)
+    assert r"\texttt{Fa0/\allowbreak{}1}" in tex
+    assert r"\texttt{0001.\allowbreak{}6453.\allowbreak{}DBC1}" in tex
+    assert r"\textbf{dirección MAC}" in tex
+    assert r"\texttt{192.\allowbreak{}168.\allowbreak{}1.\allowbreak{}1}-\texttt{192." in tex
+    assert r"\allowbreak{}\allowbreak{}" not in tex and "`" not in tex
+
+
 # ---------------------------------------------------------------------------
 # S3 — ragged rows are reported, not silently padded
 # ---------------------------------------------------------------------------
