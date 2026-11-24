@@ -78,6 +78,16 @@
 \newcommand{\reporthasbib}{{{HAS_BIB}}}
 \ifthenelse{\equal{\reporthasbib}{true}}{\addbibresource{{{BIB_FILE}}}}{}
 
+% The teacher's template numbers the bibliography heading (section 10) like
+% the rest, and the IEEE entries read in Spanish only: "[En línea]. Disponible
+% en:" and "Consultado el", never the English "Available:" / "Accessed:".
+\defbibheading{bibliography}[\bibname]{\section{#1}}
+% `online` is not a localization key, so the url/urldate formats are declared
+% directly instead of through bibliography strings.
+\DefineBibliographyStrings{spanish}{url={Disponible en},urlseen={Consultado el}}
+\DeclareFieldFormat{url}{[En línea]. Disponible en:\space\url{#1}}
+\DeclareFieldFormat{urldate}{Consultado el\space#1}
+
 % Justified text with the teacher's 3pt paragraph separation and no first-line
 % indent. Unlike the institutional templates (onehalfspacing), the replica
 % keeps single line spacing, as in the Word original.

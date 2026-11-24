@@ -600,8 +600,8 @@ def test_aa_template_ficha_label_stays_singular_for_one_student(tmp_path):
 # shows up here. Re-pinned when babel (Spanish hyphenation) joined the preamble and
 # when the Greek glyph fallback joined the font setup.
 APE_RENDER_SHA256 = {
-    "individual": "7172932f767c688acf959be0af28d7a98bcffd22be0cc6b54fcf5032117366c4",
-    "group": "f36012bc301d25c8ef104b513c2114aa20b211b500bcefbf106a0eb69947ad45",
+    "individual": "f4710cd6f9f091e4150564c9c7d90a5b3bfcee24bc04b8d0ee06686936bedebc",
+    "group": "9fda2f2ee51981b5ca430b8add7ea2aac98da487acac759a91f5c81536a10d16",
 }
 
 
@@ -634,3 +634,10 @@ def test_ape_keeps_its_template_and_the_aa_default_does_not_leak(tmp_path):
         tmp_path / "b", raw={"format": "aa", "template": "ape"}, metadata=full_ape_metadata()
     )
     assert build_latex_report.resolve_template(build_latex_report.template_key_for(explicit)) == APE_TEMPLATE
+
+
+def test_ape_bibliography_is_a_numbered_section_with_spanish_ieee_strings(tmp_path):
+    tex = build_latex_report.render_tex(make_render_config(tmp_path, metadata=full_ape_metadata()))
+    assert r"\defbibheading{bibliography}[\bibname]{\section{#1}}" in tex
+    assert "Disponible en" in tex and "Consultado el" in tex
+    assert r"\DeclareFieldFormat{url}{[En línea]. Disponible en:" in tex
