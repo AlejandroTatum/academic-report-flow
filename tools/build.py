@@ -5,8 +5,11 @@
 
 1. typeset: the same code as ``typeset.py auto <folder>`` (same messages,
    ``left for you:`` lines and check lines; it records the ``typeset`` timing).
-   When the bind is refused or a typeset check fails nothing is built: finish
-   ``body.typeset.md`` by hand and run the same command again. A report that
+   When the bind is refused, ``body.typeset.md`` is missing or stale, or a typeset
+   check fails under ``typeset_gate: block`` nothing is built: finish
+   ``body.typeset.md`` by hand and run the same command again. Under
+   ``typeset_gate: warn`` (the default) other failing checks print a
+   ``typeset warning`` line on stderr and the build goes on. A report that
    does not use typeset (an ``approval.yml`` that predates it) skips the step.
    The run that creates or first formats ``body.typeset.md`` also stops when ``auto`` left
    items for the agent (possible formulas, two-column lists): the checks do
@@ -42,7 +45,10 @@ def _typeset(folder: Path) -> bool:
     target = folder / TYPESET_BODY_NAME
     before = target.read_bytes() if target.is_file() else None
     status, results = typeset.run("auto", folder)
-    if status == 0 and results is not None and all(item["ok"] for item in results):
+    blocking, warnings = typeset.split_failures(folder, results) if results is not None else ([], [])
+    if status == 0 and results is not None and not blocking:
+        for line in typeset.warning_lines(warnings):
+            print(line, file=sys.stderr)
         # Stop once: on the run that created the typeset body or that formatted an untouched copy.
         fresh = before is None or before != target.read_bytes()
         if fresh and typeset_auto.pending(target.read_text(encoding="utf-8")):

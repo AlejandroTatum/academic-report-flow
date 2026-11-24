@@ -328,3 +328,109 @@ def test_auto_leaves_a_run_whole_when_one_line_has_no_cell_separator(tmp_path: P
     assert typeset.main(["auto", str(folder)]) == 0
 
     assert _typeset_text(folder) == body
+
+
+# odd/tasks/skill-visual-organization.md S3: column names from the caption parentheses.
+def test_auto_names_the_columns_from_the_caption_parentheses(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    body = (
+        "# Informe\n\n"
+        "Tabla 2. Funciones de la capa de enlace (función; qué hace; ejemplo).\n\n"
+        "- Encapsulamiento; arma la trama; Ethernet II\n"
+        "- Direccionamiento; usa la MAC; 48 bits\n"
+    )
+    folder = _folder(tmp_path, body)
+
+    assert typeset.main(["auto", str(folder)]) == 0
+
+    assert _typeset_text(folder) == (
+        "# Informe\n\n"
+        "Tabla 2. Funciones de la capa de enlace.\n\n"
+        "<!-- table-style: tabla-2 purpose=reference -->\n\n"
+        "| Función | Qué hace | Ejemplo |\n"
+        "|---|---|---|\n"
+        "| Encapsulamiento | arma la trama | Ethernet II |\n"
+        "| Direccionamiento | usa la MAC | 48 bits |\n"
+    )
+    assert "table without column names" not in capsys.readouterr().out
+    assert _check(folder)["table_headers"]["ok"]
+
+
+def test_auto_takes_only_the_last_parentheses_and_keeps_an_existing_directive(tmp_path: Path) -> None:
+    body = (
+        "# Informe\n\n"
+        "Tabla 6. Clases IPv4 (RFC 1918) (clase; rango; máscara)\n"
+        "<!-- table-style: clases purpose=reference -->\n"
+        "- A; 1 a 126; 255.0.0.0\n"
+        "- B; 128 a 191; 255.255.0.0\n"
+    )
+    folder = _folder(tmp_path, body)
+
+    assert typeset.main(["auto", str(folder)]) == 0
+
+    assert _typeset_text(folder) == (
+        "# Informe\n\n"
+        "Tabla 6. Clases IPv4 (RFC 1918).\n"
+        "<!-- table-style: clases purpose=reference -->\n\n"
+        "| Clase | Rango | Máscara |\n"
+        "|---|---|---:|\n"
+        "| A | 1 a 126 | 255.0.0.0 |\n"
+        "| B | 128 a 191 | 255.255.0.0 |\n"
+    )
+
+
+def test_auto_keeps_the_empty_header_when_the_caption_count_differs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    body = "# Informe\n\nTabla 3. Datos (nombre; valor).\n\n- a; 1; 2\n- b; 3; 4\n"
+    folder = _folder(tmp_path, body)
+
+    assert typeset.main(["auto", str(folder)]) == 0
+
+    assert _typeset_text(folder) == (
+        "# Informe\n\nTabla 3. Datos (nombre; valor).\n\n|  |  |  |\n|---|---:|---:|\n| a | 1 | 2 |\n| b | 3 | 4 |\n"
+    )
+    out = capsys.readouterr().out
+    assert (
+        "  left for you: line 5: table without column names: name its 3 columns "
+        "(the caption names 2: fix the caption or the rows)"
+    ) in out
+
+
+def test_auto_points_at_a_list_that_a_stray_semicolon_kept_from_being_a_table(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    body = "# Informe\n\n- a; b; c\n- d; e; f; g\n- h; i; j\n"
+    folder = _folder(tmp_path, body)
+
+    assert typeset.main(["auto", str(folder)]) == 0
+
+    assert _typeset_text(folder) == body
+    assert (
+        "  left for you: line 3: list rows with 3, 4 cells: a stray ';' keeps it from becoming a table"
+        in capsys.readouterr().out
+    )
+
+
+# S5: a 'Figura:' line merged with the next sentence (delivered APE 7 PDF).
+def test_auto_splits_the_sentence_merged_into_a_figura_line(tmp_path: Path) -> None:
+    body = (
+        "# Informe\n\n"
+        "Figura: Partes de una dirección IPv6 y su forma abreviada (figures/diag-03-ipv6-estructura.png) "
+        "La Tabla 8 resume los tipos de direcciones.\n"
+        "Figura: Topología (figures/pt-01.png)\n"
+        "Sigue el texto.\n"
+    )
+    folder = _folder(tmp_path, body)
+
+    assert typeset.main(["auto", str(folder)]) == 0
+
+    assert _typeset_text(folder) == (
+        "# Informe\n\n"
+        "![Partes de una dirección IPv6 y su forma abreviada](figures/diag-03-ipv6-estructura.png)\n\n"
+        "La Tabla 8 resume los tipos de direcciones.\n\n"
+        "![Topología](figures/pt-01.png)\n\n"
+        "Sigue el texto.\n"
+    )
+    assert _check(folder)["figure_leftovers"]["ok"]

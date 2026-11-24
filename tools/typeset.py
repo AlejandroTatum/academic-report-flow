@@ -11,14 +11,17 @@ missing (an existing one keeps its text) and records the binding plus a
 ``body.md``, it refuses while the words the edit inserted are missing from
 the typeset body or the text it removed is still there (issue #98).
 ``auto`` binds the same way and then applies the deterministic formatting
-(``typeset_auto``: tables from ``- a; b; c`` lines, ``Figura:`` lines, bare
-URLs) to a typeset body that is still an untouched copy of ``body.md``; it
-never rewrites one that was already formatted, and lists what it leaves.
+(``typeset_auto``: tables from ``- a; b; c`` lines, named from the caption's
+``(col a; col b; col c)`` when the count matches, ``Figura:`` lines, also one
+merged with the next sentence, bare URLs) to a typeset body that is still an
+untouched copy of ``body.md``; it never rewrites one that was already
+formatted, and lists what it leaves.
 ``check`` reports and never edits a body (it only appends
 its duration to ``timings.yml``): the binding
 matches the current ``body.md``, the typeset body passes the rendering rules
-and the format's fixed headings, and it cites exactly the keys ``body.md``
-cites. Builds render ``body.typeset.md`` while its binding is current
+and the format's fixed headings, every table names its columns and has no
+empty, ragged or split cells, no literal ``Figura:`` text or figure path is
+left outside an image, and it cites exactly the keys ``body.md`` cites. Builds render ``body.typeset.md`` while its binding is current
 (``ReportConfig.body_path``).
 
 An ``approval.yml`` without ``typeset: required`` predates this phase: its
@@ -181,6 +184,8 @@ def check_results(folder: Path) -> list[dict]:
             "every table names its columns",
         )
     )
+    results.append(_result("table_cells", typeset_auto.table_cell_problems(text), "no empty, ragged or split cells"))
+    results.append(_result("figure_leftovers", typeset_auto.figure_leftovers(text), "every figure is an image"))
     config = ReportConfig(folder=folder, raw={**read_yaml(folder / "report.yml"), "body": TYPESET_BODY_NAME})
     if config.format in SECTION_SPECS:
         results.append(
@@ -201,14 +206,47 @@ def check_results(folder: Path) -> list[dict]:
     return results
 
 
+# A missing or stale typeset body would render the wrong text: it blocks under any gate.
+ALWAYS_BLOCKING = ("binding",)
+
+
+def split_failures(folder: Path, results: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Failing checks as ``(blocking, warnings)`` under report.yml ``typeset_gate``.
+
+    ``block`` makes every failure blocking; ``warn`` (the default) keeps only
+    ``ALWAYS_BLOCKING`` checks blocking and turns the rest into warnings
+    (odd/tasks/skill-visual-organization.md S7).
+    """
+    failed = [item for item in results if not item["ok"]]
+    blocking = [item for item in failed if item["check"] in ALWAYS_BLOCKING]
+    rest = [item for item in failed if item["check"] not in ALWAYS_BLOCKING]
+    if rest and ReportConfig(folder=Path(folder), raw=read_yaml(Path(folder) / "report.yml")).typeset_gate == "block":
+        return failed, []
+    return blocking, rest
+
+
+def warning_lines(warnings: list[dict]) -> list[str]:
+    """One stderr line per failing check that only warns."""
+    return [
+        f"typeset warning (typeset_gate: warn, the build goes on; typeset_gate: block stops it): "
+        f"{item['check']}: {item['detail']}"
+        for item in warnings
+    ]
+
+
 def build_gate(folder: Path) -> str | None:
-    """Why a final build must wait for typeset, or ``None`` when it may run."""
+    """Why a final build must wait for typeset, or ``None`` when it may run.
+
+    Failing checks that only warn are printed to stderr and do not stop it.
+    """
     if not typeset_in_use(folder):
         return None
-    failed = [item for item in check_results(folder) if not item["ok"]]
-    if not failed:
-        return None
-    return "; ".join(f"{item['check']}: {item['detail']}" for item in failed)
+    blocking, warnings = split_failures(folder, check_results(folder))
+    if blocking:
+        return "; ".join(f"{item['check']}: {item['detail']}" for item in blocking)
+    for line in warning_lines(warnings):
+        print(line, file=sys.stderr)
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -218,10 +256,17 @@ def main(argv: list[str] | None = None) -> int:
         ("bind", "create body.typeset.md if missing and bind it to the current body.md"),
         (
             "auto",
-            "bind, then format an untouched body.typeset.md: tables from '- a; b; c' lines, "
-            "'Figura:' lines and bare URLs; lists what it leaves for you",
+            "bind, then format an untouched body.typeset.md: tables from '- a; b; c' lines "
+            "(column names from a caption 'Tabla N. Caption (col a; col b; col c).' when the count "
+            "matches), 'Figura:' lines (a sentence merged after the path becomes its own paragraph) "
+            "and bare URLs; lists what it leaves for you",
         ),
-        ("check", "report the typeset checks; never edits a body (records timings.yml)"),
+        (
+            "check",
+            "report the typeset checks (binding, rendering rules, table headers, empty/ragged/split "
+            "table cells, leftover 'Figura:' text or figure paths, headings, citations); never edits "
+            "a body (records timings.yml)",
+        ),
     ):
         commands.add_parser(name, help=text).add_argument("folder", type=Path)
     args = parser.parse_args(argv)

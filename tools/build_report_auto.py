@@ -142,7 +142,8 @@ def _run(args: argparse.Namespace) -> None:
     if not (args.validate_only or args.no_approval_check):
         # v1 needs no draft approval (rubric findings never block it); the
         # body.md plain text is still rendered from its formatted copy, so
-        # generation waits until typeset passes. Publication keeps its gates.
+        # generation waits until typeset passes (only the binding, unless
+        # report.yml sets typeset_gate: block). Publication keeps its gates.
         pending_typeset = typeset.build_gate(args.folder)
         if pending_typeset:
             raise SystemExit(

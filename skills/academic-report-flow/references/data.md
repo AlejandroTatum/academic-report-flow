@@ -57,6 +57,7 @@ bibliography: sources.bib
 min_sources: 1                # only when a requirement limits sources; positive integer, default 5
 # citation_style: apa        # default ieee; apa only when the course guide demands it; any route, PDF only
 # uncited_bibliography: true  # instead of min_sources: academic only; prints every bib entry, no citations needed
+# typeset_gate: block       # default warn: failing typeset checks only warn; block stops the build (Redes profile)
 # ape_omit_sections: ["Preguntas de Control"]  # format ape only; a fixed APE section the teacher said to leave out
 ```
 

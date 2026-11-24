@@ -3,10 +3,18 @@
 Pure text functions, no file access. ``auto_format`` applies only the
 conversions that need no judgement: runs of ``- a; b; c`` lines become pipe
 tables, ``Figura: caption (path)`` lines become images and bare URLs become
-autolinks. It never adds or removes a word of the body: the draft holds no
-column names, so a table gets an empty header row. ``pending`` lists what is
-left for the agent, and ``empty_table_headers`` backs the ``table_headers``
-check that keeps a build waiting until those columns are named.
+autolinks. It never adds or removes a word of the body. A table takes its
+column names from the parentheses that close the caption line before it
+(``Tabla N. Caption (col a; col b; col c).``) when they name as many columns
+as the rows hold: the names move to the header row, the caption keeps
+``Tabla N. Caption.`` and a ``<!-- table-style: tabla-N purpose=reference -->``
+directive follows it. Otherwise the table gets an empty header row. A
+``Figura:`` line with a sentence after its path becomes the image and that
+sentence as its own paragraph.
+
+``pending`` lists what is left for the agent; ``empty_table_headers``,
+``table_cell_problems`` and ``figure_leftovers`` back the ``table_headers``,
+``table_cells`` and ``figure_leftovers`` checks of ``typeset.py check``.
 """
 from __future__ import annotations
 
@@ -15,8 +23,14 @@ import re
 _FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 _INDENTED_CODE_RE = re.compile(r"^(?: {4}|\t)")
 _FIGURE_RE = re.compile(
-    r"^Figura:\s*(?P<caption>.+?)\s*\((?P<path>[^()\s]+\.(?:png|jpe?g|pdf|svg))\)\s*$", re.IGNORECASE
+    r"^Figura:\s*(?P<caption>.+?)\s*\((?P<path>[^()\s]+\.(?:png|jpe?g|pdf|svg))\)(?:\s+(?P<rest>\S.*?))?\s*$",
+    re.IGNORECASE,
 )
+_CAPTION_RE = re.compile(r"^(?P<head>Tabla (?P<number>\d+)\.\s.*?)\s*\((?P<columns>[^()]*;[^()]*)\)\.?\s*$")
+_DIRECTIVE_RE = re.compile(r"^<!--\s*table-style:.*-->\s*$")
+_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^()\s]+\)")
+_FIGURA_TEXT_RE = re.compile(r"\bFigura:")
+_FIGURE_PATH_RE = re.compile(r"\((?:[^()\s]*/)?figures/[^()\s]*\)|\([^()\s]+/[^()\s]+\.(?:png|jpe?g|pdf|svg)\)", re.IGNORECASE)
 _ROW_RE = re.compile(r"^- (?P<cells>.*;.*)$")
 _URL_RE = re.compile(r"https?://[^\s<>\[\]`\"«»“”]+")
 _NUMERIC_RE = re.compile(r"^[+-]?\d[\d.,]*\s*%?$")
@@ -140,7 +154,31 @@ def _link_urls(line: str) -> tuple[str, int]:
     return "`".join(parts), count
 
 
-def _table(rows: list[list[str]]) -> list[str]:
+def _caption_columns(out: list[str], width: int) -> tuple[int, str, str, list[str]] | None:
+    """The caption line before a table whose parentheses name its ``width`` columns.
+
+    Returns its index in ``out``, the caption without the parentheses, the
+    table number and the column names; ``None`` when there is no such caption
+    or it names another number of columns. Blank lines and a table-style
+    directive may sit between the caption and the rows.
+    """
+    index = len(out) - 1
+    while index >= 0 and (not out[index].strip() or _DIRECTIVE_RE.match(out[index].strip())):
+        index -= 1
+    match = _CAPTION_RE.match(out[index]) if index >= 0 else None
+    if not match:
+        return None
+    columns = _split_cells(match["columns"])
+    if len(columns) != width or not all(columns):
+        return None
+    return index, match["head"].rstrip(".") + ".", match["number"], columns
+
+
+def _directed(out: list[str], start: int) -> bool:
+    return any(_DIRECTIVE_RE.match(line.strip()) for line in out[start:])
+
+
+def _table(rows: list[list[str]], header: list[str] | None = None) -> list[str]:
     width = len(rows[0])
     separator = "|"
     for column in range(width):
@@ -148,7 +186,10 @@ def _table(rows: list[list[str]]) -> list[str]:
         numeric = bool(values) and all(_NUMERIC_RE.match(value) for value in values)
         separator += "---:|" if numeric else "---|"
     body = ["| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |" for row in rows]
-    return ["|" + "  |" * width, separator, *body]
+    if header is None:
+        return ["|" + "  |" * width, separator, *body]
+    names = [name[:1].upper() + name[1:] for name in header]
+    return ["| " + " | ".join(name.replace("|", "\\|") for name in names) + " |", separator, *body]
 
 
 def auto_format(text: str) -> tuple[str, dict[str, int]]:
@@ -167,9 +208,16 @@ def auto_format(text: str) -> tuple[str, dict[str, int]]:
         rows = _row_run(lines, flags, index)
         table = _table_rows(rows)
         if table:
+            caption = _caption_columns(out, len(table[0]))
+            header = None
+            if caption:
+                position, text, number, header = caption
+                out[position] = text
+                if not _directed(out, position + 1):
+                    out[position + 1 : position + 1] = ["", f"<!-- table-style: tabla-{number} purpose=reference -->"]
             if out and out[-1].strip():
                 out.append("")
-            for table_line in _table(table):
+            for table_line in _table(table, header):
                 linked, found = _link_urls(table_line)
                 counts["urls"] += found
                 out.append(linked)
@@ -188,8 +236,19 @@ def auto_format(text: str) -> tuple[str, dict[str, int]]:
             continue
         figure = _FIGURE_RE.match(line)
         if figure:
+            if out and out[-1].strip():
+                out.append("")
             out.append(f"![{figure['caption']}]({figure['path']})")
             counts["figures"] += 1
+            # Its own paragraph: a line right after the image would make it inline text.
+            following = [figure["rest"]] if figure["rest"] else []
+            if following or (index + 1 < len(lines) and lines[index + 1].strip()):
+                out.append("")
+            if following:
+                # The merged sentence is formatted as the next line.
+                lines[index + 1 : index + 1] = following
+                flags[index + 1 : index + 1] = [False]
+
         else:
             linked, found = _link_urls(line)
             counts["urls"] += found
@@ -218,13 +277,116 @@ def empty_table_headers(text: str) -> list[tuple[int, int]]:
     return found
 
 
+def _split_row(line: str) -> list[str]:
+    """The cells of a pipe-table row, split as the LaTeX build splits them (``\\|`` is a literal pipe)."""
+    stripped = re.sub(r"(?<!\\)\|$", "", line.strip()).lstrip("|")
+    return [cell.strip() for cell in re.split(r"(?<!\\)\|", stripped)]
+
+
+def _pipe_tables(text: str) -> list[tuple[int, list[str], list[tuple[int, list[str]]]]]:
+    """``(header line number, header cells, [(line number, cells)])`` of every pipe table outside code."""
+    lines = text.split("\n")
+    flags = _code_flags(lines)
+    tables = []
+    index = 0
+    while index + 1 < len(lines):
+        line = lines[index]
+        if flags[index] or "|" not in line or flags[index + 1] or not _SEPARATOR_RE.match(lines[index + 1].strip()):
+            index += 1
+            continue
+        rows = []
+        row = index + 2
+        while row < len(lines) and not flags[row] and lines[row].strip() and "|" in lines[row]:
+            rows.append((row + 1, _split_row(lines[row])))
+            row += 1
+        tables.append((index + 1, _split_row(line), rows))
+        index = row
+    return tables
+
+
+def table_cell_problems(text: str) -> list[str]:
+    """Empty header cells of a named header, empty body cells, ragged rows and rows split into extra cells.
+
+    A header row that is empty as a whole is the ``table_headers`` check, not
+    this one.
+    """
+    problems = []
+    for number, header, rows in _pipe_tables(text):
+        width = len(header)
+        if any(header):
+            problems += [
+                f"line {number}: empty header cell in column {column}"
+                for column, cell in enumerate(header, start=1)
+                if not cell
+            ]
+        for row_number, cells in rows:
+            if len(cells) > width:
+                problems.append(
+                    f"line {row_number}: {len(cells)} cells, the header has {width} (a stray ';' or '|' split a cell?)"
+                )
+            elif len(cells) < width:
+                problems.append(f"line {row_number}: {len(cells)} cells, the header has {width} (ragged row)")
+            else:
+                problems += [
+                    f"line {row_number}: empty cell in column {column} (write — if nothing applies)"
+                    for column, cell in enumerate(cells, start=1)
+                    if not cell
+                ]
+    return problems
+
+
+def figure_leftovers(text: str) -> list[str]:
+    """Literal ``Figura:`` text and figure paths in parentheses left outside an image."""
+    problems = []
+    for number, line in _unfenced(text):
+        prose = "`".join(part for position, part in enumerate(line.split("`")) if position % 2 == 0)
+        prose = _IMAGE_RE.sub("", prose)
+        if _FIGURA_TEXT_RE.search(prose):
+            problems.append(f"line {number}: literal 'Figura:' text: write it as ![caption](path) on its own line")
+        problems += [
+            f"line {number}: figure path '{match.group(0)}' outside an image"
+            for match in _FIGURE_PATH_RE.finditer(prose)
+            if "://" not in match.group(0)
+        ]
+    return problems
+
+
+def _caption_before(lines: list[str], number: int) -> re.Match[str] | None:
+    """The ``Tabla N. Caption (a; b)`` match of the caption line before line ``number`` (1-based)."""
+    index = number - 2
+    while index >= 0 and (not lines[index].strip() or _DIRECTIVE_RE.match(lines[index].strip())):
+        index -= 1
+    return _CAPTION_RE.match(lines[index]) if index >= 0 else None
+
+
+def _row_cells(cells: list[str]) -> int:
+    """How many cells a ``- a; b`` row holds, a trailing ``;`` aside."""
+    return len(cells) - 1 if len(cells) > 1 and not cells[-1] else len(cells)
+
+
 def pending(text: str) -> list[str]:
     """What ``auto_format`` leaves for the agent, in line order."""
-    items = [
-        (number, f"table without column names: name its {columns} columns")
-        for number, columns in empty_table_headers(text)
-    ]
+    all_lines = text.split("\n")
+    items = []
+    for number, columns in empty_table_headers(text):
+        message = f"table without column names: name its {columns} columns"
+        caption = _caption_before(all_lines, number)
+        named = len(_split_cells(caption["columns"])) if caption else columns
+        if named != columns:
+            message += f" (the caption names {named}: fix the caption or the rows)"
+        items.append((number, message))
     lines = _unfenced(text)
+    run: list[tuple[int, int]] = []
+    for number, line in [*lines, (0, "")]:
+        cells = _cells(line)
+        if cells is not None and (not run or number == run[-1][0] + 1):
+            run.append((number, _row_cells(cells)))
+            continue
+        counts = sorted({count for _, count in run})
+        if len(run) >= 2 and len(counts) > 1 and counts[0] >= 2 and counts[-1] >= _MIN_TABLE_CELLS:
+            listed = ", ".join(str(count) for count in counts)
+            items.append((run[0][0], f"list rows with {listed} cells: a stray ';' keeps it from becoming a table"))
+        run = [(number, _row_cells(cells))] if cells is not None else []
     run: list[int] = []
     for number, line in [*lines, (0, "")]:
         cells = _cells(line)

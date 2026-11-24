@@ -440,8 +440,200 @@ def test_build_gate_checks_a_bound_typeset_on_a_legacy_report(tmp_path: Path) ->
     _approval(folder)
     (folder / "body.typeset.md").write_text("## Informe\n\nTexto [@key1].\n", encoding="utf-8")
     typeset.bind(folder)
+    _gate(folder, "block")
 
     gate = typeset.build_gate(folder)
     assert gate is not None and "body_format" in gate and "citations_match" in gate
     phase = doc_status._phase_typeset(folder, _config(folder), None)
     assert phase.state == doc_status.PENDING and "body_format" in phase.detail
+
+
+# odd/tasks/skill-visual-organization.md S3: no empty, ragged or split cells.
+def test_check_fails_on_empty_ragged_and_split_table_cells(tmp_path: Path) -> None:
+    folder = _approved(tmp_path)
+    (folder / "body.typeset.md").write_text(
+        "# Informe\n\n"
+        "| Clase | | Máscara |\n"
+        "|---|---|---|\n"
+        "| A | 1 a 126 | 255.0.0.0 |\n"
+        "| B |  | 255.255.0.0 |\n"
+        "| C | 192 a 223 |\n"
+        "| D | 224 a 239 | sin máscara | multicast |\n"
+        "| E | 240 a 255 | `a | b` \\| c |\n",
+        encoding="utf-8",
+    )
+    typeset.bind(folder)
+
+    check = _check(folder)["table_cells"]
+
+    assert check["ok"] is False
+    assert check["detail"] == (
+        "line 3: empty header cell in column 2; "
+        "line 6: empty cell in column 2 (write — if nothing applies); "
+        "line 7: 2 cells, the header has 3 (ragged row); "
+        "line 8: 4 cells, the header has 3 (a stray ';' or '|' split a cell?); "
+        "line 9: 4 cells, the header has 3 (a stray ';' or '|' split a cell?)"
+    )
+
+
+def test_check_passes_full_tables_and_keeps_citations_in_one_cell(tmp_path: Path) -> None:
+    folder = _approved(tmp_path)
+    (folder / "body.md").write_text(
+        "# Informe\n\nTabla 1. Sensores (equipo; tensión; fuente).\n\n"
+        "- Sensor; 3,3 V; ver [@key1; @key2]\n- Motor; 5 V; ver [@key3; @key4; @key5]\n",
+        encoding="utf-8",
+    )
+    assert typeset.main(["auto", str(folder)]) == 0
+
+    checks = _check(folder)
+
+    assert checks["table_cells"] == {"check": "table_cells", "ok": True, "detail": "no empty, ragged or split cells"}
+    assert checks["citations_match"]["ok"]
+    assert "| Sensor | 3,3 V | ver [@key1; @key2] |" in (folder / "body.typeset.md").read_text(encoding="utf-8")
+
+
+# S5: no literal 'Figura:' line or figure path left as text.
+def test_check_fails_on_a_leftover_figura_line_or_figure_path(tmp_path: Path) -> None:
+    folder = _approved(tmp_path)
+    (folder / "body.typeset.md").write_text(
+        "# Informe\n\n"
+        "Figura: Partes de una dirección IPv6 y su forma abreviada (figures/diag-03-ipv6-estructura.png) "
+        "La Tabla 8 resume los tipos de direcciones.\n\n"
+        "Ver la topología (figures/pt-01.png) arriba.\n\n"
+        "![Bien](figures/ok.png)\n\n"
+        "```\n"
+        "Figura: en código (figures/code.png)\n"
+        "```\n",
+        encoding="utf-8",
+    )
+    typeset.bind(folder)
+
+    check = _check(folder)["figure_leftovers"]
+
+    assert check["ok"] is False
+    assert check["detail"] == (
+        "line 3: literal 'Figura:' text: write it as ![caption](path) on its own line; "
+        "line 3: figure path '(figures/diag-03-ipv6-estructura.png)' outside an image; "
+        "line 5: figure path '(figures/pt-01.png)' outside an image"
+    )
+
+
+def test_check_passes_images_and_prose_that_mentions_figures(tmp_path: Path) -> None:
+    folder = _approved(tmp_path)
+    (folder / "body.typeset.md").write_text(
+        "# Informe\n\nLa figura muestra el montaje (Figura 2).\n\n![Montaje](figures/montaje.png){width=70%}\n"
+        "Fuente <https://x.example/figures/a.png>.\n",
+        encoding="utf-8",
+    )
+    typeset.bind(folder)
+
+    assert _check(folder)["figure_leftovers"] == {
+        "check": "figure_leftovers",
+        "ok": True,
+        "detail": "every figure is an image",
+    }
+
+
+# odd/tasks/skill-visual-organization.md S7: report.yml typeset_gate decides
+# whether failing typeset checks stop the build (block) or only warn (default).
+
+
+def _gate(folder: Path, value: str) -> None:
+    with (folder / "report.yml").open("a", encoding="utf-8") as handle:
+        handle.write(f"typeset_gate: {value}\n")
+
+
+def _failing_typeset(tmp_path: Path, gate: str | None) -> Path:
+    folder = tmp_path / "legacy"
+    _report(folder)
+    _sources_bib(folder)
+    _approval(folder)
+    (folder / "body.typeset.md").write_text("## Informe\n\nTexto [@key1].\n", encoding="utf-8")
+    typeset.bind(folder)
+    if gate is not None:
+        _gate(folder, gate)
+    return folder
+
+
+@pytest.mark.parametrize("gate", [None, "warn"])
+def test_build_gate_warn_lets_the_build_run_and_prints_the_failures(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], gate: str | None
+) -> None:
+    folder = _failing_typeset(tmp_path, gate)
+
+    assert typeset.build_gate(folder) is None
+
+    err = capsys.readouterr().err
+    assert "typeset warning" in err and "body_format" in err and "citations_match" in err
+    assert "typeset_gate: block" in err
+
+
+def test_build_gate_block_stops_the_build_and_prints_no_warning(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = _failing_typeset(tmp_path, "block")
+
+    gate = typeset.build_gate(folder)
+
+    assert gate is not None and "body_format" in gate and "citations_match" in gate
+    assert "typeset warning" not in capsys.readouterr().err
+
+
+def test_build_gate_warn_still_blocks_a_stale_binding(tmp_path: Path) -> None:
+    folder = _approved(tmp_path)
+    typeset.bind(folder)
+    _gate(folder, "warn")
+    (folder / "body.md").write_text(DEFAULT_BODY + "\nCambio.\n", encoding="utf-8")
+
+    gate = typeset.build_gate(folder)
+
+    assert gate is not None and "binding" in gate
+
+
+@pytest.mark.parametrize("gate", [None, "warn"])
+def test_phase_typeset_warn_is_done_with_warnings(tmp_path: Path, gate: str | None) -> None:
+    folder = _failing_typeset(tmp_path, gate)
+
+    phase = doc_status._phase_typeset(folder, _config(folder), None)
+
+    assert phase.state == doc_status.DONE
+    assert "warning: typeset_check: body_format:" in phase.detail
+    assert "warning: typeset_check: citations_match:" in phase.detail
+
+
+def test_phase_typeset_block_stays_pending(tmp_path: Path) -> None:
+    folder = _failing_typeset(tmp_path, "block")
+
+    phase = doc_status._phase_typeset(folder, _config(folder), None)
+
+    assert phase.state == doc_status.PENDING
+    assert "typeset check fails" in phase.detail and "warning" not in phase.detail
+
+
+def test_phase_typeset_warn_keeps_a_stale_binding_pending(tmp_path: Path) -> None:
+    folder = _approved(tmp_path)
+    typeset.bind(folder)
+    _gate(folder, "warn")
+    (folder / "body.md").write_text(DEFAULT_BODY + "\nCambio.\n", encoding="utf-8")
+
+    phase = doc_status._phase_typeset(folder, _config(folder), None)
+
+    assert phase.state == doc_status.PENDING and "binding" in phase.detail
+
+
+@pytest.mark.parametrize(("gate", "builds"), [("warn", True), ("block", False)])
+def test_final_build_follows_the_typeset_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, gate: str, builds: bool
+) -> None:
+    folder = _failing_typeset(tmp_path, gate)
+    built = []
+    monkeypatch.setattr(sys, "argv", ["build_report_auto.py", str(folder), "--tex-only"])
+    monkeypatch.setattr(build_report_auto, "build_with_records", lambda *a: built.append(a) or sys.exit(0))
+
+    with pytest.raises(SystemExit) as exc:
+        build_report_auto.main()
+
+    if builds:
+        assert built and exc.value.code == 0
+    else:
+        assert not built and "TYPESET REQUIRED" in str(exc.value) and "body_format" in str(exc.value)

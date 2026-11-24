@@ -746,7 +746,9 @@ def _phase_typeset(folder: Path, _config: ReportConfig, _documents_root: Path | 
     An approval recorded before the typeset phase (no ``typeset: required``)
     renders ``body.md`` as before and is ``done``, unless a typeset body is
     bound anyway: the build renders it, so it is checked (issue #98). Otherwise ``done`` needs
-    every ``typeset.check_results`` entry to pass; anything else is ordinary
+    every ``typeset.check_results`` entry to pass, except that under
+    ``typeset_gate: warn`` (the default) a failing non-binding check is a
+    ``typeset_check`` warning in a ``done`` detail; anything else is ordinary
     progress (``pending``) with the failing checks named. Read-only.
     """
     if not typeset.typeset_in_use(folder):
@@ -755,6 +757,13 @@ def _phase_typeset(folder: Path, _config: ReportConfig, _documents_root: Path | 
     failed = [item for item in results if not item["ok"]]
     if not failed:
         return PhaseState("typeset", DONE, "body.typeset.md formats body.md and passes the checks")
+    blocking, warnings = typeset.split_failures(folder, results)
+    if not blocking:
+        return PhaseState(
+            "typeset", DONE,
+            "body.typeset.md formats body.md (typeset_gate: warn); "
+            + "; ".join(_warning("typeset_check", f"{i['check']}: {i['detail']}") for i in warnings),
+        )
     if len(results) == 1:
         return PhaseState("typeset", PENDING, failed[0]["detail"])
     return PhaseState(

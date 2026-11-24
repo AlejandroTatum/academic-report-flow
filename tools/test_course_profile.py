@@ -352,3 +352,48 @@ def test_without_min_sources_the_profile_still_adds_uncited_bibliography(tmp_pat
     folder = _folder(tmp_path)
     assert _run(folder, _profiles(tmp_path, PROFILE)) == 0
     assert yaml.safe_load((folder / "report.yml").read_text(encoding="utf-8"))["uncited_bibliography"] is True
+
+
+# odd/tasks/skill-visual-organization.md S7: Redes opts in to a blocking typeset gate.
+REDES_REPORT = """route: academic
+metadata:
+  title: "Capa dos (MAC) y capa 3"
+  subject: Fundamentos de Redes de Comunicaciones
+  teacher: Ing. Mario Enrique Cueva Hurtado
+"""
+
+
+def test_real_redes_profile_sets_a_blocking_typeset_gate(tmp_path, capsys):
+    documents = tmp_path / "Documents"
+    documents.mkdir()
+    folder = _folder(tmp_path, REDES_REPORT)
+
+    assert course_profile.main([str(folder), "--documents-root", str(documents)]) == 0
+
+    data = yaml.safe_load((folder / "report.yml").read_text(encoding="utf-8"))
+    assert {k: v for k, v in data.items() if k not in yaml.safe_load(REDES_REPORT)} == {"typeset_gate": "block"}
+    assert load_report_config(folder).typeset_gate == "block"
+    assert "typeset_gate=block" in capsys.readouterr().out
+
+
+def test_redes_profile_keeps_an_explicit_typeset_gate(tmp_path):
+    documents = tmp_path / "Documents"
+    documents.mkdir()
+    text = REDES_REPORT + "typeset_gate: warn\n"
+    folder = _folder(tmp_path, text)
+
+    assert course_profile.main([str(folder), "--documents-root", str(documents)]) == 0
+
+    assert (folder / "report.yml").read_text(encoding="utf-8") == text
+
+
+def test_other_subjects_get_no_typeset_gate_from_the_real_profiles(tmp_path):
+    documents = tmp_path / "Documents"
+    documents.mkdir()
+    folder = _folder(tmp_path, REPORT.replace("simulacion", "Simulación"))
+
+    assert course_profile.main([str(folder), "--documents-root", str(documents)]) == 0
+
+    assert "typeset_gate" not in yaml.safe_load((folder / "report.yml").read_text(encoding="utf-8"))
+    (folder / "sources.bib").touch()
+    assert load_report_config(folder).typeset_gate == "warn"

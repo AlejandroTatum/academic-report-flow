@@ -53,6 +53,11 @@ def _stub_build(monkeypatch: pytest.MonkeyPatch, validation: _Validation | None 
     return calls
 
 
+def _typeset_gate(folder: Path, value: str) -> None:
+    with (folder / "report.yml").open("a", encoding="utf-8") as handle:
+        handle.write(f"\ntypeset_gate: {value}\n")
+
+
 def _phases(folder: Path) -> list[tuple[str, str]]:
     path = folder / "timings.yml"
     entries = yaml.safe_load(path.read_text(encoding="utf-8")) if path.is_file() else []
@@ -90,6 +95,7 @@ def test_failing_typeset_check_builds_nothing_and_says_to_run_again(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     folder = _folder(tmp_path, NO_COLUMN_NAMES)
+    _typeset_gate(folder, "block")
     calls = _stub_build(monkeypatch)
 
     assert build.main([str(folder)]) == 1
@@ -350,3 +356,31 @@ def test_build_stops_once_when_auto_formats_a_copy_that_bind_created(
     assert build.main([str(folder)]) == 0
 
     assert built != []
+
+
+# odd/tasks/skill-visual-organization.md S7: typeset_gate warn (the default)
+
+
+@pytest.mark.parametrize("gate", [None, "warn"])
+def test_failing_typeset_check_only_warns_without_a_blocking_gate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], gate: str | None
+) -> None:
+    folder = _folder(tmp_path, NO_COLUMN_NAMES)
+    if gate is not None:
+        _typeset_gate(folder, gate)
+    calls = _stub_build(monkeypatch)
+
+    # The run that first formats the body still stops once for the left items.
+    assert build.main([str(folder)]) == 1
+    assert "build stopped: typeset left items for you" in capsys.readouterr().err
+    assert calls == []
+
+    assert build.main([str(folder)]) == 0
+
+    output = capsys.readouterr()
+    assert "  [FAIL] table_headers: line 13: table without column names" in output.out
+    assert "step 2/2: generate and validate" in output.out
+    assert "build stopped" not in output.err
+    assert "typeset warning" in output.err and "table_headers" in output.err
+    assert "typeset_gate: block" in output.err
+    assert calls == [folder]
