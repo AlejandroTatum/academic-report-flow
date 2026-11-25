@@ -31,7 +31,7 @@ Evidence: APE 7 work folder university/.reports-system/automation/reports/redes-
 - [x] T7 (S8) commit the user's templates/ape-report.tex change on its own with the 2 test_ape_template expectations updated — inline.
 - [x] T5 commits per unit on feat/visual-organization; push/PR is the user's call.
 
-- [ ] T8 (S9) typeset: auto bold for key terms + monospace for technical tokens, skill rules, tests — writer (apps repo).
+- [x] T8 (S9) typeset: auto bold for key terms + monospace for technical tokens, skill rules, tests — writer (apps repo). Done 25b3115.
 - [x] T9 (S10, S11) APE 7 comparison copy: redraft body per rules, new diagrams with academic-visual-builder — writer (university repo copy reports/redes-ape-2-fase-2-mac-ip-v2).
 - [x] T10 build comparison PDF with T8 tools, inspect pages, independent check.
 - [x] T12 (S12) cap printed height of tall figures in the build, with tests — after T11 (same file). Done: FIGURE_MAX_HEIGHT_FRACTION 0.80 -> 0.50 (width cap kept, {height=NN%} still overrides).
