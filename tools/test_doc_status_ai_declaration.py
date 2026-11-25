@@ -89,10 +89,18 @@ def test_guidance_tells_the_agent_to_write_the_declaration(tmp_path: Path) -> No
     folder = _folder(tmp_path)
     guidance = doc_status._guidance("format", folder, _config(folder))
 
-    for needle in ("ai_declaration", "Tabla A", "Tabla B", "verbatim", "summary",
-                   "format: markdown", "ai_declaration_position: after_bibliography",
+    for needle in ("ai_declaration", "members:", "name", "tool", "use", "instructions",
+                   "verbatim", "summary", "ai_declaration_position: after_bibliography",
                    "ai_declaration: false", "explicit"):
         assert needle in guidance, needle
+
+
+def test_guidance_asks_for_one_ficha_per_member_and_no_tables(tmp_path: Path) -> None:
+    folder = _folder(tmp_path)
+    guidance = doc_status._guidance("format", folder, _config(folder))
+
+    assert "one ficha per member" in guidance
+    assert "Tabla A" not in guidance and "Tabla B" not in guidance
 
 
 def test_a_built_report_is_never_sent_back_to_format(tmp_path: Path) -> None:
@@ -188,5 +196,5 @@ def test_guidance_maps_include_and_omit_to_report_yml(tmp_path: Path, content_ro
     folder = _folder(tmp_path)
     guidance = doc_status._guidance("format", folder, _config(folder))
 
-    assert "include writes the declaration text as `ai_declaration: {format: markdown, text: ...}`" in guidance
+    assert "include writes `ai_declaration: {text: ..., members: [...]}`" in guidance
     assert "omit writes `ai_declaration: false`" in guidance

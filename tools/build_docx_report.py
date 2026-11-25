@@ -48,6 +48,7 @@ from build_latex_report import (
     ASSETS_DIR,
     FIGURE_SUFFIXES,
     LOGO_FILENAME,
+    ai_declaration_fichas,
     is_bibliography_heading,
 )
 from markdown_image import IMAGE_PATTERN
@@ -920,7 +921,8 @@ class DocxRenderer:
 
         A dict gives ``title``/``text`` (``format: markdown`` runs the text
         through the body renderer so tables come out as tables); a string is
-        one paragraph. ``false`` or an absent key renders nothing.
+        one paragraph. ``members`` adds one ficha per member after the text.
+        ``false`` or an absent key renders nothing.
         """
         declaration = self.config.raw.get("ai_declaration") or self.config.raw.get("declaracion_ia")
         if not declaration:
@@ -936,6 +938,9 @@ class DocxRenderer:
             self.render_body(text)
         elif text.strip():
             self._paragraph(text.strip())
+        # S13: one ficha per member (name · tool, Uso bullets, numbered Instrucciones), as LaTeX.
+        for ficha in ai_declaration_fichas(declaration, self.config.metadata):
+            self.render_body(ficha)
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)

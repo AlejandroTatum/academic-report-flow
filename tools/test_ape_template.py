@@ -236,6 +236,57 @@ def test_ape_markdown_ai_declaration_renders_tables(tmp_path: Path) -> None:
     assert "| Python | Pruebas |" not in rendered
 
 
+FICHA_DECLARATION = {
+    "title": "Declaración de uso de IA Generativa",
+    "format": "markdown",
+    "text": "Se declara el uso de IA como apoyo.",
+    "members": [
+        {"name": "Ana Pérez", "tool": "ChatGPT (OpenAI)", "use": "Revisión de la redacción",
+         "instructions": ["Resume el texto.", "Revisa las tablas."]},
+        {"name": "Luis Mora", "tool": "Gemini (Google)", "use": ["Cálculos", "Fuentes"],
+         "instructions": ["Verifica la máscara."]},
+    ],
+}
+
+
+def render_ficha(tmp_path: Path, declaration: dict) -> str:
+    rendered = build_latex_report.render_tex(make_render_config(
+        tmp_path,
+        raw={"ai_declaration": declaration, "ai_declaration_position": "after_bibliography"},
+        metadata=full_ape_metadata(),
+    ))
+    return rendered[rendered.index(r"\section*{Declaración de uso de IA Generativa}"):]
+
+
+def test_ape_ai_declaration_members_render_one_ficha_each_without_tables(tmp_path: Path) -> None:
+    declaration = render_ficha(tmp_path, FICHA_DECLARATION)
+    assert "Se declara el uso de IA como apoyo." in declaration
+    ana = declaration.index(r"\textbf{Ana Pérez} · ChatGPT (OpenAI)")
+    luis = declaration.index(r"\textbf{Luis Mora} · Gemini (Google)")
+    assert ana < luis
+    first = declaration[ana:luis]
+    assert r"\item \textbf{Uso:} Revisión de la redacción" in first
+    assert "\\textbf{Instrucciones:}\n\n\\begin{enumerate}\n\\item Resume el texto.\n\\item Revisa las tablas." in first
+    second = declaration[luis:]
+    assert r"\item \textbf{Uso:} Cálculos" in second and r"\item \textbf{Uso:} Fuentes" in second
+    # Each ficha is kept together and starts a fresh numbered list.
+    assert declaration.count(r"\Needspace{6\baselineskip}") == 2
+    assert declaration.count(r"\begin{enumerate}") == 2
+    for table in ("tabularx", "xltabular", "Tabla A", "Tabla B"):
+        assert table not in declaration, table
+
+
+def test_ape_ficha_takes_the_single_author_name_and_skips_empty_parts(tmp_path: Path) -> None:
+    declaration = render_ficha(tmp_path, {
+        "title": "Declaración de uso de IA Generativa",
+        "members": [{"tool": "Claude", "use": "Redacción"}],
+    })
+    student = full_ape_metadata()["student"]
+    assert rf"\textbf{{{build_latex_report.convert_inline(student)}}} · Claude" in declaration
+    assert r"\item \textbf{Uso:} Redacción" in declaration
+    assert "Instrucciones" not in declaration
+
+
 def test_trailing_backslash_is_a_hard_line_break() -> None:
     # CommonMark hard break: a bold question, then its answer on the next line.
     latex = build_latex_report.markdown_to_latex(

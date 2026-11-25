@@ -346,3 +346,47 @@ def test_the_same_short_token_still_breaks_inside_a_table_cell(token: str) -> No
 def test_a_long_inline_code_run_in_prose_still_breaks() -> None:
     latex = build_latex_report.convert_inline("Ver `2001:0db8:0000:0000:0000:ff00:0042:8329` aquí.")
     assert r"\allowbreak{}" in latex
+
+
+# ---------------------------------------------------------------------------
+# T12 (S12) — a tall/portrait figure never fills a page on its own
+# ---------------------------------------------------------------------------
+
+
+def _png(path: Path, width: int, height: int) -> Path:
+    from PIL import Image
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (width, height), "white").save(path)
+    return path
+
+
+def _height_cap(options: str) -> float:
+    match = re.search(r"height=([0-9.]+)\\textheight", options)
+    assert match, options
+    return float(match.group(1))
+
+
+def test_a_portrait_figure_is_capped_at_about_half_the_text_height(tmp_path: Path) -> None:
+    options = build_latex_report.figure_includegraphics_options(_png(tmp_path / "mapa.png", 800, 1400))
+    assert _height_cap(options) <= 0.55
+    assert "keepaspectratio" in options and "width=0.86\\textwidth" in options
+
+
+def test_a_wide_figure_keeps_its_width_cap_under_the_same_height_cap(tmp_path: Path) -> None:
+    options = build_latex_report.figure_includegraphics_options(_png(tmp_path / "ancho.png", 1600, 600))
+    assert options.startswith("width=0.86\\textwidth,") and _height_cap(options) <= 0.55
+
+
+def test_the_rendered_tall_figure_carries_the_half_page_cap(tmp_path: Path) -> None:
+    _png(tmp_path / "figures" / "mapa.png", 700, 1500)
+    tex = md("Texto.\n\n![Mapa conceptual](figures/mapa.png)\n", build_dir=tmp_path)
+    (cap,) = re.findall(r"height=([0-9.]+)\\textheight,keepaspectratio\]\{figures/mapa", tex)
+    assert float(cap) <= 0.55
+
+
+def test_an_explicit_height_opt_in_still_wins(tmp_path: Path) -> None:
+    options = build_latex_report.figure_includegraphics_options(
+        _png(tmp_path / "mapa.png", 800, 1400), {"height": 0.9}
+    )
+    assert _height_cap(options) == 0.9

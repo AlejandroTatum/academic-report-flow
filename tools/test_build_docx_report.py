@@ -723,6 +723,50 @@ def test_ai_declaration_renders_after_the_bibliography_with_a_table(tmp_path: Pa
     assert [cell.text for cell in document.tables[0].rows[1].cells] == ["Claude", "Redacción asistida"]
 
 
+FICHA_YAML = (
+    "ai_declaration:\n"
+    "  title: Declaración de uso de IA generativa\n"
+    "  text: Se declara el uso de IA.\n"
+    "  members:\n"
+    "    - name: Ana Pérez\n"
+    "      tool: ChatGPT (OpenAI)\n"
+    "      use: Revisión de la redacción\n"
+    "      instructions:\n"
+    "        - Resume el texto.\n"
+    "        - Revisa las tablas.\n"
+    "    - name: Luis Mora\n"
+    "      tool: Gemini (Google)\n"
+    "      use: Cálculos\n"
+    "      instructions: [Verifica la máscara.]\n"
+    "ai_declaration_position: after_bibliography"
+)
+
+
+def test_ai_declaration_members_render_as_fichas_without_tables(tmp_path: Path) -> None:
+    document = build_and_open(make_report(tmp_path, DECLARATION_BODY, route="technical", extra=FICHA_YAML))
+
+    paragraphs = document.paragraphs
+    texts = [p.text for p in paragraphs]
+    start = texts.index("Declaración de uso de IA generativa")
+    assert texts[start + 1:] == [
+        "Se declara el uso de IA.",
+        "Ana Pérez · ChatGPT (OpenAI)",
+        "Uso: Revisión de la redacción",
+        "Instrucciones:",
+        "Resume el texto.",
+        "Revisa las tablas.",
+        "Luis Mora · Gemini (Google)",
+        "Uso: Cálculos",
+        "Instrucciones:",
+        "Verifica la máscara.",
+    ]
+    styles = [p.style.name for p in paragraphs[start + 1:]]
+    assert styles[2] == "List Bullet" and styles[4] == styles[5] == styles[9] == "List Number"
+    name_runs = paragraphs[start + 2].runs
+    assert name_runs[0].bold and name_runs[0].text == "Ana Pérez"
+    assert len(document.tables) == 0
+
+
 def test_ai_declaration_as_plain_string_renders_one_paragraph(tmp_path: Path) -> None:
     document = build_and_open(
         make_report(tmp_path, DECLARATION_BODY, route="technical", extra='ai_declaration: "Se usó Claude."')

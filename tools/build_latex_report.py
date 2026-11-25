@@ -1968,6 +1968,44 @@ def hides_author_line(config: ReportConfig) -> bool:
     return config.route == "business" and config.metadata.get("show_author") is not True
 
 
+def _declaration_items(value: object) -> list[str]:
+    """One clean line per entry: a string is one entry, a list keeps its non-empty entries."""
+    entries = value if isinstance(value, (list, tuple)) else [value]
+    return [" ".join(str(entry).split()) for entry in entries if entry is not None and str(entry).strip()]
+
+
+def ai_declaration_fichas(declaration: object, metadata: dict) -> list[str]:
+    """S13: one Markdown ficha per ``ai_declaration.members`` entry.
+
+    Each ficha is ``**name** · tool`` on one line, one ``- **Uso:**`` bullet
+    per use and, when there are any, ``**Instrucciones:**`` followed by a
+    numbered list -- no table. Fields mirror the former Tabla A/Tabla B
+    columns (``name``/``integrante``, ``tool``/``herramienta``,
+    ``use``/``uso``, ``instructions``/``instrucciones``); a member without a
+    name is the single author (``metadata.student``). Both backends render
+    these through their own Markdown renderer.
+    """
+    members = declaration.get("members") if isinstance(declaration, dict) else None
+    if not isinstance(members, list):
+        return []
+    fichas: list[str] = []
+    for member in members:
+        if not isinstance(member, dict):
+            continue
+        name = " ".join(str(member.get("name") or member.get("integrante") or metadata.get("student") or "").split())
+        tool = " ".join(str(member.get("tool") or member.get("herramienta") or "").split())
+        lines = [" · ".join(part for part in (f"**{name}**" if name else "", tool) if part)]
+        uses = _declaration_items(member.get("use", member.get("uso")))
+        if uses:
+            lines += ["", *(f"- **Uso:** {use}" for use in uses)]
+        instructions = _declaration_items(member.get("instructions", member.get("instrucciones")))
+        if instructions:
+            lines += ["", "**Instrucciones:**", "", *(f"{n}. {text}" for n, text in enumerate(instructions, 1))]
+        if lines[0] or len(lines) > 1:
+            fichas.append("\n".join(lines).strip() + "\n")
+    return fichas
+
+
 def render_tex(config: ReportConfig) -> str:
     template_key = normalize_template_key(template_key_for(config))
     template_path = resolve_template(template_key)
@@ -2085,6 +2123,12 @@ def render_tex(config: ReportConfig) -> str:
             ).strip()
         else:
             declaration_body = convert_inline(declaration_text)
+        # Each ficha is kept together on its page; its numbered list restarts.
+        for ficha in ai_declaration_fichas(ai_declaration, meta):
+            ficha_latex = markdown_to_latex(ficha, build_dir=build_dir).strip()
+            declaration_body = "\n\n".join(
+                part for part in (declaration_body, r"\Needspace{6\baselineskip}" + "\n" + ficha_latex) if part
+            )
         declaration_latex = "\n".join([
             r"\Needspace{5\baselineskip}",
             rf"\section*{{{convert_inline(declaration_title)}}}",
@@ -2321,7 +2365,10 @@ FIGURE_WIDTH_FRACTION = 0.86
 # whichever constraint actually binds: a wide figure is unaffected (its
 # printed height never approaches the cap), a tall one is capped instead of
 # floating alone onto a page of its own (the symptom in #31).
-FIGURE_MAX_HEIGHT_FRACTION = 0.80
+# S12: half the text height, so a tall/portrait figure (a concept map) shares
+# its page with text instead of filling it and leaving a blank gap before it;
+# a figure's own {height=NN%} still overrides the cap.
+FIGURE_MAX_HEIGHT_FRACTION = 0.50
 
 
 def figure_includegraphics_options(

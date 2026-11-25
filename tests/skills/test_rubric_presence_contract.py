@@ -88,3 +88,11 @@ def test_course_memory_feeds_the_plan_and_records_the_grade() -> None:
     assert "--add-delivery" in delivery and "feedback.yml" in delivery
     for text in (content, data, delivery):
         assert "never blocks" in text
+
+
+def test_ai_declaration_default_is_one_ficha_per_member() -> None:
+    """S13: no Tabla A/Tabla B; one block per member: name · tool, Uso bullets, numbered Instrucciones."""
+    approval = flat(REFS / "approval.md")
+    assert "one ficha per member" in approval
+    assert "`members:`" in approval and "`instructions:`" in approval
+    assert "Tabla A" not in approval and "Tabla B" not in approval
