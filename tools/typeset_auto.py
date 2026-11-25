@@ -82,6 +82,17 @@ _IPV6 = (
     rf"(?:(?:{_GROUP}:){{7}}{_GROUP}|(?:{_GROUP}(?::{_GROUP}){{0,6}})?::(?:{_GROUP}(?::{_GROUP}){{0,6}})?)"
     r"(?:/(?:12[0-8]|1[01]\d|[1-9]?\d))?"
 )
+# Part of an IPv6 address or a hex placeholder for one (ff02::1:ffXX:XXXX, the
+# EUI-64 filler ff:fe, an interface ID 1ee3:56db:e4ad:3dab). A hex letter or an
+# X must appear, so times (10:30, 12:30:45) and ratios (3:1) never match, and a
+# lone pair needs two-character groups on both sides (ff:fe, not a:b).
+_PGROUP = "[0-9A-Fa-fXx]{1,4}"
+_IPV6_PARTIAL = (
+    r"(?=[0-9A-Fa-fXx:]*[A-Fa-fXx])"
+    rf"(?:{_PGROUP}(?::{_PGROUP}){{2,}}"
+    r"|[0-9A-Fa-fXx]{2,4}:[0-9A-Fa-fXx]{2,4}"
+    rf"|(?:{_PGROUP}(?::{_PGROUP})*)?::{_PGROUP}(?::{_PGROUP})*)"
+)
 _MAC = rf"{_HEX}{{2}}(?P<sep>[:-]){_HEX}{{2}}(?:(?P=sep){_HEX}{{2}}){{4}}"
 _CISCO_MAC = rf"{_HEX}{{4}}\.{_HEX}{{4}}\.{_HEX}{{4}}"
 _INTERFACE = (
@@ -115,6 +126,7 @@ TECHNICAL_TOKENS: tuple[tuple[str, str], ...] = (
     ("mac", rf"(?<![\w./]){_CISCO_MAC}(?![\w/]|\.\w)"),
     ("ipv6", rf"(?<![\w:./]){_IPV6}(?![\w:/]|\.\w)"),
     ("ipv4", rf"(?<![\w.:/]){_IPV4}(?![\w/]|\.\w)"),
+    ("ipv6", rf"(?<![\w:./]){_IPV6_PARTIAL}(?![\w:/]|\.\w)"),
     ("interface", rf"(?<![\w/]){_INTERFACE}(?![\w/]|\.\w)"),
     ("binary", r"(?<![\w./])[01]{8}(?:\.[01]{8}){0,3}(?![\w/]|\.\w)"),
     ("hex", r"(?<![\w./])0x[0-9A-Fa-f]+(?![\w/]|\.\w)"),
@@ -122,7 +134,8 @@ TECHNICAL_TOKENS: tuple[tuple[str, str], ...] = (
 TECHNICAL_TOKEN_KINDS = tuple(dict.fromkeys(kind for kind, _ in TECHNICAL_TOKENS))
 TECHNICAL_TOKEN_HELP = (
     "technical tokens set in inline code: mac (38:a7:46:39:d2:7b, 38-A7-..., 0001.6453.DBC1), "
-    "ipv4 (192.168.10.1, 192.168.10.0/24, each end of a range), ipv6 (2001:db8::1, fe80::/10, ::1), "
+    "ipv4 (192.168.10.1, 192.168.10.0/24, each end of a range), ipv6 (2001:db8::1, fe80::/10, ::1, parts and placeholders such as "
+    "ff02::1:ffXX:XXXX, ff:fe, 1ee3:56db:e4ad:3dab), "
     "interface (Fa0/24, FastEthernet0/1, Gi0/1), binary (00111000, dotted octets), hex (0x0800), "
     "command (" + ", ".join(CLI_COMMANDS) + "), file (APE2-F2-mac-ip.pkt, configs/sw1.txt; extensions: "
     + ", ".join(FILE_EXTENSIONS) + ")"

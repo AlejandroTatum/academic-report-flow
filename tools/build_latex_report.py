@@ -276,16 +276,24 @@ def run(cmd: list[str], cwd: Path | None = None, check: bool = True) -> subproce
 INLINE_CODE_BREAK_AFTER = "/_-.:,=()"
 
 
-def inline_code(value: str) -> str:
+# Inline code in prose up to this many characters is one unbreakable word
+# (skill-visual-organization T11): a short address split as "255." / "255.0.0"
+# reads as two values. Table cells keep their break points (convert_table_cell).
+INLINE_CODE_UNBREAKABLE_MAX = 20
+
+
+def inline_code(value: str, breakable: bool = True) -> str:
     r"""Render inline code as ``\texttt`` with explicit break opportunities.
 
     ``\allowbreak{}`` is a zero-width penalty: it never adds a hyphen and never
     changes the glyphs, it only tells TeX that a line may end there. The
     trailing separator gets none, since a break at the very end of the run
-    would leave the box empty.
+    would leave the box empty. ``breakable=False`` emits no break point.
     """
     if re.match(r"^(?:https?://|git@|ssh://)", value):
         return r"\nolinkurl{" + value + "}"
+    if not breakable:
+        return r"\texttt{" + "".join(latex_escape(character) for character in value) + "}"
     characters = list(value)
     last = len(characters) - 1
     pieces: list[str] = []
@@ -335,7 +343,8 @@ BIBLATEX_SETUP = {
 }
 
 
-def convert_inline(text: str) -> str:
+def convert_inline(text: str, table_cell: bool = False) -> str:
+    """Inline Markdown to LaTeX; short inline code breaks only in a table cell."""
     placeholders: list[tuple[str, str]] = []
 
     def keep(pattern: str, repl):
@@ -349,7 +358,9 @@ def convert_inline(text: str) -> str:
     keep(r"\[@([A-Za-z0-9_:\-.,;@ ]+)\]",
          lambda m: r"\cite{" + ",".join(k for k in re.split(r"[;,\s]+", m.group(1).replace("@", "")) if k) + "}")
     keep(r"\$([^$]+)\$", lambda m: "$" + m.group(1) + "$")
-    keep(r"`([^`]+)`", lambda m: inline_code(m.group(1)))
+    keep(r"`([^`]+)`", lambda m: inline_code(
+        m.group(1), breakable=table_cell or len(m.group(1)) > INLINE_CODE_UNBREAKABLE_MAX,
+    ))
     keep(r"\[([^\]]+)\]\((https?://[^\s)]+)\)",
          lambda m: r"\href{" + m.group(2) + "}{" + latex_escape(m.group(1)) + "}")
     keep(r"<(https?://[^\s>]+)>", lambda m: r"\url{" + m.group(1) + "}")
@@ -404,7 +415,7 @@ def allow_token_breaks(latex: str) -> str:
 
 def convert_table_cell(text: str) -> str:
     """``convert_inline`` for a table cell, where long addresses may break."""
-    return allow_token_breaks(convert_inline(text))
+    return allow_token_breaks(convert_inline(text, table_cell=True))
 
 
 # Fenced code blocks: ``` or ~~~ (three or more), with an optional language
@@ -976,6 +987,57 @@ def warn_short_table_rows(rows: list[list[str]], lines: list[str], table_start: 
             )
 
 
+# Page-breakable tables (longtable/xltabular) never split leaving one row alone
+# (skill-visual-organization T11, S3). A table of up to SHORT_GRID_TABLE_ROWS
+# body rows whose estimated height (text lines, header included) is at most
+# KEEP_TOGETHER_MAX_LINES does not break at all; any other table keeps its
+# first two and its last two body rows together.
+SHORT_GRID_TABLE_ROWS = 8
+KEEP_TOGETHER_MAX_LINES = 30
+# Characters of \footnotesize text across the full text width.
+TABLE_LINE_CHARACTERS = 100
+NO_BREAK_AFTER_ROW = r"\noalign{\nobreak}"
+
+
+def estimate_table_lines(rows: list[list[str]], columns: int) -> int:
+    """Text lines a table takes, each row as tall as its longest cell wraps."""
+    width = max(8, TABLE_LINE_CHARACTERS // max(columns, 1))
+    return sum(
+        max((-(-len(re.sub(r"[*`$_]", "", cell)) // width) for cell in row), default=1) or 1
+        for row in rows
+    )
+
+
+def tie_table_rows(table: list[str], whole: bool) -> list[str]:
+    r"""Forbid a page break after body rows: ``\noalign{\nobreak}``, what ``\\*`` does.
+
+    ``whole`` ties every body row but the last, so the table never breaks;
+    otherwise only the first and the second-to-last rows are tied, when there
+    are at least four. Header rows (before ``\endhead``) are left alone.
+    """
+    if r"\endhead" not in table:
+        return table
+    start = table.index(r"\endhead")
+    rows = [
+        index for index in range(start + 1, len(table))
+        if table[index].endswith(r" \\") and not table[index].startswith(r"\multicolumn")
+    ]
+    if whole:
+        tied = rows[:-1]
+    elif len(rows) >= 4:
+        tied = [rows[0], rows[-2]]
+    else:
+        tied = []
+    # The penalty sits right after the row, before its \hline: no interline
+    # glue follows a rule, so the rule cannot become a break point either.
+    result: list[str] = []
+    for index, line in enumerate(table):
+        result.append(line)
+        if index in tied:
+            result.append(NO_BREAK_AFTER_ROW)
+    return result
+
+
 def markdown_to_latex(
     markdown: str,
     suppress_bibliography_heading: bool = False,
@@ -1048,6 +1110,10 @@ def markdown_to_latex(
     # its text, len(output) right after it]; a table that starts there turns
     # the paragraph into its caption.
     caption_slot: list = [-1, "", "", -2]
+    # A "Tabla N." paragraph: [output index of the \Needspace that reserves
+    # room for it, len(output) right after it]. A short table that starts
+    # there is tied to it (T11).
+    caption_reserve: list[int] = [-1, -2]
     # A single capital letter is a table label too ("Tabla A." of the AI
     # declaration) where captions are styled; elsewhere only numbers are.
     table_label = r"(?:\d+|[A-Z])" if (keep_blocks_together or emphasised_tables) else r"\d+"
@@ -1062,6 +1128,28 @@ def markdown_to_latex(
             return
         output.append(rf"\Needspace{{{lines_needed}\baselineskip}}")
         keep_chain[:] = [len(output) - 1, lines_needed, -1]
+
+    def finish_table(start: int, rows: list[list[str]]) -> None:
+        r"""Tie the rows of the page-breakable table emitted from ``output[start]``.
+
+        A short table that directly follows its "Tabla N." caption moves with
+        it: the caption's look-ahead grows to cover the table and the table's
+        own ``\Needspace`` (a break point under the caption) becomes
+        ``\nopagebreak``.
+        """
+        columns = max(len(row) for row in rows)
+        lines = estimate_table_lines(rows, columns)
+        whole = len(rows) - 1 <= SHORT_GRID_TABLE_ROWS and lines <= KEEP_TOGETHER_MAX_LINES
+        table = tie_table_rows(output[start:], whole)
+        reserve, caption_end = caption_reserve
+        reserved = re.fullmatch(r"\\Needspace\{(\d+)\\baselineskip\}", output[reserve]) if reserve >= 0 else None
+        own = r"\Needspace{4\baselineskip}"
+        if whole and len(rows) > 2 and caption_end == start and reserved and own in table:
+            table[table.index(own)] = r"\nopagebreak"
+            # A \footnotesize table line is about 0.8 of a body baseline.
+            needed = max(int(reserved.group(1)), -(-lines * 4 // 5) + 3)
+            output[reserve] = rf"\Needspace{{{needed}\baselineskip}}"
+        output[start:] = table
 
     def open_chain() -> None:
         """The block just emitted (a heading or caption) keeps what follows."""
@@ -1272,6 +1360,7 @@ def markdown_to_latex(
             return row + [""] * (columns - len(row))
 
         header_cells = normalized(rows[0])
+        start = len(output)
         # No \begin{table}[H]/\centering — longtable/xltabular are not floats
         # and center themselves (\LTleft=\LTright=\fill by default). The
         # font-size/spacing declarations need an explicit group since the
@@ -1297,6 +1386,7 @@ def markdown_to_latex(
             r"\endgroup",
             "",
         ])
+        finish_table(start, rows)
 
     def flush_paragraph() -> None:
         nonlocal paragraph
@@ -1325,6 +1415,7 @@ def markdown_to_latex(
             output.append("")
             if caption:
                 open_chain()
+                caption_reserve[:] = [keep_chain[0], len(output)]
             paragraph = []
 
     def close_list() -> None:
@@ -1524,6 +1615,7 @@ def markdown_to_latex(
                 request = table_styles.request_for(table_key, context)
                 receipt = resolve_table_style(request, table_styles.catalog)
                 selected_style = table_styles.catalog.styles[receipt.style_id]
+                start = len(output)
                 output.extend(render_styled_table_latex(
                     header=header,
                     rows=body_rows,
@@ -1532,6 +1624,7 @@ def markdown_to_latex(
                     convert_inline=convert_table_cell,
                     emphasis_column=context.emphasis_column,
                 ))
+                finish_table(start, table_rows)
             else:
                 render_table(table_rows, split_table_row(lines[table_start + 1]))
             continue

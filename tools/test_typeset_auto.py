@@ -717,3 +717,27 @@ def test_auto_bolds_definitions_only_where_a_paragraph_or_list_item_opens() -> N
         "El **hub** es un repetidor multipuerto.\n"
     )
     assert counts["bold"] == 2
+
+
+# T11 (S9): partial IPv6 tokens and hex placeholders are technical tokens too.
+@pytest.mark.parametrize(
+    "token",
+    ["ff02::1:ffXX:XXXX", "ff:fe", "1ee3:56db:e4ad:3dab", "0a00:27ff:fe4e:66a1", "fe80::1ee3:56db:e4ad:3dab"],
+)
+def test_auto_wraps_partial_ipv6_and_placeholder_tokens(token: str) -> None:
+    text, counts = typeset_auto.auto_format(f"# Informe\n\nEl valor {token} aparece aquí.\n")
+
+    assert text == f"# Informe\n\nEl valor `{token}` aparece aquí.\n"
+    assert counts["code"] == 1 and counts["code_ipv6"] == 1
+
+
+def test_auto_leaves_times_ratios_and_colon_prose_alone() -> None:
+    body = (
+        "# Informe\n\n"
+        "A las 10:30 y a las 12:30:45 la relación fue 3:1 y luego 16:9; nota: a:b, "
+        "caso:de estudio, Café: listo y la hora 08:00.\n"
+    )
+    text, counts = typeset_auto.auto_format(body)
+
+    assert text == body
+    assert counts["code"] == 0

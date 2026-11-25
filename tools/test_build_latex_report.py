@@ -243,3 +243,106 @@ def test_render_tex_here_report_gets_grids_too(tmp_path: Path) -> None:
 @pytest.mark.parametrize(("value", "minipages"), [(True, 2), (False, 0)])
 def test_render_tex_reads_figure_grid(tmp_path: Path, value: bool, minipages: int) -> None:
     assert render(tmp_path, shots(2), figure_grid=value).count(r"\begin{minipage}[t]{0.48") == minipages
+
+
+# ---------------------------------------------------------------------------
+# T11 (S3) — a short table never splits leaving a row alone on the next page
+# ---------------------------------------------------------------------------
+
+
+def table_md(rows: int, columns: int = 3, cell: str = "dato") -> str:
+    header = "| " + " | ".join(f"Col {n}" for n in range(columns)) + " |\n"
+    separator = "|" + "---|" * columns + "\n"
+    body = "".join(
+        "| " + " | ".join(f"{cell} {row}" for _ in range(columns)) + " |\n" for row in range(1, rows + 1)
+    )
+    return header + separator + body
+
+
+def body_row_endings(tex: str) -> list[str]:
+    """``\\\\*`` for a body row no page break may follow, else ``\\\\`` (header rows excluded)."""
+    lines = tex[tex.index(r"\endhead"):].splitlines()
+    return [
+        "\\\\*" if lines[index + 1] == r"\noalign{\nobreak}" else "\\\\"
+        for index, line in enumerate(lines) if re.search(r" \d+ \\\\$", line)
+    ]
+
+
+def styled_context():
+    from table_model import TableStylesContext
+    from table_styles import load_catalog
+
+    return TableStylesContext(catalog=load_catalog(), teacher_overrides={}, institution_override=None)
+
+
+def styled(markdown: str) -> str:
+    return "<!-- table-style: tabla-1 purpose=reference -->\n" + markdown
+
+
+@pytest.mark.parametrize("columns", [2, 3])
+@pytest.mark.parametrize("rows", [2, 6, 8])
+def test_short_grid_table_rows_are_tied_together(rows: int, columns: int) -> None:
+    endings = body_row_endings(md(table_md(rows, columns)))
+    assert endings == ["\\\\*"] * (rows - 1) + ["\\\\"]
+
+
+@pytest.mark.parametrize("rows", [2, 6])
+def test_short_styled_table_rows_are_tied_together(rows: int) -> None:
+    tex = md(styled(table_md(rows)), table_styles=styled_context())
+    assert "% table-style:" in tex
+    assert body_row_endings(tex) == ["\\\\*"] * (rows - 1) + ["\\\\"]
+
+
+@pytest.mark.parametrize("styles", [False, True])
+def test_a_caption_stays_with_its_short_table(styles: bool) -> None:
+    body = "Tabla 10. Resumen de los ataques.\n\n" + (styled(table_md(6)) if styles else table_md(6))
+    tex = md(body, table_styles=styled_context() if styles else None)
+    caption_at = tex.index("Tabla 10. Resumen")
+    reserved = re.findall(r"\\Needspace\{(\d+)\\baselineskip\}", tex[:caption_at])
+    assert reserved and int(reserved[-1]) >= 8
+    between = tex[caption_at:tex.index(r"\begingroup", caption_at)]
+    assert r"\Needspace" not in between and r"\nopagebreak" in between
+
+
+def test_a_long_table_only_keeps_its_first_and_last_two_rows_together() -> None:
+    endings = body_row_endings(md(table_md(20)))
+    assert endings[0] == "\\\\*" and endings[-2] == "\\\\*" and endings[-1] == "\\\\"
+    assert endings[1:-2] == ["\\\\"] * 17
+
+
+def test_a_short_table_too_tall_for_a_page_stays_breakable() -> None:
+    endings = body_row_endings(md(table_md(8, cell="texto largo " * 40)))
+    assert endings[1:-2] == ["\\\\"] * 5
+
+
+# Previous behavior: a one-row table and an uncaptioned table keep their output.
+def test_a_one_row_table_is_unchanged() -> None:
+    tex = md(table_md(1))
+    assert r"\nobreak" not in tex and r"\Needspace{4\baselineskip}" in tex
+
+
+def test_an_uncaptioned_short_table_keeps_its_own_look_ahead() -> None:
+    tex = md("Texto previo.\n\n" + table_md(4))
+    assert r"\Needspace{4\baselineskip}" in tex and r"\nopagebreak" not in tex
+
+
+# ---------------------------------------------------------------------------
+# T11 (S9) — a short monospace token in prose never breaks across lines
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("token", ["255.255.0.0", "0010.11b7.9818", "ff02::1:ffXX:XXXX", "Fa0/24", "192.168.10.0/24"])
+def test_short_inline_code_in_prose_has_no_break_point(token: str) -> None:
+    latex = build_latex_report.convert_inline(f"La máscara `{token}` se usa.")
+    assert r"\allowbreak" not in latex
+    assert r"\texttt{" in latex
+
+
+@pytest.mark.parametrize("token", ["255.255.0.0", "0010.11b7.9818", "Fa0/24"])
+def test_the_same_short_token_still_breaks_inside_a_table_cell(token: str) -> None:
+    assert r"\allowbreak{}" in build_latex_report.convert_table_cell(f"`{token}`")
+
+
+def test_a_long_inline_code_run_in_prose_still_breaks() -> None:
+    latex = build_latex_report.convert_inline("Ver `2001:0db8:0000:0000:0000:ff00:0042:8329` aquí.")
+    assert r"\allowbreak{}" in latex

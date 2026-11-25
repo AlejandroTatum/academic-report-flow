@@ -1134,8 +1134,11 @@ def pdf_layout_validation(config: ReportConfig) -> ValidationResult:
     # starts later — silently lost the check.
     # A table cell that closes a page is table content, never a heading.
     body_text = config.body_path.read_text(encoding="utf-8", errors="ignore") if config.body_path.exists() else ""
+    # A cell whose text wraps can close a page with only some of its words
+    # (T11): a run of two or more words found inside a cell is table content
+    # too. Inline Markdown marks do not reach the PDF text.
     table_cells = {
-        " ".join(cell.split())
+        " ".join(re.sub(r"[*`]", "", cell).split())
         for row in body_text.splitlines() if row.strip().startswith("|")
         for cell in row.strip().strip("|").split("|")
     }
@@ -1144,7 +1147,10 @@ def pdf_layout_validation(config: ReportConfig) -> ValidationResult:
         if not lines:
             continue
         last = lines[-1]
-        if " ".join(last.split()) in table_cells:
+        closing = " ".join(last.split())
+        if closing in table_cells or (
+            " " in closing and any(closing in cell for cell in table_cells)
+        ):
             continue
         looks_heading = (
             bool(re.match(r"^(\d+(?:\.\d+)*)?\s*[A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ\s]{3,70}$", last))
