@@ -308,14 +308,14 @@ def _caption_columns(out: list[str], width: int) -> tuple[int, str, str, list[st
     return index, match["head"].rstrip(".") + ".", match["number"], columns
 
 
-_NOT_A_COLUMN_RE = re.compile(r"^(?:\d{4}[a-z]?|pp?\.\s*\d.*)$")
+_NOT_A_COLUMN_RE = re.compile(r"^(?:\d{4}[a-z]?|s\.\s?f\.|n\.\s?d\.|(?:pp?|págs?|cap|caps)\.\s*\d.*)$", re.IGNORECASE)
 
 
 def _caption_names(columns: str) -> list[str]:
     """The column names in caption parentheses: ``;``-separated, else ``, ``-separated.
 
     A comma list must be split by ``, `` (so decimal commas such as ``1,5`` stay
-    whole) and is not a column list when an item is a year or a page reference,
+    whole) and is not a column list when an item is a year, s.f./n.d. or a page or chapter reference,
     as in a source citation ``(adaptado de Pérez, 2020, p. 15)``.
     """
     names = _split_cells(columns)

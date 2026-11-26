@@ -392,6 +392,8 @@ def test_auto_names_the_columns_from_comma_separated_caption_parentheses(
     [
         "Tabla 4. Datos (adaptado de Pérez, 2020, p. 15)",
         "Tabla 5. Rangos (valores de 1,5 a 2,5, 3,5 y 4,5)",
+        "Tabla 6. Topología (adaptado de Cisco, s.f., cap. 4)",
+        "Tabla 7. Datos (fuente propia, 2026a, pág. 3)",
     ],
 )
 def test_auto_does_not_read_a_citation_or_decimal_commas_as_column_names(
