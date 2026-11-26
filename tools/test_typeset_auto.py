@@ -387,6 +387,25 @@ def test_auto_names_the_columns_from_comma_separated_caption_parentheses(
     assert _check(folder)["table_headers"]["ok"]
 
 
+@pytest.mark.parametrize(
+    "caption",
+    [
+        "Tabla 4. Datos (adaptado de Pérez, 2020, p. 15)",
+        "Tabla 5. Rangos (valores de 1,5 a 2,5, 3,5 y 4,5)",
+    ],
+)
+def test_auto_does_not_read_a_citation_or_decimal_commas_as_column_names(
+    tmp_path: Path, caption: str
+) -> None:
+    folder = _folder(tmp_path, f"# Informe\n\n{caption}\n- a; b; c\n- d; e; f")
+
+    assert typeset.main(["auto", str(folder)]) == 0
+
+    text = _typeset_text(folder)
+    assert "| 2020 |" not in text and "| 5 a 2 |" not in text
+    assert caption in text.split("\n")
+
+
 def test_auto_takes_only_the_last_parentheses_and_keeps_an_existing_directive(tmp_path: Path) -> None:
     body = (
         "# Informe\n\n"

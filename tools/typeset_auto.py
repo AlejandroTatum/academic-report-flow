@@ -308,12 +308,23 @@ def _caption_columns(out: list[str], width: int) -> tuple[int, str, str, list[st
     return index, match["head"].rstrip(".") + ".", match["number"], columns
 
 
+_NOT_A_COLUMN_RE = re.compile(r"^(?:\d{4}[a-z]?|pp?\.\s*\d.*)$")
+
+
 def _caption_names(columns: str) -> list[str]:
-    """The column names in caption parentheses: ``;``-separated, else ``,``-separated."""
+    """The column names in caption parentheses: ``;``-separated, else ``, ``-separated.
+
+    A comma list must be split by ``, `` (so decimal commas such as ``1,5`` stay
+    whole) and is not a column list when an item is a year or a page reference,
+    as in a source citation ``(adaptado de Pérez, 2020, p. 15)``.
+    """
     names = _split_cells(columns)
     if len(names) > 1:
         return names
-    return [name.strip() for name in columns.split(",")]
+    names = [name.strip() for name in columns.split(", ")]
+    if any(_NOT_A_COLUMN_RE.match(name) for name in names):
+        return [columns.strip()]
+    return names
 
 
 def _directed(out: list[str], start: int) -> bool:
@@ -634,7 +645,7 @@ def pending(text: str) -> list[str]:
         message = f"table without column names: name its {columns} columns"
         caption = _caption_before(all_lines, number)
         named = len(_caption_names(caption["columns"])) if caption else columns
-        if named != columns:
+        if 1 < named != columns:
             message += f" (the caption names {named}: fix the caption or the rows)"
         items.append((number, message))
     lines = _unfenced(text)
