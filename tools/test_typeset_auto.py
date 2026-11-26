@@ -357,6 +357,36 @@ def test_auto_names_the_columns_from_the_caption_parentheses(
     assert _check(folder)["table_headers"]["ok"]
 
 
+@pytest.mark.parametrize(
+    ("caption", "rows", "header"),
+    [
+        (
+            "Tabla 1. Trazabilidad de las features de la APE-006 (Feature, Endpoint, Servicio, Componente)",
+            "- F-001 Selector de práctica; GET /api/v1/practicas/; PracticasHttp.listar(); SelectorPractica\n"
+            "- F-002 Registrar horas semanales; POST /api/v1/practicas/{id}/reportes/; ReportesHttp.crear(); RegistrarReporte\n",
+            "| Feature | Endpoint | Servicio | Componente |",
+        ),
+        (
+            "Tabla 2. Colaboración de los integrantes en la APE-006 (Integrante, GitHub, Pieza, Pull Request y commits)",
+            "- Ana; ana-gh; Backend; PR #3 y 5 commits\n- Luis; luis-gh; Frontend; PR #4 y 7 commits\n",
+            "| Integrante | GitHub | Pieza | Pull Request y commits |",
+        ),
+    ],
+)
+def test_auto_names_the_columns_from_comma_separated_caption_parentheses(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], caption: str, rows: str, header: str
+) -> None:
+    folder = _folder(tmp_path, f"# Informe\n\n{caption}\n{rows}")
+
+    assert typeset.main(["auto", str(folder)]) == 0
+
+    lines = _typeset_text(folder).split("\n")
+    assert header in lines
+    assert caption.split(" (")[0] + "." in lines
+    assert "table without column names" not in capsys.readouterr().out
+    assert _check(folder)["table_headers"]["ok"]
+
+
 def test_auto_takes_only_the_last_parentheses_and_keeps_an_existing_directive(tmp_path: Path) -> None:
     body = (
         "# Informe\n\n"

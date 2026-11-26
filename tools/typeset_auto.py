@@ -5,7 +5,8 @@ conversions that need no judgement: runs of ``- a; b; c`` lines become pipe
 tables, ``Figura: caption (path)`` lines become images and bare URLs become
 autolinks. It never adds or removes a word of the body. A table takes its
 column names from the parentheses that close the caption line before it
-(``Tabla N. Caption (col a; col b; col c).``) when they name as many columns
+(``Tabla N. Caption (col a; col b; col c).``, or comma-separated
+``(col a, col b, col c)`` when the list holds no ``;``) when they name as many columns
 as the rows hold: the names move to the header row, the caption keeps
 ``Tabla N. Caption.`` and a ``<!-- table-style: tabla-N purpose=reference -->``
 directive follows it. Otherwise the table gets an empty header row. A
@@ -37,7 +38,7 @@ _FIGURE_RE = re.compile(
     r"^Figura:\s*(?P<caption>.+?)\s*\((?P<path>[^()\s]+\.(?:png|jpe?g|pdf|svg))\)(?:\s+(?P<rest>\S.*?))?\s*$",
     re.IGNORECASE,
 )
-_CAPTION_RE = re.compile(r"^(?P<head>Tabla (?P<number>\d+)\.\s.*?)\s*\((?P<columns>[^()]*;[^()]*)\)\.?\s*$")
+_CAPTION_RE = re.compile(r"^(?P<head>Tabla (?P<number>\d+)\.\s.*?)\s*\((?P<columns>[^()]*[;,][^()]*)\)\.?\s*$")
 _DIRECTIVE_RE = re.compile(r"^<!--\s*table-style:.*-->\s*$")
 _IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^()\s]+\)")
 _FIGURA_TEXT_RE = re.compile(r"\bFigura:")
@@ -301,10 +302,18 @@ def _caption_columns(out: list[str], width: int) -> tuple[int, str, str, list[st
     match = _CAPTION_RE.match(out[index]) if index >= 0 else None
     if not match:
         return None
-    columns = _split_cells(match["columns"])
+    columns = _caption_names(match["columns"])
     if len(columns) != width or not all(columns):
         return None
     return index, match["head"].rstrip(".") + ".", match["number"], columns
+
+
+def _caption_names(columns: str) -> list[str]:
+    """The column names in caption parentheses: ``;``-separated, else ``,``-separated."""
+    names = _split_cells(columns)
+    if len(names) > 1:
+        return names
+    return [name.strip() for name in columns.split(",")]
 
 
 def _directed(out: list[str], start: int) -> bool:
@@ -624,7 +633,7 @@ def pending(text: str) -> list[str]:
     for number, columns in empty_table_headers(text):
         message = f"table without column names: name its {columns} columns"
         caption = _caption_before(all_lines, number)
-        named = len(_split_cells(caption["columns"])) if caption else columns
+        named = len(_caption_names(caption["columns"])) if caption else columns
         if named != columns:
             message += f" (the caption names {named}: fix the caption or the rows)"
         items.append((number, message))
