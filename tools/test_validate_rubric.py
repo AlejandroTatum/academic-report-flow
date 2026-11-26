@@ -50,6 +50,20 @@ def test_validate_fails_when_typeset_loses_a_criterion_s_evidence(tmp_path: Path
     assert "body.typeset.md" in result.errors[0] and "lost in typeset" in result.errors[0]
 
 
+def test_validate_ignores_bold_and_code_markers_typeset_added_to_checked_text(tmp_path: Path, pdf_text) -> None:
+    criteria = (
+        {"id": "objetivo", "title": "Objetivo claro", "section": "Objetivos", "weight": 50,
+         "checks": [{"type": "contains", "section": "Objetivos", "text": "el protocolo de red"}]},
+        {"id": "metodologia", "title": "Metodologia descrita", "section": "Metodologia", "weight": 50,
+         "checks": [{"type": "contains", "section": "Metodologia", "text": "configuro la topologia"}]},
+    )
+    folder = planned_folder(tmp_path, criteria)
+    _pdf(folder)
+    bind_typeset(folder, BODY.replace("el protocolo", "el **protocolo**").replace("la topologia", "la `topologia`"))
+    result = validate_report.rubric_validation(_config(folder))
+    assert result.errors == []
+
+
 def test_validate_fails_when_the_pdf_text_loses_checked_text(tmp_path: Path, pdf_text) -> None:
     folder = _folder(tmp_path, BODY)
     pdf_text[0] = [PAGES[0], PAGES[1], "Metodologia\nSe configuro la topologia"]

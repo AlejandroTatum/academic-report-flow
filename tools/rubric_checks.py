@@ -13,7 +13,8 @@ from validate_ieee_refs import cited_keys
 # PASS above settles exactly these properties and nothing more.
 TOLERANCE_RULES = (
     "verbatim_from_guide normalizes whitespace and allows only the first letter to differ in case "
-    "(sentence-initial capitalization is allowed); contains is case-insensitive; section headings "
+    "(sentence-initial capitalization is allowed); contains is case-insensitive; both ignore the "
+    "inline bold, italic and code markers (*, **, `) typeset adds; section headings "
     "match case- and accent-insensitively."
 )
 
@@ -66,6 +67,11 @@ def has_section(body: str, title: str) -> bool:
     return _section(body, title) is not None
 
 
+def _unmarked(text: str) -> str:
+    """``text`` without the inline ``*``/``**``/`` ` `` markers typeset adds around terms and tokens."""
+    return re.sub(r"[*`]", "", text)
+
+
 def _words(text: str) -> set[str]:
     stop = {"sobre", "entre", "desde", "hasta", "these", "those", "their", "there", "which", "where", "para", "como", "todos", "todas", "through"}
     return {word for word in re.findall(r"[^\W\d_]+", _fold(text)) if len(word) >= 5 and word not in stop}
@@ -87,7 +93,7 @@ def _evaluate(folder: Path, check: dict, body: str) -> tuple[bool, str]:
     if scope is None:
         return False, f"section '{check['section']}' missing"
     if kind == "contains":
-        ok = check["text"].casefold() in scope.casefold()
+        ok = _unmarked(check["text"]).casefold() in _unmarked(scope).casefold()
         return ok, f"text '{check['text']}' {'found' if ok else 'missing'}{note}"
     if kind == "matches":
         ok = re.search(check["pattern"], scope) is not None
@@ -100,11 +106,11 @@ def _evaluate(folder: Path, check: dict, body: str) -> tuple[bool, str]:
             guide = (folder / source).read_text(encoding="utf-8")
         except (OSError, UnicodeError):
             return False, f"guide '{source}' missing or unreadable"
-        needle = " ".join(check["text"].split())
+        needle = " ".join(_unmarked(check["text"]).split())
         # Only the first character may differ in case; interior spelling and
         # capitalization remain verbatim after whitespace normalization.
         def matches_first_letter(text: str) -> bool:
-            normalized = " ".join(text.split())
+            normalized = " ".join(_unmarked(text).split())
             return needle in normalized or (bool(needle) and any(
                 normalized[index + 1:index + len(needle)] == needle[1:]
                 and normalized[index].casefold() == needle[0].casefold()

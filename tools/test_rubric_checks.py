@@ -118,6 +118,35 @@ def test_verbatim_requires_guide_and_section_and_normalizes_whitespace(tmp_path:
     assert not run_checks(tmp_path, criterion, "odd body without headings")[0].ok
 
 
+def test_text_checks_ignore_the_bold_and_code_markers_typeset_adds(tmp_path: Path) -> None:
+    (tmp_path / "guide.md").write_text("Definir el contrato OpenAPI del servicio", encoding="utf-8")
+    checks = [
+        {"type": "contains", "section": "Preguntas de Control", "text": "contrato OpenAPI"},
+        {"type": "contains", "section": "Preguntas de Control", "text": "GET /api/v1/practicas/ lista"},
+        {"type": "verbatim_from_guide", "section": "Preguntas de Control", "source": "guide.md",
+         "text": "Definir el contrato OpenAPI del servicio"},
+    ]
+    body = (
+        "# Preguntas de Control\n"
+        "Definir el contrato **OpenAPI** del servicio: `GET /api/v1/practicas/` lista y *valida*.\n"
+    )
+    results = run_checks(tmp_path, [{"id": "preguntas-control", "checks": checks}], body)
+    assert [result.ok for result in results] == [True, True, True]
+
+
+def test_text_checks_still_fail_when_the_text_is_missing_around_markers(tmp_path: Path) -> None:
+    (tmp_path / "guide.md").write_text("Definir el contrato OpenAPI del servicio", encoding="utf-8")
+    checks = [
+        {"type": "contains", "section": "Preguntas de Control", "text": "contrato OpenAPI"},
+        {"type": "verbatim_from_guide", "section": "Preguntas de Control", "source": "guide.md",
+         "text": "Definir el contrato OpenAPI del servicio"},
+    ]
+    body = "# Preguntas de Control\nDefinir el esquema **OpenAPI** del `servicio`.\n"
+    results = run_checks(tmp_path, [{"id": "preguntas-control", "checks": checks}], body)
+    assert [result.ok for result in results] == [False, False]
+    assert "text 'contrato OpenAPI' missing" in results[0].detail
+
+
 def test_tolerance_rules_constant_pins_the_check_tolerances() -> None:
     """The judge brief quotes this constant, so its prose cannot drift."""
     assert "verbatim_from_guide" in TOLERANCE_RULES
