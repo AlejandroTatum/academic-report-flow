@@ -36,13 +36,14 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import sys
 from pathlib import Path
 
 from approval_marker import approval_state, generation_record_current, sha256_file
 from final_review_marker import final_review_state
 from publish_pdf import GENERATION_REFUSAL, PublicationError, _approval_refusal, publish_validated_pdf
-from report_config import load_report_config, read_yaml
+from report_config import load_report_config, read_yaml, resolve_documents_root
 
 VALIDATION_RECEIPT = "validation.yml"
 FINAL_REVIEW_MARKER = "final-review.yml"
@@ -234,6 +235,16 @@ def deliver(folder: Path, documents_root: Path | None = None) -> int:
         return _refuse(str(exc))
 
     action = "ENTREGADO" if publication.created else "REUTILIZADO"
+    # The user's rule: the course folder first, then always a copy in Downloads
+    # (next to the Documents root, so a test root never touches ~/Downloads).
+    downloads = resolve_documents_root(documents_root).parent / "Downloads"
+    download_copy: Path | None = downloads / Path(publication.path).name
+    try:
+        downloads.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(publication.path, download_copy)
+    except OSError as exc:
+        download_copy = None
+        warn(f"no se pudo copiar a Descargas ({downloads}): {exc}")
     # A missing, failed or stale receipt grants none of its gates.
     granted = _granted_gates(receipt) if receipt_ok else []
     if final_review_state(folder, pdf).ok:
@@ -253,17 +264,24 @@ def deliver(folder: Path, documents_root: Path | None = None) -> int:
             f"PDF {action} CON ADVERTENCIAS: {publication.path} (SHA-256: {publication.sha256}); "
             f"{len(warnings)} advertencia(s) en stderr; no es una declaración de cumplimiento; {status_note}."
         )
+        if download_copy:
+            print(f"Copia en Descargas: {download_copy}")
         return 0
     print(
         f"PDF {action}: {publication.path} (SHA-256: {publication.sha256}); "
         f"copia técnicamente validada y revisada por una persona; {status_note}."
     )
+    if download_copy:
+        print(f"Copia en Descargas: {download_copy}")
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Publica el PDF validado y revisado por una persona en ~/Documents (fase deliver)."
+        description=(
+            "Publica el PDF validado y revisado por una persona en ~/Documents (fase deliver) "
+            "y deja una copia en ~/Downloads."
+        )
     )
     parser.add_argument("folder", type=Path, help="Carpeta del reporte con report.yml")
     parser.add_argument(

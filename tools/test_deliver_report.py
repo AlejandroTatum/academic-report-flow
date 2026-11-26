@@ -74,6 +74,36 @@ def test_delivery_publishes_the_validated_bytes_once(tmp_path: Path) -> None:
     assert _sha256(published) == _sha256(pdf)
 
 
+def test_delivery_copies_the_published_pdf_to_downloads(tmp_path: Path, capsys) -> None:
+    """After the course folder, the same bytes are copied to Downloads, next to Documents."""
+    folder, pdf = _ready_folder(tmp_path)
+    documents_root = tmp_path / "docs"
+
+    assert _run(folder, documents_root) == 0
+
+    published = documents_root / CATEGORY / "fisica" / SLUG / f"{SLUG}-v001.pdf"
+    copy = tmp_path / "Downloads" / published.name
+    assert copy.is_file()
+    assert _sha256(copy) == _sha256(pdf)
+    assert f"Copia en Descargas: {copy}" in capsys.readouterr().out
+
+
+def test_failed_downloads_copy_is_a_warning_after_publication(tmp_path: Path, capsys) -> None:
+    """A Downloads copy that cannot be written warns; the Documents publication stands."""
+    folder, pdf = _ready_folder(tmp_path)
+    documents_root = tmp_path / "docs"
+    (tmp_path / "Downloads").write_text("not a folder")
+
+    assert _run(folder, documents_root) == 0
+
+    published = documents_root / CATEGORY / "fisica" / SLUG / f"{SLUG}-v001.pdf"
+    assert _sha256(published) == _sha256(pdf)
+    captured = capsys.readouterr()
+    assert "no se pudo copiar a Descargas" in captured.err
+    assert "Copia en Descargas" not in captured.out
+    assert f"PDF ENTREGADO CON ADVERTENCIAS: {published}" in captured.out
+
+
 def test_delivery_message_lists_gates_from_the_receipt(tmp_path: Path, capsys) -> None:
     """The granted/missing gate list is derived from validation.yml, not fixed.
 
