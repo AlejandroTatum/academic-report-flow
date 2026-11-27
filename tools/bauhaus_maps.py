@@ -3,7 +3,7 @@
 
 The house style for the maps that cost the most to draw by hand
 (``skills/academic-visual-builder/references/bauhaus-maps.md``): Space Grotesk only,
-paper background, one ink, three meaning colours (blue, red, green) and saffron for the
+paper background, one ink, three pastel meaning colours (blue, red, green) and butter for the
 core subtitle. Colour encodes a concept family (concept map) or an actor lane (process map),
 never one colour per node. The author writes content only: Graphviz (``dot -Tplain``) places
 concept maps and a deterministic grid places process maps.
@@ -38,9 +38,14 @@ from PIL import ImageFont
 FONT_FILE = Path(__file__).resolve().parents[1] / "assets" / "fonts" / "SpaceGrotesk[wght].ttf"
 FONT = "Space Grotesk, sans-serif"
 BG, INK, MUTED, WHITE = "#F6F4EE", "#121212", "#4A4A4A", "#FFFFFF"
-SAFFRON = "#F2B233"
-MEANING_COLOURS = {"blue": "#2247B5", "red": "#E0452A", "green": "#0D8B6C"}
+SAFFRON = "#F9DD94"  # butter pastel; decisions only
+# Pastel by default: each meaning colour has a pastel fill, a deeper pastel for lines and borders,
+# and a dark variant (the saturated hue at 85 % over black) for text set in the family colour on paper.
+MEANING_COLOURS = {"blue": "#B9CBF0", "red": "#F7C3B6", "green": "#B5E3CF"}
 LANE_COLOURS = {**MEANING_COLOURS, "ink": INK}
+LINE_COLOURS = {"blue": "#8FA8E0", "red": "#EE9F8C", "green": "#7FC6A8", "ink": INK}
+TEXT_COLOURS = {"blue": "#1D3C9A", "red": "#BE3B24", "green": "#0B765C", "ink": INK}
+ON_FILL = "#2B2B38"  # text on a pastel fill; white stays only on ink
 LANE_DEFAULTS = ("red", "blue", "green", "ink")  # by column; saffron is for decisions only
 MAX_WIDTH = 860
 PAD_X = 24
@@ -81,6 +86,10 @@ def ink(value: str, size: float, weight: int, spacing: float = 0) -> tuple[float
     """
     _, top, _, bottom = (v * size / 100 for v in _face(weight).getbbox(value, anchor="ls"))
     return measure(value, size, weight, spacing), top, bottom
+
+
+def on_fill(name: str) -> str:
+    return WHITE if name == "ink" else ON_FILL
 
 
 def mix(colour: str, amount: float, base: str = WHITE) -> str:
@@ -153,7 +162,7 @@ def _open(width: float, height: float, colours: dict[str, str]) -> list[str]:
 
 
 def _header(kind_label: str, title: str, width: float) -> list[str]:
-    return [text(PAD_X, 34, kind_label, 12.5, 600, MEANING_COLOURS["red"], "start", spacing=2.2),
+    return [text(PAD_X, 34, kind_label, 12.5, 600, TEXT_COLOURS["red"], "start", spacing=2.2),
             text(PAD_X + 172, 34, title, 13.5, 400, MUTED, "start"),
             f'<line x1="{PAD_X}" y1="46" x2="{width - PAD_X:g}" y2="46" stroke="{mix(INK, 0.25, BG)}" stroke-width="1"/>']
 
@@ -165,8 +174,8 @@ def _header_end(title: str) -> float:
 class Entry:
     """One legend item: a 22-unit swatch, a bold uppercase label and an optional meaning."""
 
-    def __init__(self, key: str, label: str, colour: str, meaning: str | None = None, swatch: str = "line"):
-        self.key, self.label, self.colour, self.meaning, self.swatch = key, label, colour, meaning, swatch
+    def __init__(self, key: str, label: str, name: str, meaning: str | None = None, swatch: str = "line"):
+        self.key, self.label, self.name, self.meaning, self.swatch = key, label, name, meaning, swatch
 
     label_x = 30
 
@@ -191,12 +200,12 @@ def _legend(entries: list[Entry], xs: list[float], y: float) -> list[str]:
     for entry, x in zip(entries, xs):
         if entry.swatch == "diamond":
             parts.append(f'<polygon data-legend="{attr(entry.key)}" points="{x + 12:g},{y - 12:g} {x + 24:g},{y - 4:g} '
-                         f'{x + 12:g},{y + 4:g} {x:g},{y - 4:g}" fill="{entry.colour}"/>')
+                         f'{x + 12:g},{y + 4:g} {x:g},{y - 4:g}" fill="{SAFFRON}"/>')
             label_colour = INK
         else:
             parts.append(f'<line data-legend="{attr(entry.key)}" x1="{x:g}" y1="{y - 4:g}" x2="{x + 22:g}" y2="{y - 4:g}" '
-                         f'stroke="{entry.colour}" stroke-width="4"/>')
-            label_colour = entry.colour
+                         f'stroke="{LINE_COLOURS[entry.name]}" stroke-width="4"/>')
+            label_colour = TEXT_COLOURS[entry.name]
         parts.append(text(x + entry.label_x, y, entry.label, 12.5, 700, label_colour, "start", spacing=1.2))
         if entry.meaning:
             parts.append(text(x + entry.label_x + measure(entry.label, 12.5, 700, 1.2) + 14, y, entry.meaning,
@@ -547,7 +556,7 @@ def concept_map(spec: dict) -> str:
     model = _concept_model(spec)
     graph_w, graph_h, boxes, links = _dot(model)
     families = model["families"]
-    entries = [Entry(key, item["label"], MEANING_COLOURS[item["colour"]], item["meaning"]) for key, item in families.items()]
+    entries = [Entry(key, item["label"], item["colour"], item["meaning"]) for key, item in families.items()]
     _guard_legend(entries)
     inner = graph_w
     xs = _legend_positions(entries, inner)
@@ -567,9 +576,9 @@ def concept_map(spec: dict) -> str:
         if concept["level"] == "core":
             return "ink", INK
         name = families[concept["family"]]["colour"]
-        return name, MEANING_COLOURS[name]
+        return name, LINE_COLOURS[name]
 
-    used = {"ink": INK, **{families[c["family"]]["colour"]: MEANING_COLOURS[families[c["family"]]["colour"]]
+    used = {"ink": INK, **{families[c["family"]]["colour"]: LINE_COLOURS[families[c["family"]]["colour"]]
                            for c in model["concepts"] if c["family"]}}
     out = _open(width, height, used)
     out += _header("MAPA CONCEPTUAL", model["title"], width)
@@ -586,7 +595,7 @@ def concept_map(spec: dict) -> str:
         lx, ly = pt(*label)
         width, top, bottom = ink(link["label"], 12.5, 500)
         label_rects[index] = (lx - width / 2, ly + 4 + top, lx + width / 2, ly + 4 + bottom)
-        shade = MUTED if name == "ink" else mix(colour, 0.85, "#000000")
+        shade = MUTED if name == "ink" else TEXT_COLOURS[name]
         out.append(text(lx, ly + 4, link["label"], 12.5, 500, shade).replace("<text ", f'<text data-label="{attr(key)}" ', 1))
 
     _guard_links(model, paths, label_rects)
@@ -603,17 +612,18 @@ def concept_map(spec: dict) -> str:
             else:
                 out.append(text(mid, y + 37, concept["name"], 23, 700, WHITE))
             continue
-        colour = MEANING_COLOURS[families[concept["family"]]["colour"]]
+        name = families[concept["family"]]["colour"]
+        colour = MEANING_COLOURS[name]
         solid = concept["level"] == "key"
-        stroke = "" if solid else f' stroke="{colour}" stroke-width="3"'
+        stroke = "" if solid else f' stroke="{LINE_COLOURS[name]}" stroke-width="3"'
         out.append(f'<rect data-node="{node_id}" x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}" '
                    f'fill="{colour if solid else WHITE}"{stroke}/>')
         if not solid:
-            out.append(f'<rect data-corner="{node_id}" x="{x:.1f}" y="{y:.1f}" width="14" height="14" fill="{colour}"/>')
+            out.append(f'<rect data-corner="{node_id}" x="{x:.1f}" y="{y:.1f}" width="14" height="14" fill="{LINE_COLOURS[name]}"/>')
         name_y = y + (27 if concept["detail"] else 30)
-        out.append(text(mid, name_y, concept["name"], 16.5, 700, WHITE if solid else INK))
+        out.append(text(mid, name_y, concept["name"], 16.5, 700, ON_FILL if solid else INK))
         if concept["detail"]:
-            out.append(text(mid, y + 47, concept["detail"], 14, 400, mix(WHITE, 0.88, colour) if solid else MUTED))
+            out.append(text(mid, y + 47, concept["detail"], 14, 400, mix(ON_FILL, 0.85, colour) if solid else MUTED))
     out += _legend(entries, xs, height - 26)
     return _finish(out)
 
@@ -723,9 +733,9 @@ def process_map(spec: dict) -> str:
     model = _process_model(spec)
     columns = [*model["lanes"], *([model["artifact_lane"]] if model["artifact_lane"] else [])]
     n = len(columns)
-    entries = [Entry(c["id"], c["short"], LANE_COLOURS[c["colour"]]) for c in columns]
+    entries = [Entry(c["id"], c["short"], c["colour"]) for c in columns]
     if any(s["decision"] for s in model["steps"]):
-        entries.append(Entry("decision", "DECISIÓN", SAFFRON, swatch="diamond"))
+        entries.append(Entry("decision", "DECISIÓN", "decision", swatch="diamond"))
     _guard_legend(entries)
     box_need = max(_box_need(s) for s in model["steps"])
     corridor_slots, corridors = _corridor_plan(model)
@@ -745,20 +755,21 @@ def process_map(spec: dict) -> str:
     lane_x = {c["id"]: PAD_X + i * (lane_w + LANE_GAP) for i, c in enumerate(columns)}
     height = TOP + 24 + len(model["steps"]) * ROW_H + 56
     by_lane = {c["id"]: c for c in columns}
-    used = {"ink": INK, **{c["colour"]: LANE_COLOURS[c["colour"]] for c in columns}}
+    used = {"ink": INK, **{c["colour"]: LINE_COLOURS[c["colour"]] for c in columns}}
     out = _open(width, height, used)
     out += _header("MAPA DE PROCESO", model["title"], width)
     for c in columns:
         colour, x = LANE_COLOURS[c["colour"]], lane_x[c["id"]]
         out.append(f'<rect data-lane-header="{attr(c["id"])}" x="{x:.1f}" y="{TOP - 44}" width="{lane_w:.1f}" height="34" fill="{colour}"/>')
-        out.append(text(x + lane_w / 2, TOP - 22, c["label"], 12.5, 700, WHITE, spacing=1.4))
+        out.append(text(x + lane_w / 2, TOP - 22, c["label"], 12.5, 700, on_fill(c["colour"]), spacing=1.4))
+        tint = mix(colour, 0.05 if c["colour"] == "ink" else 0.3, BG)  # pastel lanes need more than ink's 5 %
         out.append(f'<rect data-lane="{attr(c["id"])}" x="{x:.1f}" y="{TOP - 10}" width="{lane_w:.1f}" height="{height - TOP - 40}" '
-                   f'fill="{mix(colour, 0.05, BG)}"/>')
+                   f'fill="{tint}"/>')
 
     nodes, number, obstacles, art_lines = {}, 0, [], []
     for row, step in enumerate(model["steps"]):
         lane = by_lane[step["lane"]]
-        colour = LANE_COLOURS[lane["colour"]]
+        colour, line = LANE_COLOURS[lane["colour"]], LINE_COLOURS[lane["colour"]]
         cx, top = lane_x[lane["id"]] + lane_w / 2, TOP + 24 + row * ROW_H
         cy = top + BOX_H / 2
         half_w = box_w / 2 - 2 if step["decision"] else box_w / 2
@@ -774,15 +785,15 @@ def process_map(spec: dict) -> str:
         number += 1
         x = cx - box_w / 2
         out.append(f'<rect data-node="{sid}" x="{x:.1f}" y="{top:.1f}" width="{box_w:.1f}" height="{BOX_H}" fill="{WHITE}" '
-                   f'stroke="{colour}" stroke-width="3"/>')
+                   f'stroke="{line}" stroke-width="3"/>')
         out.append(f'<rect data-corner="{sid}" x="{x:.1f}" y="{top:.1f}" width="30" height="30" fill="{colour}"/>')
-        out.append(text(x + 15, top + 21, number, 15, 700, WHITE).replace("<text ", f'<text data-number="{sid}" ', 1))
+        out.append(text(x + 15, top + 21, number, 15, 700, on_fill(lane["colour"])).replace("<text ", f'<text data-number="{sid}" ', 1))
         out.append(text(x + 44, top + 25, step["title"], 15.5, 700, INK, "start"))
         if step["detail"]:
             out.append(text(x + 44, top + 46, step["detail"], 13.5, 400, MUTED, "start"))
         if step["artifact"]:
             art = model["artifact_lane"]
-            art_colour = LANE_COLOURS[art["colour"]]
+            art_fill, art_colour = LANE_COLOURS[art["colour"]], LINE_COLOURS[art["colour"]]
             ax, aw, fold = lane_x["artifact"] + 25, lane_w - 50, 16
             obstacles.append([(ax, cy - 19), (ax + aw, cy - 19), (ax + aw, cy + 19), (ax, cy + 19)])
             art_lines.append([(x + box_w + 2, cy), (ax, cy)])
@@ -791,7 +802,7 @@ def process_map(spec: dict) -> str:
             out.append(f'<path data-artifact="{sid}" d="M{ax:.1f},{cy - 19:.1f} H{ax + aw - fold:.1f} L{ax + aw:.1f},{cy - 19 + fold:.1f} '
                        f'V{cy + 19:.1f} H{ax:.1f} Z" fill="{WHITE}" stroke="{art_colour}" stroke-width="2.4"/>')
             out.append(f'<path data-fold="{sid}" d="M{ax + aw - fold:.1f},{cy - 19:.1f} V{cy - 19 + fold:.1f} H{ax + aw:.1f}" '
-                       f'fill="{art_colour}" stroke="{art_colour}" stroke-width="2.4"/>')
+                       f'fill="{art_fill}" stroke="{art_colour}" stroke-width="2.4"/>')
             out.append(text(ax + 14, cy + 5, step["artifact"], 13.5, 500, INK, "start"))
 
     routes = _plan_routes(model, nodes, lane_x, lane_w, margin, corridor_slots, corridors)

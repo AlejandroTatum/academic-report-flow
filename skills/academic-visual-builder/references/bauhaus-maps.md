@@ -25,10 +25,13 @@ Scope: concept maps and process maps only. Data charts (Matplotlib, Vega-Lite, .
 | Paper | `#F6F4EE` | background |
 | Ink | `#121212` | core concept, flow connectors, titles |
 | Muted | `#4A4A4A` | header title, details, meaning text |
-| Blue | `#2247B5` | a concept family or an actor lane |
-| Red | `#E0452A` | a concept family or an actor lane; the kind label |
-| Green | `#0D8B6C` | a concept family or an actor lane |
-| Saffron | `#F2B233` | decisions and the core subtitle only |
+| Blue | fill `#B9CBF0`, line `#8FA8E0`, text `#1D3C9A` | a concept family or an actor lane |
+| Red (coral) | fill `#F7C3B6`, line `#EE9F8C`, text `#BE3B24` | a concept family or an actor lane; the kind label (text) |
+| Green (mint) | fill `#B5E3CF`, line `#7FC6A8`, text `#0B765C` | a concept family or an actor lane |
+| Butter | `#F9DD94` | decisions and the core subtitle only |
+| Text on fill | `#2B2B38` | every text on a pastel fill (key concepts, lane headers, step numbers) |
+
+Pastel by default (the user asked for "colores pasteles"): each meaning colour has a pastel fill for solid shapes, a deeper pastel line for borders, links, arrowheads and legend lines, and a dark text variant (the saturated hue at 85 % over black) for words set in the family colour on paper: the kind label, link phrases and legend labels. Text on a pastel fill is `#2B2B38`, never white; white stays only on ink (the core concept, an ink lane header). Pastel text on paper is never used. Lane bodies are the lane's pastel at 30 % over the paper (an ink lane, 5 %).
 
 Colour encodes meaning: a concept family or an actor lane. Never one colour per node. The header is an uppercase red kind label ("MAPA CONCEPTUAL", "MAPA DE PROCESO") with the title beside it in muted and a hairline below. The legend sits at the foot: a short coloured line and a bold uppercase label per colour, plus a meaning text for concept families.
 
@@ -60,9 +63,9 @@ spine: [sdd, spec]
 | Field | Rule |
 |---|---|
 | `title` | required; muted text beside the kind label |
-| `core` | required: `id`, `name`, optional `subtitle`. Solid ink box, white bold name, saffron uppercase subtitle |
+| `core` | required: `id`, `name`, optional `subtitle`. Solid ink box, white bold name, butter uppercase subtitle |
 | `families` | required mapping: `label` (legend), `color` (blue, red or green, each used once), optional `meaning` |
-| `concepts` | required list: `id`, `name`, `family`, optional `detail`, optional `level` (`key` = solid family colour with white text; `leaf`, the default = white with a 3-unit family border and a 14-unit corner square) |
+| `concepts` | required list: `id`, `name`, `family`, optional `detail`, optional `level` (`key` = solid pastel family fill with dark `#2B2B38` text; `leaf`, the default = white with a 3-unit deeper-pastel family border and a 14-unit corner square in the same line colour) |
 | `links` | required list: `from`, `to`, `label` (every link carries its linking phrase, coloured by the source family), optional `cross: true` |
 | `spine` | optional list of ids drawn as one straight central axis |
 
@@ -87,9 +90,9 @@ flow:
 | Field | Rule |
 |---|---|
 | `title` | required |
-| `lanes` | required, 2 or 3 actor lanes as columns: `id`, `label` (solid coloured header), optional `short` (legend name), optional `color` (blue, red, green or ink; lanes without one take the first of red, blue, green, ink that no lane chose, in column order; never repeated) |
+| `lanes` | required, 2 or 3 actor lanes as columns: `id`, `label` (solid coloured header), optional `short` (legend name), optional `color` (blue, red, green or ink; a pastel header carries dark text, an ink header white text; lanes without one take the first of red, blue, green, ink that no lane chose, in column order; never repeated) |
 | `artifact_lane` | optional last column for documents: `label`, optional `short`, `color` |
-| `steps` | required, at least 2, one per row in the given order: `id`, `lane`, `title`, optional `detail`, optional `artifact` (a document with a folded corner, joined by a dashed connector), optional `decision: true` (saffron diamond, no number, no artifact) |
+| `steps` | required, at least 2, one per row in the given order: `id`, `lane`, `title`, optional `detail`, optional `artifact` (a document with a folded corner, joined by a dashed connector), optional `decision: true` (butter diamond, no number, no artifact) |
 | `flow` | required list: `from`, `to`, optional `label` (printed in uppercase, e.g. "sí" becomes SÍ); a pair appears once |
 
 Steps are numbered in order in a 30-unit corner square on a white box with a 3-unit lane border; decisions are not numbered. Connectors are orthogonal and ink-coloured, and no connector crosses a step: a flow to the next row goes through the gap between rows, a flow that skips rows runs down the free left edge of its source lane, and a back edge to an earlier row loops up the right edge of the rightmost of the two lanes. Connectors that run side by side down a lane margin each get their own line (the margin widens with the number of concurrent corridors), and connectors that meet one side of a step use separate slots on it: at most 5 per side, 4 when the step has an artifact, otherwise the render fails naming the step. A branch label is placed beside its connector where it touches no connector, step or document; a label also keeps 8 units from every arrowhead (its own included), step, diamond and document, measured on the real shapes and by the label's real ink, so the label of a decision's branch to the step directly below sits beside the vertical connector under the diamond, about 15 units out; a label never leaves the canvas; if no spot is free the render fails naming `flow[i].label`, so shorten it. Lane ids `artifact` and `decision` are reserved. Keep branch labels to one short word. With three actor lanes plus an artifact lane there are four narrow columns: keep titles to about 13 characters and details to about 16, or the render fails with the width message.
@@ -102,5 +105,6 @@ Steps are numbered in order in a 30-unit corner square on a white box with a 3-u
 
 - Shrinking a wide map or its font to make it fit; split it.
 - A second font, a fifth colour, or one colour per node.
-- Saffron for anything except decisions and the core subtitle.
+- Butter for anything except decisions and the core subtitle.
+- White text on a pastel fill, or pastel text on paper.
 - Drawing a map by hand when a spec can express it; hand-written SVG is only for figures neither layout fits, with the same tokens and `editorial_svg.py check`.

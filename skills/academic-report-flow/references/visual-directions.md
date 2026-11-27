@@ -12,6 +12,7 @@ The direction sets how a table or figure looks; these rules decide whether it be
 - Diagrams by default: every major concept section (each `##` of Resultados and each control question that explains a concept, mechanism, structure or process) carries at least one explanatory own diagram built with `academic-visual-builder`, planned in the plan. Screenshots alone (simulator, terminal, guide captures) never count as explanatory diagrams; they are evidence, not explanation.
 - Organized by default: each Resultados subsection and each control question carries at least one table, list or own diagram; an enumerable run of 3+ items is a list or a table, never a sentence.
 - Count: beyond those defaults there is no quota of tables or figures; add one more only where it supports analysis or a comparison the text needs.
+- Pastel by default: own diagrams and charts use the pastel set in `academic-visual-builder` (pastel fills, deeper pastel lines and borders, dark `#2B2B38` text on fills); each direction below chooses how many of those tones to use, not whether they are pastel.
 - Prose interprets: the surrounding paragraph says what the visual shows and why it matters; it never repeats the cells or labels one by one.
 
 ## Technical
@@ -38,16 +39,16 @@ The direction sets how a table or figure looks; these rules decide whether it be
 - Tables: template-consistent styling, bordered, labeled headers.
 - Diagrams: formal, aligned to the template's palette and heading levels.
 - Density: moderate; consistency over compression.
-- Color: confirmed branding only.
+- Color: confirmed branding first; diagrams and charts use pastel tints of it, or the pastel set when the branding gives none.
 - Composition: cover and metadata present, formal heading hierarchy, uniform header/footer, no per-section styling drift.
 
 ## Sober
 
 - Typography: highly legible, one serif or one sans, minimal weight variation.
 - Tables: plain grids, clear headers, no fills beyond a light header row.
-- Diagrams: monochrome or two-tone, shape and label carry the meaning.
+- Diagrams: one or two pastel tones, shape and label carry the meaning.
 - Density: balanced; generous but intentional spacing.
-- Color: neutral palette, minimal decoration.
+- Color: neutral palette with at most two pastel tones, minimal decoration.
 - Composition: balanced margins, calm rhythm, nothing competing for attention.
 
 ## Custom

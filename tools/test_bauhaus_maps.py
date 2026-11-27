@@ -24,10 +24,12 @@ needs_dot = pytest.mark.skipif(shutil.which("dot") is None, reason="Graphviz dot
 needs_rsvg = pytest.mark.skipif(shutil.which("rsvg-convert") is None, reason="rsvg-convert is not installed")
 
 BG, INK, MUTED = "#F6F4EE", "#121212", "#4A4A4A"
-BLUE, RED, GREEN, SAFFRON = "#2247B5", "#E0452A", "#0D8B6C", "#F2B233"
-# Link phrases are the family colour at 85 % over black, for contrast on the paper background.
+# Pastel by default: fills, deeper pastel lines/borders, and dark text for words set in a family colour.
+BLUE, RED, GREEN, SAFFRON = "#B9CBF0", "#F7C3B6", "#B5E3CF", "#F9DD94"
+LINE = {BLUE: "#8FA8E0", RED: "#EE9F8C", GREEN: "#7FC6A8", "#121212": "#121212"}
+# Words in a family colour on paper are the saturated hue at 85 % over black, for contrast.
 SHADE = {BLUE: "#1D3C9A", RED: "#BE3B24", GREEN: "#0B765C"}
-WHITE = "#FFFFFF"
+WHITE, ON_FILL = "#FFFFFF", "#2B2B38"
 SIZE_LIMIT = 860
 
 CONCEPT_SPEC = {
@@ -264,7 +266,7 @@ def test_concept_map_uses_only_space_grotesk_in_four_weights(tmp_path: Path) -> 
 def test_concept_map_header_has_red_kind_label_muted_title_and_hairline(tmp_path: Path) -> None:
     root = svg_root(tmp_path, CONCEPT_SPEC)
     kind = text_of(root, "MAPA CONCEPTUAL")
-    assert kind.get("fill") == RED and kind.get("letter-spacing") == "2.2"
+    assert kind.get("fill") == SHADE[RED] and kind.get("letter-spacing") == "2.2"
     title = text_of(root, CONCEPT_SPEC["title"])
     assert title.get("fill") == MUTED and float(title.get("x")) > float(kind.get("x"))
     assert title.get("y") == kind.get("y")
@@ -284,12 +286,22 @@ def test_core_concept_is_a_solid_ink_box_with_white_title_and_saffron_subtitle(t
 
 
 @needs_dot
-def test_key_concepts_are_solid_family_colour_with_white_text(tmp_path: Path) -> None:
+def test_key_concepts_are_solid_pastel_with_dark_text(tmp_path: Path) -> None:
     root = svg_root(tmp_path, CONCEPT_SPEC)
     for node_id, colour, name in (("spec", BLUE, "Especificación"), ("const", RED, "Constitución")):
         (rect,) = find(root, "rect", data_node=node_id)
         assert rect.get("fill") == colour
-        assert text_of(root, name).get("fill") == WHITE
+        assert text_of(root, name).get("fill") == ON_FILL
+
+
+@needs_dot
+def test_no_text_on_a_pastel_family_fill_is_white(tmp_path: Path) -> None:
+    concept, process = svg_root(tmp_path, CONCEPT_SPEC), svg_root(tmp_path, PROCESS_SPEC)
+    white = ["".join(t.itertext()) for t in texts(concept) if t.get("fill") == WHITE]
+    assert white == ["Spec-Driven Development"], "white text only on the ink core"
+    assert not [t for t in texts(process) if t.get("fill") == WHITE], "no ink lane here, so no white text"
+    for root in (concept, process):
+        assert {t.get("fill") for t in texts(root)}.isdisjoint({BLUE, RED, GREEN}), "no pastel text"
 
 
 @needs_dot
@@ -297,9 +309,9 @@ def test_leaves_are_white_with_a_family_border_and_a_corner_square(tmp_path: Pat
     root = svg_root(tmp_path, CONCEPT_SPEC)
     for node_id, colour in (("problema", BLUE), ("plan", GREEN), ("codigo", GREEN)):
         (rect,) = find(root, "rect", data_node=node_id)
-        assert (rect.get("fill"), rect.get("stroke"), rect.get("stroke-width")) == (WHITE, colour, "3")
+        assert (rect.get("fill"), rect.get("stroke"), rect.get("stroke-width")) == (WHITE, LINE[colour], "3")
         (corner,) = find(root, "rect", data_corner=node_id)
-        assert (corner.get("width"), corner.get("height"), corner.get("fill")) == ("14", "14", colour)
+        assert (corner.get("width"), corner.get("height"), corner.get("fill")) == ("14", "14", LINE[colour])
         assert (corner.get("x"), corner.get("y")) == (rect.get("x"), rect.get("y"))
 
 
@@ -308,9 +320,9 @@ def test_colour_encodes_the_family_never_one_colour_per_node(tmp_path: Path) -> 
     root = svg_root(tmp_path, CONCEPT_SPEC)
     fills = {find(root, "rect", data_node=n)[0].get("stroke") or find(root, "rect", data_node=n)[0].get("fill")
              for n in ("spec", "problema", "req", "clar")}
-    assert fills == {BLUE}
+    assert fills == {BLUE, LINE[BLUE]}
     colours = {e.get(a) for e in root.iter() for a in ("fill", "stroke")}
-    assert {BLUE, RED, GREEN, SAFFRON, INK} <= colours
+    assert {BLUE, RED, LINE[GREEN], SAFFRON, INK} <= colours  # no green key concept, so green is a line only
 
 
 @needs_dot
@@ -342,10 +354,10 @@ def test_legend_has_a_coloured_line_a_bold_uppercase_label_and_its_meaning(tmp_p
     root = svg_root(tmp_path, CONCEPT_SPEC)
     for family, colour in (("que", BLUE), ("reglas", RED), ("como", GREEN)):
         (line,) = find(root, "line", data_legend=family)
-        assert line.get("stroke") == colour and line.get("stroke-width") == "4"
+        assert line.get("stroke") == LINE[colour] and line.get("stroke-width") == "4"
         assert abs(float(line.get("x2")) - float(line.get("x1")) - 22) < 1e-6
     label = text_of(root, "QUÉ")
-    assert label.get("font-weight") == "700" and label.get("fill") == BLUE
+    assert label.get("font-weight") == "700" and label.get("fill") == SHADE[BLUE]
     assert text_of(root, "problema y requisitos").get("fill") == MUTED
     assert not [e for e in find(root, "rect") if e.get("data-legend")], "no chip grid"
     foot = max(float(e.get("y1")) for e in find(root, "line", data_legend="que"))
@@ -567,7 +579,7 @@ def test_png_without_rsvg_convert_fails_cleanly_and_writes_nothing(tmp_path: Pat
 # T2 · process map
 # --------------------------------------------------------------------------
 
-LANE_TINT = {RED: "#F5EBE4", BLUE: "#EBEBEB", GREEN: "#EAEFE8"}  # 5 % of the lane colour over the paper
+LANE_TINT = {RED: "#F6E5DD", BLUE: "#E4E8EF", GREEN: "#E2EFE5"}  # 30 % of the pastel lane colour over the paper
 
 
 def artifact_box(root: ET.Element, step_id: str) -> tuple[float, float, float, float]:
@@ -632,12 +644,12 @@ def test_process_map_uses_the_bauhaus_tokens_and_only_space_grotesk(process_root
     assert {t.get("font-weight") for t in texts(process_root)} <= {"400", "500", "600", "700"}
     assert find(process_root, "rect", width="860", fill=BG)
     kind = text_of(process_root, "MAPA DE PROCESO")
-    assert (kind.get("fill"), kind.get("letter-spacing")) == (RED, "2.2")
+    assert (kind.get("fill"), kind.get("letter-spacing")) == (SHADE[RED], "2.2")
     title = text_of(process_root, PROCESS_SPEC["title"])
     assert title.get("fill") == MUTED and title.get("y") == kind.get("y")
 
 
-def test_lanes_are_columns_with_solid_headers_and_five_percent_tinted_bodies(process_root: ET.Element) -> None:
+def test_lanes_are_columns_with_solid_headers_and_tinted_bodies(process_root: ET.Element) -> None:
     lanes = {"equipo": RED, "ia": BLUE, "artifact": GREEN}
     for lane, colour in lanes.items():
         (head,) = find(process_root, "rect", data_lane_header=lane)
@@ -648,7 +660,7 @@ def test_lanes_are_columns_with_solid_headers_and_five_percent_tinted_bodies(pro
     xs = [box(find(process_root, "rect", data_lane=lane)[0])[0] for lane in lanes]
     assert xs == sorted(xs) and len(set(xs)) == 3
     label = text_of(process_root, "EQUIPO DE DESARROLLO")
-    assert (label.get("fill"), label.get("font-weight")) == (WHITE, "700")
+    assert (label.get("fill"), label.get("font-weight")) == (ON_FILL, "700")
 
 
 def test_steps_are_white_boxes_with_a_lane_border_and_a_numbered_corner_square(process_root: ET.Element) -> None:
@@ -656,12 +668,12 @@ def test_steps_are_white_boxes_with_a_lane_border_and_a_numbered_corner_square(p
                 "s6": (RED, "6")}
     for step_id, (colour, number) in expected.items():
         (rect,) = find(process_root, "rect", data_node=step_id)
-        assert (rect.get("fill"), rect.get("stroke"), rect.get("stroke-width")) == (WHITE, colour, "3")
+        assert (rect.get("fill"), rect.get("stroke"), rect.get("stroke-width")) == (WHITE, LINE[colour], "3")
         (corner,) = find(process_root, "rect", data_corner=step_id)
         assert (corner.get("width"), corner.get("height"), corner.get("fill")) == ("30", "30", colour)
         assert (corner.get("x"), corner.get("y")) == (rect.get("x"), rect.get("y"))
         digit = find(process_root, "text", data_number=step_id)
-        assert [("".join(d.itertext()), d.get("fill")) for d in digit] == [(number, WHITE)]
+        assert [("".join(d.itertext()), d.get("fill")) for d in digit] == [(number, ON_FILL)]
     assert text_of(process_root, "Fijar principios").get("font-weight") == "700"
     assert text_of(process_root, "/constitution").get("fill") == MUTED
 
@@ -677,11 +689,11 @@ def test_decisions_are_saffron_diamonds_and_are_not_numbered(process_root: ET.El
 
 def test_artifacts_are_folded_documents_joined_by_a_dashed_connector(process_root: ET.Element) -> None:
     (doc,) = find(process_root, "path", data_artifact="s1")
-    assert (doc.get("fill"), doc.get("stroke")) == (WHITE, GREEN)
+    assert (doc.get("fill"), doc.get("stroke")) == (WHITE, LINE[GREEN])
     (fold,) = find(process_root, "path", data_fold="s1")
     assert fold.get("fill") == GREEN
     (link,) = find(process_root, "line", data_edge="artifact:s1")
-    assert (link.get("stroke"), link.get("stroke-dasharray")) == (GREEN, "4 4")
+    assert (link.get("stroke"), link.get("stroke-dasharray")) == (LINE[GREEN], "4 4")
     assert text_of(process_root, "constitution.md").get("fill") == INK
     assert not find(process_root, "path", data_artifact="s6"), "steps without an artifact get no document"
     lane = box(find(process_root, "rect", data_lane="artifact")[0])
@@ -960,9 +972,9 @@ def test_corridors_that_cannot_fit_fail_with_the_width_message_instead_of_overla
 def test_the_legend_names_each_lane_and_the_decision(process_root: ET.Element) -> None:
     for key, colour, label in (("equipo", RED, "EQUIPO"), ("ia", BLUE, "ASISTENTE"), ("artifact", GREEN, "ARTEFACTO")):
         (line,) = find(process_root, "line", data_legend=key)
-        assert (line.get("stroke"), line.get("stroke-width")) == (colour, "4")
+        assert (line.get("stroke"), line.get("stroke-width")) == (LINE[colour], "4")
         legend = [t for t in texts(process_root) if "".join(t.itertext()) == label and t.get("font-weight") == "700"]
-        assert legend and legend[-1].get("fill") == colour
+        assert legend and legend[-1].get("fill") == SHADE[colour]
     (marker,) = find(process_root, "polygon", data_legend="decision")
     assert marker.get("fill") == SAFFRON
     assert text_of(process_root, "DECISIÓN").get("fill") == INK
