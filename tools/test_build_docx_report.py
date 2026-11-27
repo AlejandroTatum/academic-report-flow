@@ -767,6 +767,47 @@ def test_ai_declaration_members_render_as_fichas_without_tables(tmp_path: Path) 
     assert len(document.tables) == 0
 
 
+SECTIONED_YAML = (
+    "ai_declaration:\n"
+    "  title: Declaración de uso de IA generativa\n"
+    "  members:\n"
+    "    - name: Alejandro Padilla\n"
+    "      tool: el Gentleman (Claude)\n"
+    "      use: Implementación\n"
+    "      instructions:\n"
+    "        - section: Comprensión de la guía\n"
+    "          items: [Se solicitó analizar la guía.]\n"
+    "        - sección: Implementación\n"
+    "          instrucciones:\n"
+    "            - Se solicitó implementar el algoritmo.\n"
+    "            - Se solicitó incluir la actividad complementaria.\n"
+    "ai_declaration_position: after_bibliography"
+)
+
+
+def test_ai_declaration_sectioned_instructions_render_phase_headings(tmp_path: Path) -> None:
+    document = build_and_open(make_report(tmp_path, DECLARATION_BODY, route="technical", extra=SECTIONED_YAML))
+
+    paragraphs = document.paragraphs
+    texts = [p.text for p in paragraphs]
+    start = texts.index("Declaración de uso de IA generativa")
+    assert texts[start + 1:] == [
+        "Alejandro Padilla · el Gentleman (Claude)",
+        "Uso: Implementación",
+        "1. Comprensión de la guía",
+        "Se solicitó analizar la guía.",
+        "2. Implementación",
+        "Se solicitó implementar el algoritmo.",
+        "Se solicitó incluir la actividad complementaria.",
+    ]
+    styles = [p.style.name for p in paragraphs[start + 1:]]
+    assert styles[1] == styles[3] == styles[5] == styles[6] == "List Bullet"
+    assert "List Number" not in styles
+    for heading in (paragraphs[start + 3], paragraphs[start + 5]):
+        assert all(run.bold for run in heading.runs if run.text.strip())
+    assert len(document.tables) == 0
+
+
 def test_ai_declaration_as_plain_string_renders_one_paragraph(tmp_path: Path) -> None:
     document = build_and_open(
         make_report(tmp_path, DECLARATION_BODY, route="technical", extra='ai_declaration: "Se usó Claude."')

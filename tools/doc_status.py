@@ -158,8 +158,11 @@ _GUIDANCE = {
         "(title optional: the default heading is used; text is the short opening statement) "
         "plus `ai_declaration_position: after_bibliography`, one ficha per member and no tables: "
         "each members entry has name (omit it for a single author), tool, use (one or more) and "
-        "instructions (numbered: the prompt verbatim when available, otherwise explicitly labeled "
-        "as a summary, never invented as literal); omit writes `ai_declaration: false`, as does an "
+        "instructions, by default a list of work-phase sections `{{section: ..., items: [...]}}` "
+        "(guide comprehension, implementation, results and charts, report writing, review, titled in "
+        "Spanish as the approval reference lists them; omit phases that did not happen), each item one "
+        "prompt rewritten as a formal impersonal Spanish summary, not the user's raw words and never "
+        "presented as verbatim (a flat numbered list still renders); omit writes `ai_declaration: false`, as does an "
         "explicit later order from the user to remove it"
     ),
     "typeset": (

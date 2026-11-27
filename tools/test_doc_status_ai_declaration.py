@@ -103,6 +103,14 @@ def test_guidance_asks_for_one_ficha_per_member_and_no_tables(tmp_path: Path) ->
     assert "Tabla A" not in guidance and "Tabla B" not in guidance
 
 
+def test_guidance_defaults_to_formal_instructions_grouped_by_phase(tmp_path: Path) -> None:
+    folder = _folder(tmp_path)
+    guidance = doc_status._guidance("format", folder, _config(folder))
+
+    for needle in ("{section: ..., items: [...]}", "work-phase", "formal impersonal", "approval reference"):
+        assert needle in guidance, needle
+
+
 def test_a_built_report_is_never_sent_back_to_format(tmp_path: Path) -> None:
     built = _folder(tmp_path / "built")
     _pdf(built)

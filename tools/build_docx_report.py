@@ -938,7 +938,7 @@ class DocxRenderer:
             self.render_body(text)
         elif text.strip():
             self._paragraph(text.strip())
-        # S13: one ficha per member (name · tool, Uso bullets, numbered Instrucciones), as LaTeX.
+        # S13: one ficha per member (name · tool, Uso bullets, phase sections or numbered Instrucciones), as LaTeX.
         for ficha in ai_declaration_fichas(declaration, self.config.metadata):
             self.render_body(ficha)
 

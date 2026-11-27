@@ -1974,6 +1974,21 @@ def _declaration_items(value: object) -> list[str]:
     return [" ".join(str(entry).split()) for entry in entries if entry is not None and str(entry).strip()]
 
 
+def _declaration_sections(value: object) -> list[tuple[str, list[str]]]:
+    """Phase sections of a sectioned ``instructions`` list; empty for the flat form."""
+    if not isinstance(value, (list, tuple)) or not any(isinstance(entry, dict) for entry in value):
+        return []
+    sections: list[tuple[str, list[str]]] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        title = " ".join(str(entry.get("section") or entry.get("seccion") or entry.get("sección") or "").split())
+        items = _declaration_items(entry.get("items", entry.get("instrucciones")))
+        if title and items:
+            sections.append((title, items))
+    return sections
+
+
 def ai_declaration_fichas(declaration: object, metadata: dict) -> list[str]:
     """S13: one Markdown ficha per ``ai_declaration.members`` entry.
 
@@ -1982,8 +1997,11 @@ def ai_declaration_fichas(declaration: object, metadata: dict) -> list[str]:
     numbered list -- no table. Fields mirror the former Tabla A/Tabla B
     columns (``name``/``integrante``, ``tool``/``herramienta``,
     ``use``/``uso``, ``instructions``/``instrucciones``); a member without a
-    name is the single author (``metadata.student``). Both backends render
-    these through their own Markdown renderer.
+    name is the single author (``metadata.student``). ``instructions`` may
+    instead list phase sections ``{section|seccion|sección, items|instrucciones}``:
+    each renders as a bold ``**N. section**`` line and its ``- item`` bullets,
+    with no ``Instrucciones:`` label. Both backends render these through
+    their own Markdown renderer.
     """
     members = declaration.get("members") if isinstance(declaration, dict) else None
     if not isinstance(members, list):
@@ -1998,7 +2016,11 @@ def ai_declaration_fichas(declaration: object, metadata: dict) -> list[str]:
         uses = _declaration_items(member.get("use", member.get("uso")))
         if uses:
             lines += ["", *(f"- **Uso:** {use}" for use in uses)]
-        instructions = _declaration_items(member.get("instructions", member.get("instrucciones")))
+        raw_instructions = member.get("instructions", member.get("instrucciones"))
+        sections = _declaration_sections(raw_instructions)
+        for number, (title, items) in enumerate(sections, 1):
+            lines += ["", f"**{number}. {title}**", "", *(f"- {item}" for item in items)]
+        instructions = [] if sections else _declaration_items(raw_instructions)
         if instructions:
             lines += ["", "**Instrucciones:**", "", *(f"{n}. {text}" for n, text in enumerate(instructions, 1))]
         if lines[0] or len(lines) > 1:

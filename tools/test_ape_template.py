@@ -287,6 +287,56 @@ def test_ape_ficha_takes_the_single_author_name_and_skips_empty_parts(tmp_path: 
     assert "Instrucciones" not in declaration
 
 
+SECTIONED_MEMBER = {
+    "name": "Alejandro Padilla", "tool": "el Gentleman (Claude)", "use": "Implementación y redacción",
+    "instructions": [
+        {"section": "Comprensión de la guía",
+         "items": ["Se solicitó analizar la guía de la práctica 9 e identificar los entregables."]},
+        {"sección": "Implementación", "instrucciones": [
+            "Se solicitó implementar el algoritmo de aceptación-rechazo en Python y Java.",
+            "Se solicitó incluir la actividad complementaria f(x)=3x².",
+        ]},
+    ],
+}
+
+
+def test_ficha_markdown_groups_sectioned_instructions_by_phase() -> None:
+    assert build_latex_report.ai_declaration_fichas({"members": [SECTIONED_MEMBER]}, {}) == [
+        "**Alejandro Padilla** · el Gentleman (Claude)\n"
+        "\n"
+        "- **Uso:** Implementación y redacción\n"
+        "\n"
+        "**1. Comprensión de la guía**\n"
+        "\n"
+        "- Se solicitó analizar la guía de la práctica 9 e identificar los entregables.\n"
+        "\n"
+        "**2. Implementación**\n"
+        "\n"
+        "- Se solicitó implementar el algoritmo de aceptación-rechazo en Python y Java.\n"
+        "- Se solicitó incluir la actividad complementaria f(x)=3x².\n"
+    ]
+
+
+def test_ficha_markdown_flat_instructions_are_unchanged() -> None:
+    assert build_latex_report.ai_declaration_fichas(
+        {"members": [FICHA_DECLARATION["members"][0]]}, {}
+    ) == [
+        "**Ana Pérez** · ChatGPT (OpenAI)\n\n- **Uso:** Revisión de la redacción\n\n"
+        "**Instrucciones:**\n\n1. Resume el texto.\n2. Revisa las tablas.\n"
+    ]
+
+
+def test_ape_sectioned_ficha_renders_bold_phase_headings_and_bullets(tmp_path: Path) -> None:
+    declaration = render_ficha(tmp_path, {
+        "title": "Declaración de uso de IA Generativa", "members": [SECTIONED_MEMBER],
+    })
+    assert r"\textbf{1. Comprensión de la guía}" in declaration
+    assert r"\textbf{2. Implementación}" in declaration
+    assert declaration.index(r"\textbf{1. Comprensión") < declaration.index(r"\textbf{2. Implementación}")
+    assert r"\item Se solicitó incluir la actividad complementaria" in declaration
+    assert "Instrucciones" not in declaration and r"\begin{enumerate}" not in declaration
+
+
 def test_trailing_backslash_is_a_hard_line_break() -> None:
     # CommonMark hard break: a bold question, then its answer on the next line.
     latex = build_latex_report.markdown_to_latex(
