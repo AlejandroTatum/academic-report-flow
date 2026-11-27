@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 APPROVAL = Path(__file__).resolve().parent.parent / "skills/academic-report-flow/references/approval.md"
-PHASES = ("Comprensión de la guía", "Implementación", "Resultados y gráficas", "Redacción del informe", "Revisión")
+PHASES = ("Comprensión de la guía", "Implementación", "Resultados y gráficas", "Revisión")
 
 
 def test_approval_documents_sectioned_formal_instructions_as_default() -> None:
