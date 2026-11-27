@@ -36,7 +36,7 @@ Tools record phase durations in `timings.yml` (informational, never a gate; `too
 - Publish only through `deliver_report.py`, on the user's explicit instruction; it flags unresolved rubric failures without an accepted gap, unresolved citations, a missing final review or generation record (legacy reports: `APPROVAL_CURRENT`). Publication is not approval.
 - No script, validator, or auditor ever grants `VISUAL_PASS`; `visual_pdf_auditor.py` PASS is only `AUDITOR_PRECHECK` evidence. Only independent semantic inspection of the assembled report grants it; `HUMAN_REVIEW` against immutable hashes precedes `READY_TO_SUBMIT`.
 - Never ghostwrite a final submission. Preserve privacy, provenance, citations, and consent boundaries.
-- Use `academic-visual-builder` for figures, one own diagram per major concept section (not screenshots), and inspect them again in the assembled report; the visual direction changes hierarchy and composition, not only decoration.
+- Use `academic-visual-builder` for pastel figures, one own diagram per major concept section (not screenshots), re-inspected in the assembled report; the visual direction changes hierarchy and composition, not only decoration.
 - When supplied a research-workflow evidence package, preserve claim-to-source traceability, limitations and unresolved questions; do not treat the package as confirmed document intake: this skill owns intake.
 - Route A only: load `references/unl-shell.md` and the `references/profiles/` file matching the subject (`tools/course_profile.py`). Rendering defaults are derived from the confirmed `route:`; an explicit `report.yml` option wins (`references/routing.md`).
 
@@ -46,7 +46,7 @@ Tools record phase durations in `timings.yml` (informational, never a gate; `too
 |---|---|
 | `next` names a phase | Load its reference and run its executor (this skill, `research-workflow`, or the verifier). |
 | Intake data missing or ambiguous | Stop and ask; recording the contract is never approval. |
-| `next: review` | Present the current version and findings; write `final-review.yml` only on an explicit answer, via `final_review_marker.py record`. |
+| `next: review` | Open the PDF via the gate's `pdf_viewer.py`; present version and findings; write `final-review.yml` only on an explicit answer, via `final_review_marker.py record`. |
 | Only `partial` requirements stay open | Offer `accepted_gaps.py`; run it only after the user names requirement and reason. |
 | Type ambiguous or non-academic | Recommend or resolve a route; never fall back to Route A. |
 | Script PASS contradicts visible evidence | Record `VISUAL_FAIL`, correct, rebuild, repeat all gates. |
